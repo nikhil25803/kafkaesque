@@ -4,21 +4,24 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	"github.com/spf13/cobra"
 )
 
 type KafkaInformation struct {
-	Metadata *kafka.ClusterInformation `json:"metadata"`
+	Metadata *kafkaesque.ClusterInformation       `json:"metadata"`
+	Topics   *[]kafkaesque_topic.TopicInformation `json:"topics"`
 }
 
 var (
-	metadata bool
+	metadata    bool
+	topics_info bool
 )
 
 func GetKafkaInformation(
 	ctx context.Context,
-	conn *kafka.KafkaesqueConn,
+	conn *kafkaesque.KafkaesqueConn,
 ) (*KafkaInformation, error) {
 
 	metadata, err := conn.GetMetadata(ctx)
@@ -26,8 +29,19 @@ func GetKafkaInformation(
 		return nil, fmt.Errorf("failed to get cluster metadata: %w", err)
 	}
 
+	topics, err := kafkaesque_topic.GetTopics(conn, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get topics: %w", err)
+	}
+
+	topicInfo, err := kafkaesque_topic.GetTopicInformation(conn, topics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get topic information: %w", err)
+	}
+
 	return &KafkaInformation{
 		Metadata: metadata,
+		Topics:   topicInfo,
 	}, nil
 }
 
@@ -41,7 +55,7 @@ var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
-		conn, err := kafka.Connect(ctx, "localhost:9092")
+		conn, err := kafkaesque.Connect(ctx, "localhost:9092")
 		if err != nil {
 			return fmt.Errorf("failed to connect to Kafka: %w", err)
 		}
@@ -60,12 +74,20 @@ var rootCmd = &cobra.Command{
 			fmt.Printf("  Topics: %d\n", info.Metadata.Topics)
 		}
 
+		if topics_info {
+			fmt.Printf("Topic Information:\n")
+			for i, topic := range *info.Topics {
+				fmt.Printf("%d  - %s (Internal: %t, Partitions: %d)\n", i+1, topic.Name, topic.Internal, topic.PartitionCount)
+			}
+		}
+
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.Flags().BoolVarP(&metadata, "metadata", "m", false, "Retrieve cluster metadata")
+	rootCmd.Flags().BoolVarP(&topics_info, "topics", "t", false, "Retrieve topic information")
 }
 
 func Execute() error {
