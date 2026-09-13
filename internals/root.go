@@ -4,19 +4,22 @@ import (
 	"context"
 	"fmt"
 
+	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	"github.com/spf13/cobra"
 )
 
 type KafkaInformation struct {
-	Metadata *kafkaesque.ClusterInformation       `json:"metadata"`
-	Topics   *[]kafkaesque_topic.TopicInformation `json:"topics"`
+	Metadata *kafkaesque.ClusterInformation         `json:"metadata"`
+	Topics   *[]kafkaesque_topic.TopicInformation   `json:"topics"`
+	Brokers  []*kafkaesque_broker.BrokerInformation `json:"brokers"`
 }
 
 var (
-	metadata    bool
-	topics_info bool
+	metadata     bool
+	topics_info  bool
+	brokers_info bool
 )
 
 func GetKafkaInformation(
@@ -39,9 +42,15 @@ func GetKafkaInformation(
 		return nil, fmt.Errorf("failed to get topic information: %w", err)
 	}
 
+	brokers, err := kafkaesque_broker.GetBrokerInformation(conn, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get broker information: %w", err)
+	}
+
 	return &KafkaInformation{
 		Metadata: metadata,
 		Topics:   topicInfo,
+		Brokers:  brokers,
 	}, nil
 }
 
@@ -77,7 +86,14 @@ var rootCmd = &cobra.Command{
 		if topics_info {
 			fmt.Printf("Topic Information:\n")
 			for i, topic := range *info.Topics {
-				fmt.Printf("%d  - %s (Internal: %t, Partitions: %d)\n", i+1, topic.Name, topic.Internal, topic.PartitionCount)
+				fmt.Printf("%d. %s (Internal: %t, Partitions: %d)\n", i+1, topic.Name, topic.Internal, topic.PartitionCount)
+			}
+		}
+
+		if brokers_info {
+			fmt.Printf("Broker Information:\n")
+			for i, broker := range info.Brokers {
+				fmt.Printf("%d. Host: %s, Port: %d, ID: %d, Rack: %s\n", i+1, broker.Host, broker.Port, broker.ID, broker.Rack)
 			}
 		}
 
@@ -88,6 +104,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().BoolVarP(&metadata, "metadata", "m", false, "Retrieve cluster metadata")
 	rootCmd.Flags().BoolVarP(&topics_info, "topics", "t", false, "Retrieve topic information")
+	rootCmd.Flags().BoolVarP(&brokers_info, "brokers", "b", false, "Retrieve broker information")
 }
 
 func Execute() error {
