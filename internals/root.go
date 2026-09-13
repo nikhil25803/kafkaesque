@@ -6,6 +6,7 @@ import (
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	"github.com/spf13/cobra"
 )
@@ -17,9 +18,11 @@ type KafkaInformation struct {
 }
 
 var (
-	metadata     bool
-	topics_info  bool
-	brokers_info bool
+	metadata       bool
+	topics_info    bool
+	brokers_info   bool
+	partition_info bool
+	topic          string
 )
 
 func GetKafkaInformation(
@@ -97,14 +100,54 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
+		if partition_info {
+			if topic == "" {
+				return fmt.Errorf("please provide a topic name using the --topic flag")
+			}
+
+			partitions, err := kafkaesque_partition.GetPartitionInformation(conn, ctx, topic)
+			if err != nil {
+				return fmt.Errorf("failed to get partition information for topic %s: %w", topic, err)
+			}
+
+			fmt.Printf("Partition Information for topic '%s':\n", topic)
+			for i, partition := range partitions {
+				fmt.Printf("%d. Partition ID: %d | Leader: %s:%d | Total Replicas: %v | Total ISR: %v\n",
+					i+1,
+					partition.ID,
+					partition.Leader.Host,
+					partition.Leader.Port,
+					len(*partition.Replicas),
+					len(*partition.ISR),
+				)
+			}
+		}
+
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.Flags().BoolVarP(&metadata, "metadata", "m", false, "Retrieve cluster metadata")
+
 	rootCmd.Flags().BoolVarP(&topics_info, "topics", "t", false, "Retrieve topic information")
+
 	rootCmd.Flags().BoolVarP(&brokers_info, "brokers", "b", false, "Retrieve broker information")
+
+	rootCmd.Flags().BoolVarP(
+		&partition_info,
+		"partition",
+		"p",
+		false,
+		"Retrieve partition information for a topic",
+	)
+
+	rootCmd.Flags().StringVar(
+		&topic,
+		"topic",
+		"",
+		"Topic name",
+	)
 }
 
 func Execute() error {
