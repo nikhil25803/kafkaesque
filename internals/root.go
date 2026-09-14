@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
+	kafkaesque_consumer "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
@@ -12,17 +13,20 @@ import (
 )
 
 type KafkaInformation struct {
-	Metadata *kafkaesque.ClusterInformation         `json:"metadata"`
-	Topics   *[]kafkaesque_topic.TopicInformation   `json:"topics"`
-	Brokers  []*kafkaesque_broker.BrokerInformation `json:"brokers"`
+	Metadata   *kafkaesque.ClusterInformation              `json:"metadata"`
+	Topics     *[]kafkaesque_topic.TopicInformation        `json:"topics"`
+	Brokers    []*kafkaesque_broker.BrokerInformation      `json:"brokers"`
+	Partitions []kafkaesque_partition.PartitionInformation `json:"partitions"`
+	Consumers  []*kafkaesque_consumer.ConsumerInformation  `json:"consumers"`
 }
 
 var (
-	metadata       bool
-	topics_info    bool
-	brokers_info   bool
-	partition_info bool
-	topic          string
+	metadata        bool
+	topics_info     bool
+	brokers_info    bool
+	partitions_info bool
+	consumers_info  bool
+	topic           string
 )
 
 func GetKafkaInformation(
@@ -50,10 +54,22 @@ func GetKafkaInformation(
 		return nil, fmt.Errorf("failed to get broker information: %w", err)
 	}
 
+	partitions, err := kafkaesque_partition.GetPartitionInformation(conn, ctx, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partition information: %w", err)
+	}
+
+	consumers, err := kafkaesque_consumer.GetConsumerInformation(conn, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get consumer information: %w", err)
+	}
+
 	return &KafkaInformation{
-		Metadata: metadata,
-		Topics:   topicInfo,
-		Brokers:  brokers,
+		Metadata:   metadata,
+		Topics:     topicInfo,
+		Brokers:    brokers,
+		Partitions: partitions,
+		Consumers:  consumers,
 	}, nil
 }
 
@@ -100,7 +116,7 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		if partition_info {
+		if partitions_info {
 			if topic == "" {
 				return fmt.Errorf("please provide a topic name using the --topic flag")
 			}
@@ -123,6 +139,13 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
+		if consumers_info {
+			fmt.Printf("Consumer Information:\n")
+			for i, consumer := range info.Consumers {
+				fmt.Printf("%d. Group ID: %s | Coordinator: %d | Protocol: %s\n", i+1, consumer.GroupID, consumer.Coordinator, consumer.Protocol)
+			}
+		}
+
 		return nil
 	},
 }
@@ -135,8 +158,8 @@ func init() {
 	rootCmd.Flags().BoolVarP(&brokers_info, "brokers", "b", false, "Retrieve broker information")
 
 	rootCmd.Flags().BoolVarP(
-		&partition_info,
-		"partition",
+		&partitions_info,
+		"partitions",
 		"p",
 		false,
 		"Retrieve partition information for a topic",
@@ -147,6 +170,14 @@ func init() {
 		"topic",
 		"",
 		"Topic name",
+	)
+
+	rootCmd.Flags().BoolVarP(
+		&consumers_info,
+		"consumers",
+		"c",
+		false,
+		"Retrieve consumer information",
 	)
 }
 
