@@ -1,54 +1,22 @@
 package partitions
 
 import (
-	"context"
+	"fmt"
 
-	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
-	kafka_go "github.com/segmentio/kafka-go"
+	kafka "github.com/segmentio/kafka-go"
 )
 
-type PartitionInformation struct {
-	ID       int                `json:"id"`
-	Topic    string             `json:"topic"`
-	Leader   *kafka_go.Broker   `json:"leader"`
-	Replicas *[]kafka_go.Broker `json:"replicas"`
-	ISR      *[]kafka_go.Broker `json:"isr"`
-}
-
-func GetPartitionInformation(
-	c *kafkaesque.KafkaesqueConn,
-	ctx context.Context,
-	topic string,
-) ([]PartitionInformation, error) {
-	metadata, err := c.Client.Metadata(
-		ctx,
-		&kafka_go.MetadataRequest{
-			Topics: []string{topic},
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, t := range metadata.Topics {
-		if t.Name != topic {
+// GetPartitionInformation returns partitions for a topic.
+func GetPartitionInformation(metadata *kafka.MetadataResponse, topic string) ([]kafka.Partition, error) {
+	for _, current := range metadata.Topics {
+		if current.Name != topic {
 			continue
 		}
-
-		partitions := make([]PartitionInformation, 0, len(t.Partitions))
-
-		for _, p := range t.Partitions {
-			partitions = append(partitions, PartitionInformation{
-				ID:       p.ID,
-				Topic:    t.Name,
-				Leader:   &p.Leader,
-				Replicas: &p.Replicas,
-				ISR:      &p.Isr,
-			})
+		if current.Error != nil {
+			return nil, current.Error
 		}
-
-		return partitions, nil
+		return current.Partitions, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("topic %q not found", topic)
 }
