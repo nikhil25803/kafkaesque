@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-darwin:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Build Kafkaesque
+        run: go build ./cmd/kafkaesque
+      - name: Run Kafkaesque
+        run: ./kafkaesque
+
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Build Kafkaesque
+        run: go build ./cmd/kafkaesque
+      - name: Run Kafkaesque
+        run: ./kafkaesque
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Build Kafkaesque
+        run: go build ./cmd/kafkaesque
+      - name: Run Kafkaesque
+        run: .\kafkaesque.exe
