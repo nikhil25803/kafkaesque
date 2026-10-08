@@ -222,6 +222,7 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		"Controller ID:                   broker-1\n" +
 		"Brokers:                                1\n" +
 		"Topics:                                 1\n" +
+		"\n" +
 		"STATUS: CONNECTED\n" +
 		"\n" +
 		"\nKafka Brokers\n" +
@@ -258,6 +259,7 @@ func TestPrintMetadataInformation(t *testing.T) {
 		"Controller ID:                   broker-1\n" +
 		"Brokers:                                2\n" +
 		"Topics:                                 3\n" +
+		"\n" +
 		"STATUS: CONNECTED\n" +
 		"\n"
 	if output.String() != want {

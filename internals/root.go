@@ -146,6 +146,7 @@ func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataI
 	fmt.Fprintf(out, "%-20s %20s\n", "Controller ID:", "broker-"+fmt.Sprint(info.ControllerID))
 	fmt.Fprintf(out, "%-20s %20d\n", "Brokers:", info.BrokerCount)
 	fmt.Fprintf(out, "%-20s %20d\n", "Topics:", info.TopicCount)
+	fmt.Fprintln(out)
 	fmt.Fprintf(out, "STATUS: %s\n", info.Status)
 	fmt.Fprintln(out)
 }

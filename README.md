@@ -64,3 +64,21 @@ kafkaesque --check conn
 # Help
 kafkaesque --help
 ```
+
+## Local Kafka environment
+
+A disposable five-broker plaintext Kafka environment with seeded topics,
+partitions, records, and consumer groups is available under `kafka-env/`. Use
+`localhost:9090` as its bootstrap address; brokers are exposed on ports
+`9090` and `9095`–`9098`. It does not change Kafkaesque's default
+configuration or occupy the conventional `9092` port.
+
+```sh
+make kafka-up
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml -m
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml -p --topic orders
+make kafka-down
+```
+
+See `kafka-env/README.md` for the complete fixture list, direct Compose
+commands, logs, and reset instructions.
