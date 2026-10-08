@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafka "github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/protocol/listgroups"
@@ -93,8 +94,11 @@ func TestGetKafkaInformationFetchesRequestedNativeResponses(t *testing.T) {
 	if transport.groupRequests != 1 {
 		t.Fatalf("group requests = %d, want 1", transport.groupRequests)
 	}
-	if info.Metadata.ClusterID != "cluster-1" || info.Brokers[0].Host != "broker" {
-		t.Fatalf("unexpected native metadata response: %+v", info.Metadata)
+	if info.Metadata.ClusterID != "cluster-1" || info.Metadata.ControllerID != 1 || info.Metadata.BrokerCount != 1 || info.Metadata.TopicCount != 1 {
+		t.Fatalf("unexpected metadata information: %+v", info.Metadata)
+	}
+	if info.Brokers[0].Host != "broker" {
+		t.Fatalf("unexpected broker information: %+v", info.Brokers)
 	}
 	if info.Consumers.Groups[0].ProtocolType != "consumer" {
 		t.Fatalf("unexpected native consumer response: %+v", info.Consumers)
@@ -173,18 +177,11 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 	}
 	broker := kafka.Broker{Host: "broker", Port: 9092, ID: 1, Rack: "rack-a"}
 	info := &KafkaInformation{
-		Metadata: &kafka.MetadataResponse{
-			ClusterID:  "cluster-1",
-			Controller: broker,
-			Brokers:    []kafka.Broker{broker},
-			Topics: []kafka.Topic{
-				{
-					Name: "orders",
-					Partitions: []kafka.Partition{
-						{ID: 0, Leader: broker, Replicas: []kafka.Broker{broker}, Isr: []kafka.Broker{broker}},
-					},
-				},
-			},
+		Metadata: &kafkaesque_metadata.MetadataInformation{
+			ClusterID:    "cluster-1",
+			ControllerID: 1,
+			BrokerCount:  1,
+			TopicCount:   1,
 		},
 		Topics: []kafka.Topic{
 			{
@@ -212,12 +209,14 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := "Cluster Metadata:\n" +
-		"  Cluster ID: cluster-1\n" +
-		"  Controller ID: 1\n" +
-		"  Brokers: 1\n" +
-		"  Topics: 1\n" +
-		"Topic Information:\n" +
+	want := "\nKafka Cluster\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"Cluster ID:                     cluster-1\n" +
+		"Controller ID:                   broker-1\n" +
+		"Brokers:                                1\n" +
+		"Topics:                                 1\n" +
+		"\n" +
+		"\nTopic Information:\n" +
 		"1. orders (Internal: false, Partitions: 1)\n" +
 		"Broker Information:\n" +
 		"1. Host: broker, Port: 9092, ID: 1, Rack: rack-a\n" +
@@ -227,6 +226,29 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		"1. Group ID: workers | Coordinator: 1 | Protocol: consumer\n"
 	if output.String() != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", output.String(), want)
+	}
+}
+
+func TestPrintMetadataInformation(t *testing.T) {
+	info := &kafkaesque_metadata.MetadataInformation{
+		ClusterID:    "cluster-1",
+		ControllerID: 1,
+		BrokerCount:  2,
+		TopicCount:   3,
+	}
+
+	var output bytes.Buffer
+	printMetadataInformation(&output, info)
+
+	want := "\nKafka Cluster\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"Cluster ID:                     cluster-1\n" +
+		"Controller ID:                   broker-1\n" +
+		"Brokers:                                2\n" +
+		"Topics:                                 3\n" +
+		"\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
 	}
 }
 

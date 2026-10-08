@@ -3,11 +3,13 @@ package internals
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_consumer "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	kafka "github.com/segmentio/kafka-go"
@@ -34,7 +36,7 @@ func (r InformationRequest) needsMetadata() bool {
 
 // KafkaInformation contains the requested Kafka data.
 type KafkaInformation struct {
-	Metadata   *kafka.MetadataResponse
+	Metadata   *kafkaesque_metadata.MetadataInformation
 	Topics     []kafka.Topic
 	Brokers    []kafka.Broker
 	Partitions []kafka.Partition
@@ -62,7 +64,9 @@ func GetKafkaInformation(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get cluster metadata: %w", err)
 		}
-		info.Metadata = metadata
+		if request.Metadata {
+			info.Metadata = kafkaesque_metadata.GetMetadataInformation(metadata)
+		}
 
 		if request.Topics {
 			info.Topics = kafkaesque_topic.GetTopicInformation(metadata)
@@ -94,13 +98,7 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 	out := cmd.OutOrStdout()
 
 	if request.Metadata {
-		fmt.Fprintf(out, "\nKafka Cluster\n")
-		fmt.Fprintln(out, strings.Repeat("=", 80))
-		fmt.Fprintf(out, "%-20s %20s\n", "Cluster ID:", info.Metadata.ClusterID)
-		fmt.Fprintf(out, "%-20s %20s\n", "Controller ID:", "broker-"+fmt.Sprint(info.Metadata.Controller.ID))
-		fmt.Fprintf(out, "%-20s %20d\n", "Brokers:", len(info.Metadata.Brokers))
-		fmt.Fprintf(out, "%-20s %20d\n", "Topics:", len(info.Metadata.Topics))
-		fmt.Println()
+		printMetadataInformation(out, info.Metadata)
 	}
 
 	if request.Topics {
@@ -139,6 +137,16 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 	}
 
 	return nil
+}
+
+func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataInformation) {
+	fmt.Fprintln(out, "\nKafka Cluster")
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+	fmt.Fprintf(out, "%-20s %20s\n", "Cluster ID:", info.ClusterID)
+	fmt.Fprintf(out, "%-20s %20s\n", "Controller ID:", "broker-"+fmt.Sprint(info.ControllerID))
+	fmt.Fprintf(out, "%-20s %20d\n", "Brokers:", info.BrokerCount)
+	fmt.Fprintf(out, "%-20s %20d\n", "Topics:", info.TopicCount)
+	fmt.Fprintln(out)
 }
 
 func newRootCommand() *cobra.Command {
