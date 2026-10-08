@@ -3,6 +3,7 @@ package internals
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_consumer "github.com/nikhil25803/kafkaesque/internals/consumers"
@@ -93,15 +94,17 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 	out := cmd.OutOrStdout()
 
 	if request.Metadata {
-		fmt.Fprintln(out, "Cluster Metadata:")
-		fmt.Fprintf(out, "  Cluster ID: %s\n", info.Metadata.ClusterID)
-		fmt.Fprintf(out, "  Controller ID: %d\n", info.Metadata.Controller.ID)
-		fmt.Fprintf(out, "  Brokers: %d\n", len(info.Metadata.Brokers))
-		fmt.Fprintf(out, "  Topics: %d\n", len(info.Metadata.Topics))
+		fmt.Fprintf(out, "\nKafka Cluster\n")
+		fmt.Fprintln(out, strings.Repeat("=", 80))
+		fmt.Fprintf(out, "%-20s %20s\n", "Cluster ID:", info.Metadata.ClusterID)
+		fmt.Fprintf(out, "%-20s %20s\n", "Controller ID:", "broker-"+fmt.Sprint(info.Metadata.Controller.ID))
+		fmt.Fprintf(out, "%-20s %20d\n", "Brokers:", len(info.Metadata.Brokers))
+		fmt.Fprintf(out, "%-20s %20d\n", "Topics:", len(info.Metadata.Topics))
+		fmt.Println()
 	}
 
 	if request.Topics {
-		fmt.Fprintln(out, "Topic Information:")
+		fmt.Fprintln(out, "\nTopic Information:")
 		for i, topic := range info.Topics {
 			fmt.Fprintf(out, "%d. %s (Internal: %t, Partitions: %d)\n", i+1, topic.Name, topic.Internal, len(topic.Partitions))
 		}
@@ -142,9 +145,11 @@ func newRootCommand() *cobra.Command {
 	var request InformationRequest
 
 	cmd := &cobra.Command{
-		Use:           "kafkaesque",
-		Short:         "Kafkaesque is a CLI tool for interacting with Kafka clusters.",
-		Long:          `Kafkaesque is a command-line interface (CLI) tool designed to facilitate interactions with Kafka clusters. It provides users with the ability to retrieve cluster metadata, manage topics, and perform various administrative tasks related to Kafka.`,
+		Use:   "kafkaesque",
+		Short: "Kafkaesque is a tool for interacting with Kafka clusters.",
+		Long: `Kafkaesque is a lightweight, read-only Kafka observability tool focused primarily on
+consumer groups, partition offsets, consumer lag, continuous monitoring, a server-rendered HTMX web
+UI, and Slack-based alerting.`,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
