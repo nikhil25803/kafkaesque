@@ -23,9 +23,8 @@ make kafka-down
 | `notifications` | 1 | 3 | 5 |
 | `audit-events` | 8 | 3 | 10 |
 
-It also establishes the inactive consumer groups `order-processor`,
-`payment-worker`, and `inventory-sync`. Re-running `make kafka-up` does not
-duplicate records or groups. Use `make kafka-reset` for a clean fixture set.
+Re-running `make kafka-up` does not duplicate records. Use `make kafka-reset`
+for a clean fixture set.
 
 The equivalent direct Compose commands are:
 
@@ -42,7 +41,6 @@ Run Kafkaesque against the environment with the included configuration:
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml -b
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml -t
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml -p --topic orders
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml -c
 ```
 
 The environment intentionally has no authentication, TLS, or persistent

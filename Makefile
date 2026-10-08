@@ -6,6 +6,7 @@ KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 .PHONY: build run test kafka-up kafka-down kafka-reset kafka-logs
 
 build:
+	mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/$(BINARY) ./cmd/kafkaesque
 
 run:

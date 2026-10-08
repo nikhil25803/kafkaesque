@@ -1,4 +1,4 @@
-name: Build
+name: Tests
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build / ${{ matrix.platform }}
+  tests:
+    name: Test / tests / ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
@@ -20,22 +20,24 @@ jobs:
         include:
           - platform: linux
             os: ubuntu-latest
-            extension: ""
           - platform: macOS
             os: macos-latest
-            extension: ""
           - platform: windows
             os: windows-latest
-            extension: .exe
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Build Kafkaesque
+      - name: Check formatting and whitespace
+        if: matrix.platform == 'linux'
         shell: bash
-        run: go build -o kafkaesque${{ matrix.extension }} ./cmd/kafkaesque
-      - name: Run Kafkaesque help
-        shell: bash
-        run: ./kafkaesque${{ matrix.extension }} --help
+        run: |
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"
+          test -z "${unformatted}"
+          git diff --check
+      - name: Run tests
+        run: go test ./...
+      - name: Run vet
+        run: go vet ./...

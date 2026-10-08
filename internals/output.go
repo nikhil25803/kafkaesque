@@ -7,8 +7,8 @@ import (
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
+	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
-	kafka "github.com/segmentio/kafka-go"
 	"github.com/spf13/cobra"
 )
 
@@ -27,10 +27,6 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 	if request.Partitions {
 		printPartitionsInformation(out, request.Topic, info.Partitions)
 	}
-	if request.Consumers {
-		printConsumersInformation(out, info.Consumers)
-	}
-
 	return nil
 }
 
@@ -84,23 +80,18 @@ func printTopicsInformation(out io.Writer, topics []kafkaesque_topic.TopicInform
 	fmt.Fprintf(out, "\n%d %s available\n", len(topics), noun)
 }
 
-func printPartitionsInformation(out io.Writer, topic string, partitions []kafka.Partition) {
-	fmt.Fprintf(out, "Partition Information for topic '%s':\n", topic)
-	for i, partition := range partitions {
-		fmt.Fprintf(out, "%d. Partition ID: %d | Leader: %s:%d | Total Replicas: %v | Total ISR: %v\n",
-			i+1,
-			partition.ID,
-			partition.Leader.Host,
-			partition.Leader.Port,
-			len(partition.Replicas),
-			len(partition.Isr),
-		)
-	}
-}
+func printPartitionsInformation(out io.Writer, topic string, partitions []kafkaesque_partition.PartitionTopicInformation) {
+	fmt.Fprintln(out, "\nTopic: "+topic)
+	fmt.Fprintln(out, strings.Repeat("=", 80))
 
-func printConsumersInformation(out io.Writer, consumers *kafka.ListGroupsResponse) {
-	fmt.Fprintln(out, "Consumer Information:")
-	for i, consumer := range consumers.Groups {
-		fmt.Fprintf(out, "%d. Group ID: %s | Coordinator: %d | Protocol: %s\n", i+1, consumer.GroupID, consumer.Coordinator, consumer.ProtocolType)
+	fmt.Fprintf(out, "%-10s %-32s %-12s %-16s\n", "PARTITION", "LEADER", "REPLICAS", "ISR")
+
+	for _, partition := range partitions {
+		fmt.Fprintf(out, "%-10d %-32s %-12d %-16d\n",
+			partition.PartitionID,
+			partition.Leader,
+			partition.Replicas,
+			partition.Isr,
+		)
 	}
 }

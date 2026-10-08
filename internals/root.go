@@ -15,12 +15,11 @@ type InformationRequest struct {
 	Topics     bool
 	Brokers    bool
 	Partitions bool
-	Consumers  bool
 	Topic      string
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions
 }
 
 func newRootCommand() *cobra.Command {
@@ -35,9 +34,8 @@ func newRootCommandWithConnectionCheck(checkConnection func(context.Context, str
 	cmd := &cobra.Command{
 		Use:   "kafkaesque",
 		Short: "Kafkaesque is a tool for interacting with Kafka clusters.",
-		Long: `Kafkaesque is a lightweight, read-only Kafka observability tool focused primarily on
-consumer groups, partition offsets, consumer lag, continuous monitoring, a server-rendered HTMX web
-UI, and Slack-based alerting.`,
+		Long: `Kafkaesque is a lightweight, read-only Kafka cluster inspector for viewing cluster
+metadata, brokers, topics, and partitions.`,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -51,7 +49,6 @@ UI, and Slack-based alerting.`,
 	cmd.Flags().BoolVarP(&request.Brokers, "brokers", "b", false, "Retrieve broker information")
 	cmd.Flags().BoolVarP(&request.Partitions, "partitions", "p", false, "Retrieve partition information for a topic")
 	cmd.Flags().StringVar(&request.Topic, "topic", "", "Topic name")
-	cmd.Flags().BoolVarP(&request.Consumers, "consumers", "c", false, "Retrieve consumer information")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
 
