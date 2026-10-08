@@ -18,10 +18,62 @@
 
 ![Kafkaesque product vision](asset/image/KafkaesqueBanner.png)
 
-Kafkaesque v0.0.1 gives you a quick terminal view of Kafka cluster metadata,
-brokers, topics, and partitions. It is authentication-neutral, uses a single
-plaintext bootstrap server, and only performs read operations. The banner
-above represents the broader product vision described in the upcoming releases.
+## Upcoming Releases
+
+| Version | Release Info                                  | Status      |
+| ------- | --------------------------------------------- | ----------- |
+| v0.0.1  | Kafka Cluster Inspector                       | Released    |
+| v0.1.0  | Consumer Groups & Basic Lag                   | Coming Soon |
+| v0.2.0  | Kafka Connectivity & Authentication           | Coming Soon |
+| v0.3.0  | Deep Consumer Observability                   | Coming Soon |
+| v0.4.0  | Cluster Health & Diagnostics                  | Coming Soon |
+| v0.5.0  | CLI UX & Structured Output                    | Coming Soon |
+| v0.6.0  | Watch Mode & Lag Trends                       | Coming Soon |
+| v0.7.0  | HTMX Web UI                                   | Coming Soon |
+| v0.8.0  | Web Authentication                            | Coming Soon |
+| v0.9.0  | Slack Alerts & Production Hardening           | Coming Soon |
+| v1.0.0  | Stable Read-Only Kafka Observability Platform | Coming Soon |
+
+## Install
+
+### Linux and macOS
+
+The installer detects your operating system and architecture, verifies the
+downloaded archive, and installs Kafkaesque into `~/.local/bin`.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+kafkaesque --help
+```
+
+### Windows
+
+Download and run the PowerShell installer. It verifies the archive, installs
+Kafkaesque under `%LOCALAPPDATA%\Programs\kafkaesque`, and adds that directory
+to your user PATH.
+
+```powershell
+curl.exe -fsSLo install.ps1 https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Open a new terminal, then verify the installation:
+
+```powershell
+kafkaesque --help
+```
+
+Both installers use the latest release by default. To install v0.0.1
+explicitly:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | VERSION=v0.0.1 sh
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.0.1
+```
 
 ## Build from source
 
@@ -43,16 +95,16 @@ be as simple as:
 
 ## Flags
 
-| Short | Long | Value | Description |
-| --- | --- | --- | --- |
-| `-m` | `--metadata` | — | Show cluster metadata and connection status. |
-| `-b` | `--brokers` | — | List Kafka brokers. |
-| `-t` | `--topics` | — | List Kafka topics. |
-| `-p` | `--partitions` | — | List partitions for the topic selected by `--topic`. |
-| — | `--topic` | name | Select a topic for partition inspection. |
-| — | `--config` | path | Load an explicit YAML configuration file. |
-| — | `--check` | `config` or `conn` | Validate configuration or test the Kafka connection. |
-| `-h` | `--help` | — | Show command help. |
+| Short | Long           | Value              | Description                                          |
+| ----- | -------------- | ------------------ | ---------------------------------------------------- |
+| `-m`  | `--metadata`   | —                  | Show cluster metadata and connection status.         |
+| `-b`  | `--brokers`    | —                  | List Kafka brokers.                                  |
+| `-t`  | `--topics`     | —                  | List Kafka topics.                                   |
+| `-p`  | `--partitions` | —                  | List partitions for the topic selected by `--topic`. |
+| —     | `--topic`      | name               | Select a topic for partition inspection.             |
+| —     | `--config`     | path               | Load an explicit YAML configuration file.            |
+| —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection. |
+| `-h`  | `--help`       | —                  | Show command help.                                   |
 
 Information flags can be combined; Kafkaesque shares the metadata request
 between them.
@@ -87,11 +139,11 @@ kafka:
 
 The default YAML locations are:
 
-| Platform | Path |
-| --- | --- |
-| Linux | `$XDG_CONFIG_HOME/kafkaesque/config.yaml` or `~/.config/kafkaesque/config.yaml` |
-| macOS | `~/Library/Application Support/kafkaesque/config.yaml` |
-| Windows | `%AppData%\kafkaesque\config.yaml` |
+| Platform | Path                                                                            |
+| -------- | ------------------------------------------------------------------------------- |
+| Linux    | `$XDG_CONFIG_HOME/kafkaesque/config.yaml` or `~/.config/kafkaesque/config.yaml` |
+| macOS    | `~/Library/Application Support/kafkaesque/config.yaml`                          |
+| Windows  | `%AppData%\kafkaesque\config.yaml`                                              |
 
 See [`kafkaesque.example.yaml`](kafkaesque.example.yaml) for a ready-to-copy
 example. Configuration files are not created automatically.
@@ -112,22 +164,6 @@ make kafka-down
 
 See [`kafka-env/README.md`](kafka-env/README.md) for fixture details, logs,
 reset commands, and direct Docker Compose usage.
-
-## Upcoming Releases
-
-| Version | Release Info | Status |
-| --- | --- | --- |
-| v0.0.1 | Kafka Cluster Inspector | Coming Soon |
-| v0.1.0 | Consumer Groups & Basic Lag | Coming Soon |
-| v0.2.0 | Kafka Connectivity & Authentication | Coming Soon |
-| v0.3.0 | Deep Consumer Observability | Coming Soon |
-| v0.4.0 | Cluster Health & Diagnostics | Coming Soon |
-| v0.5.0 | CLI UX & Structured Output | Coming Soon |
-| v0.6.0 | Watch Mode & Lag Trends | Coming Soon |
-| v0.7.0 | HTMX Web UI | Coming Soon |
-| v0.8.0 | Web Authentication | Coming Soon |
-| v0.9.0 | Slack Alerts & Production Hardening | Coming Soon |
-| v1.0.0 | Stable Read-Only Kafka Observability Platform | Coming Soon |
 
 Kafkaesque will grow in small, reviewable releases while remaining read-only
 by design.
