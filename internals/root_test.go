@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
@@ -275,6 +278,90 @@ func TestRootCommandRequiresTopicForPartitions(t *testing.T) {
 	if err == nil || err.Error() != "please provide a topic name using the --topic flag" {
 		t.Fatalf("error = %v", err)
 	}
+}
+
+func TestRootCommandChecksConfiguration(t *testing.T) {
+	t.Setenv(kafkaesque_config.BootstrapServerEnv, "localhost:9092")
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--check", "config", "--config", writeRootConfig(t, "localhost:9092")})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Configuration is valid\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestRootCommandChecksKafkaConnection(t *testing.T) {
+	var output bytes.Buffer
+	var checkedAddress string
+	cmd := newRootCommandWithConnectionCheck(func(_ context.Context, address string) error {
+		checkedAddress = address
+		return nil
+	})
+	cmd.SetOut(&output)
+	address := "broker.example.com:9092"
+	t.Setenv(kafkaesque_config.BootstrapServerEnv, address)
+	cmd.SetArgs([]string{"--check", "conn", "--config", writeRootConfig(t, address)})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Kafka connection successful: "+address+"\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+	if checkedAddress != address {
+		t.Fatalf("checked address = %q, want %q", checkedAddress, address)
+	}
+}
+
+func TestRootCommandRejectsInvalidChecks(t *testing.T) {
+	t.Run("unknown check", func(t *testing.T) {
+		cmd := newRootCommand()
+		cmd.SetArgs([]string{"--check", "unknown"})
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "must be config or conn") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("combined with information flag", func(t *testing.T) {
+		cmd := newRootCommand()
+		cmd.SetArgs([]string{"--check", "config", "--metadata"})
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+}
+
+func TestRootCommandReturnsConnectionCheckErrors(t *testing.T) {
+	address := "broker.example.com:9092"
+	t.Setenv(kafkaesque_config.BootstrapServerEnv, address)
+	cmd := newRootCommandWithConnectionCheck(func(context.Context, string) error {
+		return errors.New("connection refused")
+	})
+	cmd.SetArgs([]string{"--check", "conn", "--config", writeRootConfig(t, address)})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed to connect to Kafka at "+address) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func writeRootConfig(t *testing.T, bootstrapServer string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "kafka:\n  bootstrap_server: " + bootstrapServer + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestGetPartitionInformationRejectsMissingAndErroredTopics(t *testing.T) {

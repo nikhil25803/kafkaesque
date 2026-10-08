@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
+	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumer "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
@@ -150,7 +151,13 @@ func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataI
 }
 
 func newRootCommand() *cobra.Command {
+	return newRootCommandWithConnectionCheck(checkKafkaConnection)
+}
+
+func newRootCommandWithConnectionCheck(checkConnection func(context.Context, string) error) *cobra.Command {
 	var request InformationRequest
+	var configPath string
+	var check string
 
 	cmd := &cobra.Command{
 		Use:   "kafkaesque",
@@ -162,17 +169,40 @@ UI, and Slack-based alerting.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !request.any() {
+			if check == "" && !request.any() {
 				return cmd.Help()
+			}
+			if check != "" && request.any() {
+				return fmt.Errorf("--check cannot be combined with information flags")
+			}
+			if check != "" && check != "config" && check != "conn" {
+				return fmt.Errorf("invalid --check value %q: must be config or conn", check)
 			}
 			if request.Partitions && request.Topic == "" {
 				return fmt.Errorf("please provide a topic name using the --topic flag")
 			}
 
-			ctx := cmd.Context()
-			conn, err := kafkaesque.Connect(ctx, "localhost:9092")
+			cfg, err := kafkaesque_config.Load(configPath)
 			if err != nil {
-				return fmt.Errorf("failed to connect to Kafka: %w", err)
+				return fmt.Errorf("failed to load configuration: %w", err)
+			}
+			if check == "config" {
+				fmt.Fprintln(cmd.OutOrStdout(), "Configuration is valid")
+				return nil
+			}
+
+			ctx := cmd.Context()
+			if check == "conn" {
+				if err := checkConnection(ctx, cfg.Kafka.BootstrapServer); err != nil {
+					return fmt.Errorf("failed to connect to Kafka at %s: %w", cfg.Kafka.BootstrapServer, err)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Kafka connection successful: %s\n", cfg.Kafka.BootstrapServer)
+				return nil
+			}
+
+			conn, err := kafkaesque.Connect(ctx, cfg.Kafka.BootstrapServer)
+			if err != nil {
+				return fmt.Errorf("failed to connect to Kafka at %s: %w", cfg.Kafka.BootstrapServer, err)
 			}
 			defer conn.Close()
 
@@ -191,8 +221,18 @@ UI, and Slack-based alerting.`,
 	cmd.Flags().BoolVarP(&request.Partitions, "partitions", "p", false, "Retrieve partition information for a topic")
 	cmd.Flags().StringVar(&request.Topic, "topic", "", "Topic name")
 	cmd.Flags().BoolVarP(&request.Consumers, "consumers", "c", false, "Retrieve consumer information")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
+	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
 
 	return cmd
+}
+
+func checkKafkaConnection(ctx context.Context, bootstrapServer string) error {
+	conn, err := kafkaesque.Connect(ctx, bootstrapServer)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
 }
 
 var rootCmd = newRootCommand()
