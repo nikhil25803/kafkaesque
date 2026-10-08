@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
@@ -97,10 +98,10 @@ func TestGetKafkaInformationFetchesRequestedNativeResponses(t *testing.T) {
 	if transport.groupRequests != 1 {
 		t.Fatalf("group requests = %d, want 1", transport.groupRequests)
 	}
-	if info.Metadata.ClusterID != "cluster-1" || info.Metadata.ControllerID != 1 || info.Metadata.BrokerCount != 1 || info.Metadata.TopicCount != 1 {
+	if info.Metadata.ClusterID != "cluster-1" || info.Metadata.ControllerID != 1 || info.Metadata.BrokerCount != 1 || info.Metadata.TopicCount != 1 || info.Metadata.Status != "CONNECTED" {
 		t.Fatalf("unexpected metadata information: %+v", info.Metadata)
 	}
-	if info.Brokers[0].Host != "broker" {
+	if info.Brokers[0].ID != 1 || info.Brokers[0].Address != "broker:9092" || info.Brokers[0].Rack != "rack-a" {
 		t.Fatalf("unexpected broker information: %+v", info.Brokers)
 	}
 	if info.Consumers.Groups[0].ProtocolType != "consumer" {
@@ -185,6 +186,7 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 			ControllerID: 1,
 			BrokerCount:  1,
 			TopicCount:   1,
+			Status:       "CONNECTED",
 		},
 		Topics: []kafka.Topic{
 			{
@@ -194,7 +196,9 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 				},
 			},
 		},
-		Brokers: []kafka.Broker{broker},
+		Brokers: []kafkaesque_broker.BrokerInformation{
+			{ID: 1, Address: "broker:9092", Rack: "rack-a"},
+		},
 		Partitions: []kafka.Partition{
 			{ID: 0, Leader: broker, Replicas: []kafka.Broker{broker}, Isr: []kafka.Broker{broker}},
 		},
@@ -218,11 +222,15 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		"Controller ID:                   broker-1\n" +
 		"Brokers:                                1\n" +
 		"Topics:                                 1\n" +
+		"STATUS: CONNECTED\n" +
 		"\n" +
+		"\nKafka Brokers\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"ID   ADDRESS          RACK    \n" +
+		"1    broker:9092      rack-a  \n" +
+		"\n1 broker available\n" +
 		"\nTopic Information:\n" +
 		"1. orders (Internal: false, Partitions: 1)\n" +
-		"Broker Information:\n" +
-		"1. Host: broker, Port: 9092, ID: 1, Rack: rack-a\n" +
 		"Partition Information for topic 'orders':\n" +
 		"1. Partition ID: 0 | Leader: broker:9092 | Total Replicas: 1 | Total ISR: 1\n" +
 		"Consumer Information:\n" +
@@ -238,6 +246,7 @@ func TestPrintMetadataInformation(t *testing.T) {
 		ControllerID: 1,
 		BrokerCount:  2,
 		TopicCount:   3,
+		Status:       "CONNECTED",
 	}
 
 	var output bytes.Buffer
@@ -249,9 +258,53 @@ func TestPrintMetadataInformation(t *testing.T) {
 		"Controller ID:                   broker-1\n" +
 		"Brokers:                                2\n" +
 		"Topics:                                 3\n" +
+		"STATUS: CONNECTED\n" +
 		"\n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintBrokersInformation(t *testing.T) {
+	tests := []struct {
+		name    string
+		brokers []kafkaesque_broker.BrokerInformation
+		want    string
+	}{
+		{
+			name: "singular",
+			brokers: []kafkaesque_broker.BrokerInformation{
+				{ID: 1, Address: "localhost:9092"},
+			},
+			want: "\nKafka Brokers\n" +
+				strings.Repeat("=", 80) + "\n" +
+				"ID   ADDRESS          RACK    \n" +
+				"1    localhost:9092           \n" +
+				"\n1 broker available\n",
+		},
+		{
+			name: "plural",
+			brokers: []kafkaesque_broker.BrokerInformation{
+				{ID: 1, Address: "broker-1:9092", Rack: "rack-a"},
+				{ID: 2, Address: "broker-2:9092", Rack: "rack-b"},
+			},
+			want: "\nKafka Brokers\n" +
+				strings.Repeat("=", 80) + "\n" +
+				"ID   ADDRESS          RACK    \n" +
+				"1    broker-1:9092    rack-a  \n" +
+				"2    broker-2:9092    rack-b  \n" +
+				"\n2 brokers available\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			printBrokersInformation(&output, test.brokers)
+			if output.String() != test.want {
+				t.Fatalf("output:\n%q\nwant:\n%q", output.String(), test.want)
+			}
+		})
 	}
 }
 

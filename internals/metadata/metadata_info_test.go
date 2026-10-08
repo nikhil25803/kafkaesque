@@ -21,6 +21,7 @@ func TestGetMetadataInformation(t *testing.T) {
 		ControllerID: 2,
 		BrokerCount:  2,
 		TopicCount:   2,
+		Status:       statusConnected,
 	}
 
 	if !reflect.DeepEqual(got, want) {

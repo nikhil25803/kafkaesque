@@ -39,7 +39,7 @@ func (r InformationRequest) needsMetadata() bool {
 type KafkaInformation struct {
 	Metadata   *kafkaesque_metadata.MetadataInformation
 	Topics     []kafka.Topic
-	Brokers    []kafka.Broker
+	Brokers    []kafkaesque_broker.BrokerInformation
 	Partitions []kafka.Partition
 	Consumers  *kafka.ListGroupsResponse
 }
@@ -69,12 +69,14 @@ func GetKafkaInformation(
 			info.Metadata = kafkaesque_metadata.GetMetadataInformation(metadata)
 		}
 
-		if request.Topics {
-			info.Topics = kafkaesque_topic.GetTopicInformation(metadata)
-		}
 		if request.Brokers {
 			info.Brokers = kafkaesque_broker.GetBrokerInformation(metadata)
 		}
+
+		if request.Topics {
+			info.Topics = kafkaesque_topic.GetTopicInformation(metadata)
+		}
+
 		if request.Partitions {
 			partitions, err := kafkaesque_partition.GetPartitionInformation(metadata, request.Topic)
 			if err != nil {
@@ -102,17 +104,14 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 		printMetadataInformation(out, info.Metadata)
 	}
 
+	if request.Brokers {
+		printBrokersInformation(out, info.Brokers)
+	}
+
 	if request.Topics {
 		fmt.Fprintln(out, "\nTopic Information:")
 		for i, topic := range info.Topics {
 			fmt.Fprintf(out, "%d. %s (Internal: %t, Partitions: %d)\n", i+1, topic.Name, topic.Internal, len(topic.Partitions))
-		}
-	}
-
-	if request.Brokers {
-		fmt.Fprintln(out, "Broker Information:")
-		for i, broker := range info.Brokers {
-			fmt.Fprintf(out, "%d. Host: %s, Port: %d, ID: %d, Rack: %s\n", i+1, broker.Host, broker.Port, broker.ID, broker.Rack)
 		}
 	}
 
@@ -147,7 +146,31 @@ func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataI
 	fmt.Fprintf(out, "%-20s %20s\n", "Controller ID:", "broker-"+fmt.Sprint(info.ControllerID))
 	fmt.Fprintf(out, "%-20s %20d\n", "Brokers:", info.BrokerCount)
 	fmt.Fprintf(out, "%-20s %20d\n", "Topics:", info.TopicCount)
+	fmt.Fprintf(out, "STATUS: %s\n", info.Status)
 	fmt.Fprintln(out)
+}
+
+func printBrokersInformation(out io.Writer, brokers []kafkaesque_broker.BrokerInformation) {
+	fmt.Fprintln(out, "\nKafka Brokers")
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+
+	fmt.Fprintf(out, "%-4s %-16s %-8s\n",
+		"ID", "ADDRESS", "RACK",
+	)
+
+	for _, broker := range brokers {
+		fmt.Fprintf(out, "%-4d %-16s %-8s\n",
+			broker.ID,
+			broker.Address,
+			broker.Rack,
+		)
+	}
+
+	noun := "brokers"
+	if len(brokers) == 1 {
+		noun = "broker"
+	}
+	fmt.Fprintf(out, "\n%d %s available\n", len(brokers), noun)
 }
 
 func newRootCommand() *cobra.Command {
