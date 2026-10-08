@@ -1,4 +1,4 @@
-name: Tests
+name: Test
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   tests:
-    name: Test / tests / ${{ matrix.platform }}
+    name: Check / ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
