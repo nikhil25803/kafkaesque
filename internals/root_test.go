@@ -5,23 +5,26 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
+	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
+	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	kafka "github.com/segmentio/kafka-go"
-	"github.com/segmentio/kafka-go/protocol/listgroups"
 	"github.com/segmentio/kafka-go/protocol/metadata"
 	"github.com/spf13/cobra"
 )
 
 type recordingTransport struct {
 	metadataTopics [][]string
-	groupRequests  int
 	err            error
-	groupErrorCode int16
 }
 
 func (t *recordingTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
@@ -47,14 +50,6 @@ func (t *recordingTransport) RoundTrip(_ context.Context, _ net.Addr, request ka
 				},
 			},
 		}, nil
-	case *listgroups.Request:
-		t.groupRequests++
-		return &listgroups.Response{
-			ErrorCode: t.groupErrorCode,
-			Groups: []listgroups.ResponseGroup{
-				{GroupID: "workers", BrokerID: 1, ProtocolType: "consumer"},
-			},
-		}, nil
 	default:
 		return nil, errors.New("unexpected Kafka request")
 	}
@@ -76,7 +71,6 @@ func TestGetKafkaInformationFetchesRequestedNativeResponses(t *testing.T) {
 		Topics:     true,
 		Brokers:    true,
 		Partitions: true,
-		Consumers:  true,
 		Topic:      "orders",
 	}
 
@@ -90,14 +84,28 @@ func TestGetKafkaInformationFetchesRequestedNativeResponses(t *testing.T) {
 	if transport.metadataTopics[0] != nil {
 		t.Fatalf("combined metadata topic filter = %v, want nil", transport.metadataTopics[0])
 	}
-	if transport.groupRequests != 1 {
-		t.Fatalf("group requests = %d, want 1", transport.groupRequests)
+	if info.Metadata.ClusterID != "cluster-1" || info.Metadata.ControllerID != 1 || info.Metadata.BrokerCount != 1 || info.Metadata.TopicCount != 1 || info.Metadata.Status != "CONNECTED" {
+		t.Fatalf("unexpected metadata information: %+v", info.Metadata)
 	}
-	if info.Metadata.ClusterID != "cluster-1" || info.Brokers[0].Host != "broker" {
-		t.Fatalf("unexpected native metadata response: %+v", info.Metadata)
+	if info.Brokers[0].ID != 1 || info.Brokers[0].Address != "broker:9092" || info.Brokers[0].Rack != "rack-a" {
+		t.Fatalf("unexpected broker information: %+v", info.Brokers)
 	}
-	if info.Consumers.Groups[0].ProtocolType != "consumer" {
-		t.Fatalf("unexpected native consumer response: %+v", info.Consumers)
+	if len(info.Topics) != 1 || info.Topics[0] != (kafkaesque_topic.TopicInformation{
+		Name:              "orders",
+		Level:             "External",
+		PartitionCount:    1,
+		ReplicationFactor: 1,
+	}) {
+		t.Fatalf("unexpected topic information: %+v", info.Topics)
+	}
+	if len(info.Partitions) != 1 || info.Partitions[0] != (kafkaesque_partition.PartitionTopicInformation{
+		TopicName:   "orders",
+		PartitionID: 0,
+		Leader:      "broker-1",
+		Replicas:    1,
+		Isr:         1,
+	}) {
+		t.Fatalf("unexpected partition information: %+v", info.Partitions)
 	}
 }
 
@@ -111,28 +119,6 @@ func TestGetKafkaInformationPartitionsOnlyFiltersTopic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(transport.metadataTopics, [][]string{{"orders"}}) {
 		t.Fatalf("metadata topic filters = %v, want [[orders]]", transport.metadataTopics)
-	}
-	if transport.groupRequests != 0 {
-		t.Fatalf("group requests = %d, want 0", transport.groupRequests)
-	}
-}
-
-func TestGetKafkaInformationConsumersOnlySkipsMetadata(t *testing.T) {
-	transport := &recordingTransport{}
-
-	_, err := GetKafkaInformation(
-		context.Background(),
-		connectionWithTransport(transport),
-		InformationRequest{Consumers: true},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(transport.metadataTopics) != 0 {
-		t.Fatalf("metadata requests = %d, want 0", len(transport.metadataTopics))
-	}
-	if transport.groupRequests != 1 {
-		t.Fatalf("group requests = %d, want 1", transport.groupRequests)
 	}
 }
 
@@ -149,17 +135,6 @@ func TestGetKafkaInformationReturnsKafkaErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("group response", func(t *testing.T) {
-		transport := &recordingTransport{groupErrorCode: 15}
-		_, err := GetKafkaInformation(
-			context.Background(),
-			connectionWithTransport(transport),
-			InformationRequest{Consumers: true},
-		)
-		if err == nil || !strings.Contains(err.Error(), "list groups") {
-			t.Fatalf("error = %v, want group response error", err)
-		}
-	})
 }
 
 func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
@@ -168,40 +143,24 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		Topics:     true,
 		Brokers:    true,
 		Partitions: true,
-		Consumers:  true,
 		Topic:      "orders",
 	}
-	broker := kafka.Broker{Host: "broker", Port: 9092, ID: 1, Rack: "rack-a"}
 	info := &KafkaInformation{
-		Metadata: &kafka.MetadataResponse{
-			ClusterID:  "cluster-1",
-			Controller: broker,
-			Brokers:    []kafka.Broker{broker},
-			Topics: []kafka.Topic{
-				{
-					Name: "orders",
-					Partitions: []kafka.Partition{
-						{ID: 0, Leader: broker, Replicas: []kafka.Broker{broker}, Isr: []kafka.Broker{broker}},
-					},
-				},
-			},
+		Metadata: &kafkaesque_metadata.MetadataInformation{
+			ClusterID:    "cluster-1",
+			ControllerID: 1,
+			BrokerCount:  1,
+			TopicCount:   1,
+			Status:       "CONNECTED",
 		},
-		Topics: []kafka.Topic{
-			{
-				Name: "orders",
-				Partitions: []kafka.Partition{
-					{ID: 0, Leader: broker, Replicas: []kafka.Broker{broker}, Isr: []kafka.Broker{broker}},
-				},
-			},
+		Topics: []kafkaesque_topic.TopicInformation{
+			{Name: "orders", Level: "External", PartitionCount: 1, ReplicationFactor: 1},
 		},
-		Brokers: []kafka.Broker{broker},
-		Partitions: []kafka.Partition{
-			{ID: 0, Leader: broker, Replicas: []kafka.Broker{broker}, Isr: []kafka.Broker{broker}},
+		Brokers: []kafkaesque_broker.BrokerInformation{
+			{ID: 1, Address: "broker:9092", Rack: "rack-a"},
 		},
-		Consumers: &kafka.ListGroupsResponse{
-			Groups: []kafka.ListGroupsResponseGroup{
-				{GroupID: "workers", Coordinator: 1, ProtocolType: "consumer"},
-			},
+		Partitions: []kafkaesque_partition.PartitionTopicInformation{
+			{TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: 1, Isr: 1},
 		},
 	}
 
@@ -212,21 +171,162 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := "Cluster Metadata:\n" +
-		"  Cluster ID: cluster-1\n" +
-		"  Controller ID: 1\n" +
-		"  Brokers: 1\n" +
-		"  Topics: 1\n" +
-		"Topic Information:\n" +
-		"1. orders (Internal: false, Partitions: 1)\n" +
-		"Broker Information:\n" +
-		"1. Host: broker, Port: 9092, ID: 1, Rack: rack-a\n" +
-		"Partition Information for topic 'orders':\n" +
-		"1. Partition ID: 0 | Leader: broker:9092 | Total Replicas: 1 | Total ISR: 1\n" +
-		"Consumer Information:\n" +
-		"1. Group ID: workers | Coordinator: 1 | Protocol: consumer\n"
+	want := "\nKafka Cluster\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"Cluster ID:                     cluster-1\n" +
+		"Controller ID:                   broker-1\n" +
+		"Brokers:                                1\n" +
+		"Topics:                                 1\n" +
+		"\n" +
+		"STATUS: CONNECTED\n" +
+		"\n" +
+		"\nKafka Brokers\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"ID   ADDRESS          RACK    \n" +
+		"1    broker:9092      rack-a  \n" +
+		"\n1 broker available\n" +
+		"\nKafka Topics\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"ID   NAME                             LEVEL        PARTITIONS       REPLICATION FACTOR  \n" +
+		"1    orders                           External     1                1                   \n" +
+		"\n1 topic available\n" +
+		"\nTopic: orders\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"PARTITION  LEADER                           REPLICAS     ISR             \n" +
+		"0          broker-1                         1            1               \n"
 	if output.String() != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", output.String(), want)
+	}
+}
+
+func TestPrintMetadataInformation(t *testing.T) {
+	info := &kafkaesque_metadata.MetadataInformation{
+		ClusterID:    "cluster-1",
+		ControllerID: 1,
+		BrokerCount:  2,
+		TopicCount:   3,
+		Status:       "CONNECTED",
+	}
+
+	var output bytes.Buffer
+	printMetadataInformation(&output, info)
+
+	want := "\nKafka Cluster\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"Cluster ID:                     cluster-1\n" +
+		"Controller ID:                   broker-1\n" +
+		"Brokers:                                2\n" +
+		"Topics:                                 3\n" +
+		"\n" +
+		"STATUS: CONNECTED\n" +
+		"\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintBrokersInformation(t *testing.T) {
+	tests := []struct {
+		name    string
+		brokers []kafkaesque_broker.BrokerInformation
+		want    string
+	}{
+		{
+			name: "singular",
+			brokers: []kafkaesque_broker.BrokerInformation{
+				{ID: 1, Address: "localhost:9092"},
+			},
+			want: "\nKafka Brokers\n" +
+				strings.Repeat("=", 80) + "\n" +
+				"ID   ADDRESS          RACK    \n" +
+				"1    localhost:9092           \n" +
+				"\n1 broker available\n",
+		},
+		{
+			name: "plural",
+			brokers: []kafkaesque_broker.BrokerInformation{
+				{ID: 1, Address: "broker-1:9092", Rack: "rack-a"},
+				{ID: 2, Address: "broker-2:9092", Rack: "rack-b"},
+			},
+			want: "\nKafka Brokers\n" +
+				strings.Repeat("=", 80) + "\n" +
+				"ID   ADDRESS          RACK    \n" +
+				"1    broker-1:9092    rack-a  \n" +
+				"2    broker-2:9092    rack-b  \n" +
+				"\n2 brokers available\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			printBrokersInformation(&output, test.brokers)
+			if output.String() != test.want {
+				t.Fatalf("output:\n%q\nwant:\n%q", output.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestPrintTopicsInformation(t *testing.T) {
+	tests := []struct {
+		name   string
+		topics []kafkaesque_topic.TopicInformation
+		want   string
+	}{
+		{
+			name: "singular",
+			topics: []kafkaesque_topic.TopicInformation{
+				{Name: "orders", Level: "External", PartitionCount: 6, ReplicationFactor: 3},
+			},
+			want: "\nKafka Topics\n" +
+				strings.Repeat("=", 80) + "\n" +
+				"ID   NAME                             LEVEL        PARTITIONS       REPLICATION FACTOR  \n" +
+				"1    orders                           External     6                3                   \n" +
+				"\n1 topic available\n",
+		},
+		{
+			name: "plural",
+			topics: []kafkaesque_topic.TopicInformation{
+				{Name: "orders", Level: "External", PartitionCount: 6, ReplicationFactor: 3},
+				{Name: "__consumer_offsets", Level: "Internal", PartitionCount: 50, ReplicationFactor: 3},
+			},
+			want: "\nKafka Topics\n" +
+				strings.Repeat("=", 80) + "\n" +
+				"ID   NAME                             LEVEL        PARTITIONS       REPLICATION FACTOR  \n" +
+				"1    orders                           External     6                3                   \n" +
+				"2    __consumer_offsets               Internal     50               3                   \n" +
+				"\n2 topics available\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			printTopicsInformation(&output, test.topics)
+			if output.String() != test.want {
+				t.Fatalf("output:\n%q\nwant:\n%q", output.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestPrintPartitionsInformation(t *testing.T) {
+	partitions := []kafkaesque_partition.PartitionTopicInformation{
+		{TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: 3, Isr: 3},
+		{TopicName: "orders", PartitionID: 1, Leader: "broker-2", Replicas: 3, Isr: 2},
+	}
+
+	var output bytes.Buffer
+	printPartitionsInformation(&output, "orders", partitions)
+
+	want := "\nTopic: orders\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"PARTITION  LEADER                           REPLICAS     ISR             \n" +
+		"0          broker-1                         3            3               \n" +
+		"1          broker-2                         3            2               \n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
 	}
 }
 
@@ -255,16 +355,107 @@ func TestRootCommandRequiresTopicForPartitions(t *testing.T) {
 	}
 }
 
-func TestGetPartitionInformationRejectsMissingAndErroredTopics(t *testing.T) {
-	_, err := kafkaesque_partition.GetPartitionInformation(&kafka.MetadataResponse{}, "orders")
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("missing topic error = %v", err)
+func TestRootCommandDoesNotExposeConsumers(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "--consumers") {
+		t.Fatalf("consumer flag is present in help:\n%s", output.String())
 	}
 
-	_, err = kafkaesque_partition.GetPartitionInformation(&kafka.MetadataResponse{
-		Topics: []kafka.Topic{{Name: "orders", Error: errors.New("topic failed")}},
-	}, "orders")
-	if err == nil || !strings.Contains(err.Error(), "topic failed") {
-		t.Fatalf("topic response error = %v", err)
+	cmd = newRootCommand()
+	cmd.SetArgs([]string{"--consumers"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("error = %v, want unknown flag", err)
 	}
+}
+
+func TestRootCommandChecksConfiguration(t *testing.T) {
+	t.Setenv(kafkaesque_config.BootstrapServerEnv, "localhost:9092")
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--check", "config", "--config", writeRootConfig(t, "localhost:9092")})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Configuration is valid\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestRootCommandChecksKafkaConnection(t *testing.T) {
+	var output bytes.Buffer
+	var checkedAddress string
+	cmd := newRootCommandWithConnectionCheck(func(_ context.Context, address string) error {
+		checkedAddress = address
+		return nil
+	})
+	cmd.SetOut(&output)
+	address := "broker.example.com:9092"
+	t.Setenv(kafkaesque_config.BootstrapServerEnv, address)
+	cmd.SetArgs([]string{"--check", "conn", "--config", writeRootConfig(t, address)})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Kafka connection successful: "+address+"\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+	if checkedAddress != address {
+		t.Fatalf("checked address = %q, want %q", checkedAddress, address)
+	}
+}
+
+func TestRootCommandRejectsInvalidChecks(t *testing.T) {
+	t.Run("unknown check", func(t *testing.T) {
+		cmd := newRootCommand()
+		cmd.SetArgs([]string{"--check", "unknown"})
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "must be config or conn") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("combined with information flag", func(t *testing.T) {
+		cmd := newRootCommand()
+		cmd.SetArgs([]string{"--check", "config", "--metadata"})
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+}
+
+func TestRootCommandReturnsConnectionCheckErrors(t *testing.T) {
+	address := "broker.example.com:9092"
+	t.Setenv(kafkaesque_config.BootstrapServerEnv, address)
+	cmd := newRootCommandWithConnectionCheck(func(context.Context, string) error {
+		return errors.New("connection refused")
+	})
+	cmd.SetArgs([]string{"--check", "conn", "--config", writeRootConfig(t, address)})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed to connect to Kafka at "+address) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func writeRootConfig(t *testing.T, bootstrapServer string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "kafka:\n  bootstrap_server: " + bootstrapServer + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
