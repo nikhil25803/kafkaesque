@@ -3,6 +3,7 @@ set -euo pipefail
 
 readonly BOOTSTRAP_SERVER="broker-1:19092"
 readonly KAFKA_BIN="/opt/kafka/bin"
+readonly REPLICATION_FACTOR="${REPLICATION_FACTOR:-3}"
 
 create_topic() {
   local topic="$1"
@@ -14,7 +15,7 @@ create_topic() {
     --if-not-exists \
     --topic "${topic}" \
     --partitions "${partitions}" \
-    --replication-factor 3
+    --replication-factor "${REPLICATION_FACTOR}"
 }
 
 topic_has_records() {

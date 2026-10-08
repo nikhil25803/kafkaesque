@@ -21,7 +21,7 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
       - name: Start Kafka fixture
-        run: make kafka-up
+        run: make kafka-ci-up
       - name: Build Kafkaesque
         run: make build
       - name: Test Kafkaesque against fixture
@@ -35,19 +35,23 @@ jobs:
 
           metadata="$(./bin/kafkaesque --config "${config}" --metadata)"
           grep -q "STATUS: CONNECTED" <<<"${metadata}"
-          grep -Eq "Brokers:[[:space:]]+5" <<<"${metadata}"
+          grep -Eq "Brokers:[[:space:]]+2" <<<"${metadata}"
 
           brokers="$(./bin/kafkaesque --config "${config}" --brokers)"
-          grep -q "5 brokers available" <<<"${brokers}"
+          grep -q "2 brokers available" <<<"${brokers}"
 
           topics="$(./bin/kafkaesque --config "${config}" --topics)"
           grep -q "orders" <<<"${topics}"
           grep -q "payments" <<<"${topics}"
           grep -q "6 topics available" <<<"${topics}"
+          grep -Eq "orders[[:space:]]+External[[:space:]]+6[[:space:]]+2" <<<"${topics}"
 
           partitions="$(./bin/kafkaesque --config "${config}" --partitions --topic orders)"
           grep -q "Topic: orders" <<<"${partitions}"
           test "$(grep -Ec '^[0-9]+[[:space:]]+broker-' <<<"${partitions}")" -eq 6
+      - name: Show Kafka diagnostics
+        if: failure()
+        run: make kafka-ci-diagnostics
       - name: Stop Kafka fixture
         if: always()
-        run: make kafka-down
+        run: make kafka-ci-down
