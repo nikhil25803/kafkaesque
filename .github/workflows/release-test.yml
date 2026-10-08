@@ -1,0 +1,41 @@
+name: Release Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          install-only: true
+      - name: Validate installer scripts
+        shell: bash
+        run: |
+          sh -n install.sh
+          pwsh -NoProfile -Command '[scriptblock]::Create((Get-Content -Raw install.ps1)) | Out-Null'
+      - name: Build release snapshot
+        run: make release-test
+      - name: Verify release artifacts
+        shell: bash
+        run: |
+          test "$(find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)" -eq 6
+          test -f dist/checksums.txt

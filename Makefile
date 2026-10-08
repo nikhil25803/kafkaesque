@@ -1,11 +1,12 @@
 BINARY := kafkaesque
 BIN_DIR := bin
+GORELEASER ?= goreleaser
 KAFKA_COMPOSE := docker compose -f kafka-env/compose.yaml
 KAFKA_CI_COMPOSE := $(KAFKA_COMPOSE) -f kafka-env/compose.ci.yaml
 KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
 
-.PHONY: build run test kafka-up kafka-down kafka-reset kafka-logs kafka-ci-up kafka-ci-down kafka-ci-diagnostics
+.PHONY: build run test release-test kafka-up kafka-down kafka-reset kafka-logs kafka-ci-up kafka-ci-down kafka-ci-diagnostics
 
 build:
 	mkdir -p $(BIN_DIR)
@@ -18,6 +19,9 @@ test:
 	@packages=$$(find . -name '*_test.go' -type f -exec dirname {} \; | sort -u); \
 	if [ -z "$$packages" ]; then echo "No test packages found"; exit 0; fi; \
 	go test $$packages
+
+release-test:
+	$(GORELEASER) release --snapshot --clean
 
 kafka-up:
 	$(KAFKA_COMPOSE) up -d --wait $(KAFKA_BROKERS)
