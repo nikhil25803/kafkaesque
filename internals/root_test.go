@@ -355,7 +355,7 @@ func TestRootCommandRequiresTopicForPartitions(t *testing.T) {
 	}
 }
 
-func TestRootCommandDoesNotExposeConsumers(t *testing.T) {
+func TestRootCommandExposesConsumers(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()
 	cmd.SetOut(&output)
@@ -365,14 +365,8 @@ func TestRootCommandDoesNotExposeConsumers(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(output.String(), "--consumers") {
-		t.Fatalf("consumer flag is present in help:\n%s", output.String())
-	}
-
-	cmd = newRootCommand()
-	cmd.SetArgs([]string{"--consumers"})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag") {
-		t.Fatalf("error = %v, want unknown flag", err)
+	if !strings.Contains(output.String(), "-c, --consumers") {
+		t.Fatalf("consumer flag is missing from help:\n%s", output.String())
 	}
 }
 

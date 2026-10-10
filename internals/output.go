@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
@@ -26,6 +27,9 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 	}
 	if request.Partitions {
 		printPartitionsInformation(out, request.Topic, info.Partitions)
+	}
+	if request.Consumers {
+		printConsumersInformation(out, info.Consumers)
 	}
 	return nil
 }
@@ -94,4 +98,24 @@ func printPartitionsInformation(out io.Writer, topic string, partitions []kafkae
 			partition.Isr,
 		)
 	}
+}
+
+func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.ConsumerGroups) {
+	fmt.Fprintln(out, "\nKafka Consumers")
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+	fmt.Fprintf(out, "%-32s %-12s %-16s\n", "GROUP NAME", "STATE", "COORDINATOR")
+
+	for _, consumer := range consumers {
+		fmt.Fprintf(out, "%-32s %-12s %-16s\n",
+			consumer.GroupName,
+			consumer.State,
+			consumer.Coordinator,
+		)
+	}
+
+	noun := "consumer groups"
+	if len(consumers) == 1 {
+		noun = "consumer group"
+	}
+	fmt.Fprintf(out, "\n%d %s available\n", len(consumers), noun)
 }

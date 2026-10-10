@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
@@ -12,7 +13,7 @@ import (
 )
 
 func (r InformationRequest) needsMetadata() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers
 }
 
 // KafkaInformation contains the requested Kafka data.
@@ -21,6 +22,7 @@ type KafkaInformation struct {
 	Topics     []kafkaesque_topic.TopicInformation
 	Brokers    []kafkaesque_broker.BrokerInformation
 	Partitions []kafkaesque_partition.PartitionTopicInformation
+	Consumers  []kafkaesque_consumers.ConsumerGroups
 }
 
 // GetKafkaInformation fetches the requested Kafka data.
@@ -64,6 +66,14 @@ func GetKafkaInformation(
 				return nil, fmt.Errorf("failed to get partition information for topic %s: %w", request.Topic, err)
 			}
 			info.Partitions = partitions
+		}
+
+		if request.Consumers {
+			consumers, err := kafkaesque_consumers.GetConsumerInformation(conn, ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get consumer group information: %w", err)
+			}
+			info.Consumers = consumers
 		}
 	}
 

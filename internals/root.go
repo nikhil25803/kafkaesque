@@ -16,10 +16,11 @@ type InformationRequest struct {
 	Brokers    bool
 	Partitions bool
 	Topic      string
+	Consumers  bool
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers
 }
 
 func newRootCommand() *cobra.Command {
@@ -44,13 +45,29 @@ metadata, brokers, topics, and partitions.`,
 		},
 	}
 
+	// -m: Metadata flag
 	cmd.Flags().BoolVarP(&request.Metadata, "metadata", "m", false, "Retrieve cluster metadata")
+
+	// -t: Topics flag
 	cmd.Flags().BoolVarP(&request.Topics, "topics", "t", false, "Retrieve topic information")
+
+	// -b: Brokers flag
 	cmd.Flags().BoolVarP(&request.Brokers, "brokers", "b", false, "Retrieve broker information")
+
+	// -p: Partitions flag
 	cmd.Flags().BoolVarP(&request.Partitions, "partitions", "p", false, "Retrieve partition information for a topic")
+
+	// --topic: Topic name flag
 	cmd.Flags().StringVar(&request.Topic, "topic", "", "Topic name")
+
+	// --config: Configuration file path flag
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
+
+	// --check: Check configuration or Kafka connection flag
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
+
+	// -c: Consumers flag
+	cmd.Flags().BoolVarP(&request.Consumers, "consumers", "c", false, "Retrieve consumer group information")
 
 	return cmd
 }
