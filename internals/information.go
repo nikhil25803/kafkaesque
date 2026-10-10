@@ -52,8 +52,9 @@ func GetKafkaInformation(
 			info.Metadata = kafkaesque_metadata.GetMetadataInformation(metadata)
 		}
 
+		brokers := kafkaesque_broker.GetBrokerInformation(metadata)
 		if request.Brokers {
-			info.Brokers = kafkaesque_broker.GetBrokerInformation(metadata)
+			info.Brokers = brokers
 		}
 
 		if request.Topics {
@@ -69,11 +70,31 @@ func GetKafkaInformation(
 		}
 
 		if request.Consumers {
-			consumers, err := kafkaesque_consumers.GetConsumerInformation(conn, ctx)
+			consumerGroups, err := kafkaesque_consumers.GetConsumerInformation(conn, ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get consumer group information: %w", err)
 			}
-			info.Consumers = consumers
+
+			brokerAddresses := make(map[int]string, len(brokers))
+			for _, broker := range brokers {
+				brokerAddresses[broker.ID] = broker.Address
+			}
+
+			for _, group := range consumerGroups {
+				brokerAddress, ok := brokerAddresses[group.CoordinatorID]
+				if !ok {
+					return nil, fmt.Errorf("coordinator broker %d for consumer group %s not found", group.CoordinatorID, group.GroupName)
+				}
+
+				describedGroups, err := kafkaesque_consumers.GetConsumerGroupDescription(conn, ctx, kafkaesque_consumers.ConsumerGroupDescriptionRequest{
+					Group:         group,
+					BrokerAddress: brokerAddress,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("failed to describe consumer group %s: %w", group.GroupName, err)
+				}
+				info.Consumers = append(info.Consumers, describedGroups...)
+			}
 		}
 	}
 

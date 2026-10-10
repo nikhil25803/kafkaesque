@@ -13,21 +13,25 @@ import (
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	kafka "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/protocol/describegroups"
+	"github.com/segmentio/kafka-go/protocol/listgroups"
 	"github.com/segmentio/kafka-go/protocol/metadata"
 	"github.com/spf13/cobra"
 )
 
 type recordingTransport struct {
-	metadataTopics [][]string
-	err            error
+	metadataTopics    [][]string
+	describeAddresses []string
+	err               error
 }
 
-func (t *recordingTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
+func (t *recordingTransport) RoundTrip(_ context.Context, address net.Addr, request kafka.Request) (kafka.Response, error) {
 	if t.err != nil {
 		return nil, t.err
 	}
@@ -50,8 +54,44 @@ func (t *recordingTransport) RoundTrip(_ context.Context, _ net.Addr, request ka
 				},
 			},
 		}, nil
+	case *listgroups.Request:
+		return &listgroups.Response{
+			Groups: []listgroups.ResponseGroup{
+				{GroupID: "order-processor", ProtocolType: "consumer", BrokerID: 1},
+			},
+		}, nil
+	case *describegroups.Request:
+		t.describeAddresses = append(t.describeAddresses, address.String())
+		return &describegroups.Response{
+			Groups: []describegroups.ResponseGroup{
+				{GroupID: request.Groups[0], GroupState: "Empty"},
+			},
+		}, nil
 	default:
 		return nil, errors.New("unexpected Kafka request")
+	}
+}
+
+func TestGetKafkaInformationCompletesConsumerGroups(t *testing.T) {
+	transport := &recordingTransport{}
+
+	info, err := GetKafkaInformation(
+		context.Background(),
+		connectionWithTransport(transport),
+		InformationRequest{Consumers: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []kafkaesque_consumers.ConsumerGroups{
+		{GroupName: "order-processor", Type: "consumer", CoordinatorID: 1, State: "Empty"},
+	}
+	if !reflect.DeepEqual(info.Consumers, want) {
+		t.Fatalf("consumers = %+v, want %+v", info.Consumers, want)
+	}
+	if !reflect.DeepEqual(transport.describeAddresses, []string{"broker:9092"}) {
+		t.Fatalf("describe addresses = %v, want [broker:9092]", transport.describeAddresses)
 	}
 }
 
@@ -325,6 +365,30 @@ func TestPrintPartitionsInformation(t *testing.T) {
 		"PARTITION  LEADER                           REPLICAS     ISR             \n" +
 		"0          broker-1                         3            3               \n" +
 		"1          broker-2                         3            2               \n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintConsumersInformation(t *testing.T) {
+	consumerGroups := []kafkaesque_consumers.ConsumerGroups{
+		{
+			GroupName:     "order-processor",
+			Type:          "consumer",
+			CoordinatorID: 1,
+			State:         "Empty",
+			MembersCount:  0,
+		},
+	}
+
+	var output bytes.Buffer
+	printConsumersInformation(&output, consumerGroups)
+
+	want := "\nKafka Consumers\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"GROUP NAME                       TYPE         COORDINATOR      STATE            MEMBERS COUNT   \n" +
+		"order-processor                  consumer     broker-1         Empty            0               \n" +
+		"\n1 consumer group available\n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
 	}
