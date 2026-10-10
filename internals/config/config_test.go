@@ -17,6 +17,9 @@ func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
 	if cfg.Kafka.BootstrapServer != DefaultBootstrapServer {
 		t.Fatalf("bootstrap server = %q, want %q", cfg.Kafka.BootstrapServer, DefaultBootstrapServer)
 	}
+	if len(cfg.Kafka.BrokerAddressOverrides) != 0 {
+		t.Fatalf("broker address overrides = %v, want empty", cfg.Kafka.BrokerAddressOverrides)
+	}
 	if cfg.Lag.WarningThreshold != DefaultLagWarningThreshold || cfg.Lag.UnhealthyThreshold != DefaultLagUnhealthyThreshold {
 		t.Fatalf("lag thresholds = %+v, want %d/%d", cfg.Lag, DefaultLagWarningThreshold, DefaultLagUnhealthyThreshold)
 	}
@@ -57,6 +60,33 @@ func TestLoadReadsYAMLAndAppliesEnvironmentOverride(t *testing.T) {
 	}
 }
 
+func TestLoadReadsBrokerAddressOverrides(t *testing.T) {
+	unsetEnvironment(t, BootstrapServerEnv)
+	path := writeConfig(t, `kafka:
+  bootstrap_server: bootstrap.example.com:9094
+  broker_address_overrides:
+    "broker-0.internal:9092": "10.100.0.72:9094"
+    "[2001:db8::1]:9092": "[2001:db8::2]:9094"
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"broker-0.internal:9092": "10.100.0.72:9094",
+		"[2001:db8::1]:9092":     "[2001:db8::2]:9094",
+	}
+	if len(cfg.Kafka.BrokerAddressOverrides) != len(want) {
+		t.Fatalf("broker address overrides = %v, want %v", cfg.Kafka.BrokerAddressOverrides, want)
+	}
+	for advertised, connect := range want {
+		if cfg.Kafka.BrokerAddressOverrides[advertised] != connect {
+			t.Fatalf("override %q = %q, want %q", advertised, cfg.Kafka.BrokerAddressOverrides[advertised], connect)
+		}
+	}
+}
+
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 	unsetEnvironment(t, BootstrapServerEnv)
 	tests := []struct {
@@ -68,6 +98,12 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{name: "missing port", content: "kafka:\n  bootstrap_server: localhost\n", want: "expected host:port"},
 		{name: "URL scheme", content: "kafka:\n  bootstrap_server: kafka://localhost:9092\n", want: "expected host:port"},
 		{name: "invalid port", content: "kafka:\n  bootstrap_server: localhost:70000\n", want: "port must be between"},
+		{name: "override source empty", content: "kafka:\n  broker_address_overrides:\n    '': external:9094\n", want: "override source"},
+		{name: "override source missing port", content: "kafka:\n  broker_address_overrides:\n    broker: external:9094\n", want: "override source"},
+		{name: "override source URL", content: "kafka:\n  broker_address_overrides:\n    'kafka://broker:9092': external:9094\n", want: "override source"},
+		{name: "override destination empty", content: "kafka:\n  broker_address_overrides:\n    'broker:9092': ''\n", want: "override destination"},
+		{name: "override destination missing port", content: "kafka:\n  broker_address_overrides:\n    'broker:9092': external\n", want: "override destination"},
+		{name: "override destination invalid port", content: "kafka:\n  broker_address_overrides:\n    'broker:9092': external:70000\n", want: "port must be between"},
 		{name: "multiple documents", content: "kafka: {}\n---\nkafka: {}\n", want: "multiple YAML documents"},
 		{name: "negative warning threshold", content: "lag:\n  warning_threshold: -1\n", want: "warning threshold cannot be negative"},
 		{name: "negative unhealthy threshold", content: "lag:\n  unhealthy_threshold: -1\n", want: "unhealthy threshold cannot be negative"},

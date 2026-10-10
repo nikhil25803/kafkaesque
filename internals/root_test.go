@@ -142,7 +142,7 @@ func TestGetKafkaInformationFetchesRequestedNativeResponses(t *testing.T) {
 	if info.Metadata.ClusterID != "cluster-1" || info.Metadata.ControllerID != 1 || info.Metadata.BrokerCount != 1 || info.Metadata.TopicCount != 1 || info.Metadata.Status != "CONNECTED" {
 		t.Fatalf("unexpected metadata information: %+v", info.Metadata)
 	}
-	if info.Brokers[0].ID != 1 || info.Brokers[0].Address != "broker:9092" || info.Brokers[0].Rack != "rack-a" {
+	if info.Brokers[0].ID != 1 || info.Brokers[0].Address != "broker:9092" || info.Brokers[0].ConnectAddress != "broker:9092" || info.Brokers[0].Rack != "rack-a" {
 		t.Fatalf("unexpected broker information: %+v", info.Brokers)
 	}
 	if len(info.Topics) != 1 || info.Topics[0] != (kafkaesque_topic.TopicInformation{
@@ -355,6 +355,21 @@ func TestPrintBrokersInformation(t *testing.T) {
 				"2    broker-2:9092    rack-b  \n" +
 				"\n2 brokers available\n",
 		},
+		{
+			name: "address override",
+			brokers: []kafkaesque_broker.BrokerInformation{
+				{
+					ID:             0,
+					Address:        "broker-0.broker-headless.kafka-connect.svc.cluster.local:9092",
+					ConnectAddress: "10.100.0.72:9094",
+				},
+			},
+			want: "\nKafka Brokers\n" +
+				strings.Repeat("=", 120) + "\n" +
+				"ID   ADVERTISED ADDRESS                                                       CONNECT ADDRESS          RACK    \n" +
+				"0    broker-0.broker-headless.kafka-connect.svc.cluster.local:9092            10.100.0.72:9094                 \n" +
+				"\n1 broker available\n",
+		},
 	}
 
 	for _, test := range tests {
@@ -547,6 +562,25 @@ func TestRootCommandWithoutFlagsShowsHelp(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "Usage:") || !strings.Contains(output.String(), "--metadata") {
 		t.Fatalf("expected help output, got:\n%s", output.String())
+	}
+}
+
+func TestRootCommandVersion(t *testing.T) {
+	previousVersion := Version
+	Version = "v0.1.1"
+	t.Cleanup(func() { Version = previousVersion })
+
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"--version"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "kafkaesque version v0.1.1\n" {
+		t.Fatalf("version output = %q", output.String())
 	}
 }
 

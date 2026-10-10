@@ -39,3 +39,6 @@ jobs:
       - name: Run Kafkaesque help
         shell: bash
         run: ./kafkaesque${{ matrix.extension }} --help
+      - name: Run Kafkaesque version
+        shell: bash
+        run: ./kafkaesque${{ matrix.extension }} --version

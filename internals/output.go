@@ -88,6 +88,16 @@ func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataI
 
 func printBrokersInformation(out io.Writer, brokers []kafkaesque_broker.BrokerInformation) {
 	fmt.Fprintln(out, "\nKafka Brokers")
+	if brokersUseAddressOverrides(brokers) {
+		fmt.Fprintln(out, strings.Repeat("=", 120))
+		fmt.Fprintf(out, "%-4s %-72s %-24s %-8s\n", "ID", "ADVERTISED ADDRESS", "CONNECT ADDRESS", "RACK")
+		for _, broker := range brokers {
+			fmt.Fprintf(out, "%-4d %-72s %-24s %-8s\n", broker.ID, broker.Address, broker.ConnectAddress, broker.Rack)
+		}
+		printBrokerSummary(out, len(brokers))
+		return
+	}
+
 	fmt.Fprintln(out, strings.Repeat("=", 80))
 	fmt.Fprintf(out, "%-4s %-16s %-8s\n", "ID", "ADDRESS", "RACK")
 
@@ -95,11 +105,24 @@ func printBrokersInformation(out io.Writer, brokers []kafkaesque_broker.BrokerIn
 		fmt.Fprintf(out, "%-4d %-16s %-8s\n", broker.ID, broker.Address, broker.Rack)
 	}
 
+	printBrokerSummary(out, len(brokers))
+}
+
+func brokersUseAddressOverrides(brokers []kafkaesque_broker.BrokerInformation) bool {
+	for _, broker := range brokers {
+		if broker.ConnectAddress != "" && broker.ConnectAddress != broker.Address {
+			return true
+		}
+	}
+	return false
+}
+
+func printBrokerSummary(out io.Writer, count int) {
 	noun := "brokers"
-	if len(brokers) == 1 {
+	if count == 1 {
 		noun = "broker"
 	}
-	fmt.Fprintf(out, "\n%d %s available\n", len(brokers), noun)
+	fmt.Fprintf(out, "\n%d %s available\n", count, noun)
 }
 
 func printTopicsInformation(out io.Writer, topics []kafkaesque_topic.TopicInformation) {

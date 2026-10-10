@@ -102,11 +102,11 @@ kafkaesque --help
 Both installers use the latest release by default. Pin a release when needed:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | VERSION=v0.0.1 sh
+curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | VERSION=v0.1.1 sh
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.0.1
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 ```
 
 </details>
@@ -125,6 +125,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.0.1
 | —     | `--topic`      | name               | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
 | —     | `--config`     | path               | Load an explicit YAML configuration file.                | `kafkaesque --config /path/to/config.yaml --metadata`          |
 | —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection.     | `kafkaesque --check conn`                                      |
+| `-v`  | `--version`    | —                  | Show the installed Kafkaesque version.                   | `kafkaesque --version`                                         |
 | `-h`  | `--help`       | —                  | Show command help.                                       | `kafkaesque --help`                                            |
 
 See [Command documentation](DOCS.md) for complete examples and representative
@@ -136,6 +137,7 @@ output.
 | ------- | --------------------------------------------- | ----------- |
 | v0.0.1  | Kafka Cluster Inspector                       | Released    |
 | v0.1.0  | Consumer Groups & Partition Lag               | Released    |
+| v0.1.1  | Broker Address Overrides & Version Flag       | Released    |
 | v0.2.0  | Kafka Connectivity & Authentication           | Coming Soon |
 | v0.3.0  | Deep Consumer Observability                   | Coming Soon |
 | v0.4.0  | Cluster Health & Diagnostics                  | Coming Soon |
@@ -213,6 +215,32 @@ be lower than the unhealthy threshold.
 
 See [`kafkaesque.example.yaml`](kafkaesque.example.yaml) for a ready-to-copy
 configuration. Kafkaesque never creates configuration files automatically.
+
+### Broker address overrides
+
+Some Kafka clusters advertise internal broker addresses even though clients
+connect through one external load balancer per broker. Add exact address
+overrides when Kafkaesque can reach the external listeners but cannot resolve
+or connect to the advertised addresses:
+
+```yaml
+kafka:
+  bootstrap_server: 10.100.0.72:9094
+  broker_address_overrides:
+    "broker-0.broker-headless.kafka-connect.svc.cluster.local:9092": "10.100.0.72:9094"
+    "broker-1.broker-headless.kafka-connect.svc.cluster.local:9092": "10.100.0.74:9094"
+    "broker-2.broker-headless.kafka-connect.svc.cluster.local:9092": "10.100.0.73:9094"
+```
+
+Overrides apply to consumer coordinators and partition leaders as well as
+general broker requests. Each destination must route to the corresponding
+broker; do not map multiple brokers to a non-sticky shared load balancer.
+Kafkaesque shows both advertised and connect addresses in `--brokers` output
+when an override is active.
+
+Correct Kafka `advertised.listeners` configuration is preferred when you
+control the cluster. Overrides are intended for environments where changing
+the broker configuration is not practical.
 
 </details>
 

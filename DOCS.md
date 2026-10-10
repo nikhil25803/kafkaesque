@@ -9,6 +9,7 @@ offsets, lag, member counts, and consumer states vary by cluster and over time.
 ## Table of contents
 
 - [Configuration checks](#configuration-checks)
+- [Version](#version)
 - [Cluster metadata](#cluster-metadata)
 - [Brokers](#brokers)
 - [Topics](#topics)
@@ -38,6 +39,33 @@ kafkaesque --check conn
 
 ```text
 Kafka connection successful: broker.example.com:9092
+```
+
+If Kafka advertises internal broker addresses that are unreachable from your
+network, map each advertised address to its corresponding reachable listener:
+
+```yaml
+kafka:
+  bootstrap_server: 10.100.0.72:9094
+  broker_address_overrides:
+    "broker-0.kafka.svc.cluster.local:9092": "10.100.0.72:9094"
+    "broker-1.kafka.svc.cluster.local:9092": "10.100.0.74:9094"
+    "broker-2.kafka.svc.cluster.local:9092": "10.100.0.73:9094"
+```
+
+The mapping is exact and YAML-only. Each destination must route to the broker
+named by its source address.
+
+## Version
+
+Show the installed release version without connecting to Kafka:
+
+```sh
+kafkaesque --version
+```
+
+```text
+kafkaesque version v0.1.1
 ```
 
 ## Cluster metadata

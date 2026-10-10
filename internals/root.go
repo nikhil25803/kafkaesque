@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version is replaced with the release tag by GoReleaser.
+var Version = "dev"
+
 // InformationRequest identifies the Kafka information the caller needs.
 type InformationRequest struct {
 	Metadata   bool
@@ -38,8 +41,9 @@ func newRootCommandWithConnectionCheck(checkConnection func(context.Context, str
 	var check string
 
 	cmd := &cobra.Command{
-		Use:   "kafkaesque",
-		Short: "Kafkaesque is a tool for interacting with Kafka clusters.",
+		Use:     "kafkaesque",
+		Version: Version,
+		Short:   "Kafkaesque is a tool for interacting with Kafka clusters.",
 		Long: `Kafkaesque is a lightweight, read-only Kafka cluster inspector for viewing cluster
 metadata, brokers, topics, partitions, and consumer groups.`,
 		Args:          cobra.NoArgs,
@@ -62,6 +66,7 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().StringVar(&request.Group, "group", "", "Consumer group name")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
+	cmd.Flags().BoolP("version", "v", false, "Show Kafkaesque version")
 
 	return cmd
 }
@@ -120,7 +125,7 @@ func runRootCommand(
 		return nil
 	}
 
-	conn, err := kafkaesque.Connect(ctx, cfg.Kafka.BootstrapServer)
+	conn, err := kafkaesque.Connect(ctx, cfg.Kafka.BootstrapServer, cfg.Kafka.BrokerAddressOverrides)
 	if err != nil {
 		return fmt.Errorf("failed to connect to Kafka at %s: %w", cfg.Kafka.BootstrapServer, err)
 	}
@@ -135,7 +140,7 @@ func runRootCommand(
 }
 
 func checkKafkaConnection(ctx context.Context, bootstrapServer string) error {
-	conn, err := kafkaesque.Connect(ctx, bootstrapServer)
+	conn, err := kafkaesque.Connect(ctx, bootstrapServer, nil)
 	if err != nil {
 		return err
 	}
