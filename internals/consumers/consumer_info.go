@@ -14,6 +14,7 @@ type ConsumerGroups struct {
 	CoordinatorID int    `json:"coordinator_id"`
 	MembersCount  int    `json:"members_count"`
 	State         string `json:"state"`
+	TopicsCount   int    `json:"topics_count"`
 }
 
 // GetConsumerInformation returns a simple list of basic consumer groups.

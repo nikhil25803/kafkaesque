@@ -102,16 +102,17 @@ func printPartitionsInformation(out io.Writer, topic string, partitions []kafkae
 
 func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.ConsumerGroups) {
 	fmt.Fprintln(out, "\nKafka Consumers")
-	fmt.Fprintln(out, strings.Repeat("=", 100))
-	fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16s\n", "GROUP NAME", "TYPE", "COORDINATOR", "STATE", "MEMBERS COUNT")
+	fmt.Fprintln(out, strings.Repeat("=", 117))
+	fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16s %-16s\n", "GROUP NAME", "TYPE", "COORDINATOR", "STATE", "MEMBERS COUNT", "TOPICS")
 
 	for _, consumer := range consumers {
-		fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16d\n",
+		fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16d %-16d\n",
 			consumer.GroupName,
 			consumer.Type,
 			fmt.Sprintf("broker-%d", consumer.CoordinatorID),
 			consumer.State,
 			consumer.MembersCount,
+			consumer.TopicsCount,
 		)
 	}
 

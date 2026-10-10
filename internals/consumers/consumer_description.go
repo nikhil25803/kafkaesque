@@ -2,6 +2,7 @@ package consumers
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
@@ -50,8 +51,68 @@ func GetConsumerGroupDescription(c *kafkaesque.KafkaesqueConn, ctx context.Conte
 		completedGroup.State = group.GroupState
 		completedGroup.MembersCount = len(group.Members)
 
+		if completedGroup.Type == "consumer" {
+			topics := make(map[string]struct{})
+			for _, member := range group.Members {
+				memberTopics, err := decodeSubscribedTopics(member.MemberMetadata)
+				if err != nil {
+					return nil, fmt.Errorf("decode member %s metadata for group %s: %w", member.MemberID, group.GroupID, err)
+				}
+				for _, topic := range memberTopics {
+					topics[topic] = struct{}{}
+				}
+			}
+			completedGroup.TopicsCount = len(topics)
+		}
+
 		consumerGroups = append(consumerGroups, completedGroup)
 	}
 
 	return consumerGroups, nil
+}
+
+func decodeSubscribedTopics(metadata []byte) ([]string, error) {
+	const (
+		metadataVersionSize    = 2
+		topicCountSize         = 4
+		subscriptionPrefixSize = metadataVersionSize + topicCountSize
+	)
+
+	if len(metadata) == 0 {
+		return nil, nil
+	}
+	if len(metadata) < subscriptionPrefixSize {
+		return nil, fmt.Errorf("subscription metadata is too short")
+	}
+	metadataVersion := int16(binary.BigEndian.Uint16(metadata[:metadataVersionSize]))
+	if metadataVersion < 0 {
+		return nil, fmt.Errorf("invalid subscription metadata version %d", metadataVersion)
+	}
+
+	topicCount := int32(binary.BigEndian.Uint32(metadata[metadataVersionSize:subscriptionPrefixSize]))
+	if topicCount < 0 {
+		return nil, fmt.Errorf("invalid topic count %d", topicCount)
+	}
+
+	offset := subscriptionPrefixSize
+	topics := make([]string, 0)
+	for i := range int(topicCount) {
+		if len(metadata)-offset < 2 {
+			return nil, fmt.Errorf("topic %d is missing its name length", i)
+		}
+
+		topicLength := int16(binary.BigEndian.Uint16(metadata[offset : offset+2]))
+		offset += 2
+		if topicLength < 0 {
+			return nil, fmt.Errorf("topic %d has invalid name length %d", i, topicLength)
+		}
+		if int(topicLength) > len(metadata)-offset {
+			return nil, fmt.Errorf("topic %d name exceeds subscription metadata", i)
+		}
+
+		topics = append(topics, string(metadata[offset:offset+int(topicLength)]))
+		offset += int(topicLength)
+	}
+
+	return topics, nil
 }
