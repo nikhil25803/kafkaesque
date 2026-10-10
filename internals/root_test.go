@@ -385,9 +385,9 @@ func TestPrintConsumersInformation(t *testing.T) {
 	printConsumersInformation(&output, consumerGroups)
 
 	want := "\nKafka Consumers\n" +
-		strings.Repeat("=", 80) + "\n" +
-		"GROUP NAME                       TYPE         COORDINATOR      STATE            MEMBERS COUNT   \n" +
-		"order-processor                  consumer     broker-1         Empty            0               \n" +
+		strings.Repeat("=", 100) + "\n" +
+		"GROUP NAME                       TYPE         COORDINATOR      STATE                MEMBERS COUNT   \n" +
+		"order-processor                  consumer     broker-1         Empty                0               \n" +
 		"\n1 consumer group available\n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
