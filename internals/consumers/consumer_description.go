@@ -1,0 +1,41 @@
+package consumers
+
+import (
+	"context"
+	"fmt"
+
+	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafka "github.com/segmentio/kafka-go"
+)
+
+type ConsumerGroupDescriptionRequest struct {
+	Group         ConsumerGroups `json:"group"`
+	BrokerAddress string         `json:"broker_address"`
+}
+
+// GetConsumerGroupDescription completes a consumer group with its state and member count.
+func GetConsumerGroupDescription(c *kafkaesque.KafkaesqueConn, ctx context.Context, req ConsumerGroupDescriptionRequest) ([]ConsumerGroups, error) {
+	response, err := c.Client.DescribeGroups(ctx, &kafka.DescribeGroupsRequest{
+		Addr:     kafka.TCP(req.BrokerAddress),
+		GroupIDs: []string{req.Group.GroupName},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("describe groups network error: %w", err)
+	}
+
+	var consumerGroups []ConsumerGroups
+
+	for _, group := range response.Groups {
+		if group.Error != nil {
+			return nil, fmt.Errorf("error describing group %s: %w", group.GroupID, group.Error)
+		}
+
+		completedGroup := req.Group
+		completedGroup.State = group.GroupState
+		completedGroup.MembersCount = len(group.Members)
+
+		consumerGroups = append(consumerGroups, completedGroup)
+	}
+
+	return consumerGroups, nil
+}
