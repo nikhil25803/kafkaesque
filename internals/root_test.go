@@ -389,9 +389,23 @@ func TestPrintConsumersInformation(t *testing.T) {
 		strings.Repeat("=", 117) + "\n" +
 		"GROUP NAME                       TYPE         COORDINATOR      STATE                MEMBERS COUNT    TOPICS          \n" +
 		"order-processor                  consumer     broker-1         Empty                0                0               \n" +
-		"\n1 consumer group available\n"
+		"\n1 group · 0 topics · 0 members\n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintConsumersInformationTotals(t *testing.T) {
+	consumerGroups := []kafkaesque_consumers.ConsumerGroups{
+		{GroupName: "order-processor", MembersCount: 2, TopicsCount: 1},
+		{GroupName: "notification-dispatcher", MembersCount: 3, TopicsCount: 2},
+	}
+
+	var output bytes.Buffer
+	printConsumersInformation(&output, consumerGroups)
+
+	if !strings.HasSuffix(output.String(), "\n2 groups · 3 topics · 5 members\n") {
+		t.Fatalf("unexpected summary:\n%s", output.String())
 	}
 }
 

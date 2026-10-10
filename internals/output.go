@@ -105,6 +105,8 @@ func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.C
 	fmt.Fprintln(out, strings.Repeat("=", 117))
 	fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16s %-16s\n", "GROUP NAME", "TYPE", "COORDINATOR", "STATE", "MEMBERS COUNT", "TOPICS")
 
+	totalMembers := 0
+	totalTopics := 0
 	for _, consumer := range consumers {
 		fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16d %-16d\n",
 			consumer.GroupName,
@@ -114,11 +116,21 @@ func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.C
 			consumer.MembersCount,
 			consumer.TopicsCount,
 		)
+		totalMembers += consumer.MembersCount
+		totalTopics += consumer.TopicsCount
 	}
 
-	noun := "consumer groups"
+	groupNoun := "groups"
 	if len(consumers) == 1 {
-		noun = "consumer group"
+		groupNoun = "group"
 	}
-	fmt.Fprintf(out, "\n%d %s available\n", len(consumers), noun)
+	topicNoun := "topics"
+	if totalTopics == 1 {
+		topicNoun = "topic"
+	}
+	memberNoun := "members"
+	if totalMembers == 1 {
+		memberNoun = "member"
+	}
+	fmt.Fprintf(out, "\n%d %s · %d %s · %d %s\n", len(consumers), groupNoun, totalTopics, topicNoun, totalMembers, memberNoun)
 }
