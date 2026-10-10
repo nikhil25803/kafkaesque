@@ -36,6 +36,7 @@ make kafka-up
 make kafka-simulator-start
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml -c
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor --topic orders
 make kafka-simulator-stop
 make kafka-down
 ```

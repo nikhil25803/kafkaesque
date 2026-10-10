@@ -32,9 +32,29 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 		printConsumersInformation(out, info.Consumers)
 	}
 	if request.Consumer {
-		printConsumerGroupInformation(out, info.Consumer)
+		if request.Topic != "" {
+			printConsumerGroupTopicInformation(out, info.ConsumerTopic)
+		} else {
+			printConsumerGroupInformation(out, info.Consumer)
+		}
 	}
 	return nil
+}
+
+func printConsumerGroupTopicInformation(out io.Writer, topic *kafkaesque_consumers.ConsumerGroupTopicInformation) {
+	fmt.Fprintf(out, "\nConsumer Group: %s\n", topic.GroupName)
+	fmt.Fprintf(out, "Topic: %s\n", topic.Topic)
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+	fmt.Fprintf(out, "%-12s %-19s %-17s %-12s\n", "PARTITION", "COMMITTED OFFSET", "LOG END OFFSET", "LAG")
+	for _, partition := range topic.Partitions {
+		fmt.Fprintf(out, "%-12d %-19d %-17d %-12d\n",
+			partition.Partition,
+			partition.CommittedOffset,
+			partition.LogEndOffset,
+			partition.Lag,
+		)
+	}
+	fmt.Fprintf(out, "TOTAL %d\n", topic.TotalLag)
 }
 
 func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers.ConsumerGroupInformation) {
@@ -44,8 +64,8 @@ func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers
 	fmt.Fprintf(out, "MEMBERS: %d\n", consumer.MembersCount)
 	fmt.Fprintf(out, "TOPICS: %d\n", consumer.TopicsCount)
 	fmt.Fprintf(out, "TOTAL LAG: %d\n", consumer.TotalLag)
-	fmt.Println()
-	fmt.Fprintln(out, "\nTOPICS")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "TOPICS")
 	fmt.Fprintln(out, strings.Repeat("=", 80))
 
 	fmt.Fprintf(out, "%-32s %-12s %-10s %-10s\n", "TOPIC", "PARTITIONS", "LAG", "STATUS")

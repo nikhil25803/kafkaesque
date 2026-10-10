@@ -28,18 +28,58 @@ func GetConsumerGroupInformation(
 	groupName string,
 	thresholds LagThresholds,
 ) (*ConsumerGroupInformation, error) {
+	described, brokerAddress, err := describeConsumerGroup(c, ctx, groupName)
+	if err != nil {
+		return nil, err
+	}
+
+	topics, totalLag, err := GetConsumerGroupLag(c, ctx, metadata, brokerAddress, groupName, thresholds)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConsumerGroupInformation{
+		GroupName:    groupName,
+		State:        described.State,
+		MembersCount: described.MembersCount,
+		TopicsCount:  len(topics),
+		TotalLag:     totalLag,
+		Topics:       topics,
+	}, nil
+}
+
+// GetConsumerGroupTopicInformation returns partition lag for one group topic.
+func GetConsumerGroupTopicInformation(
+	c *kafkaesque.KafkaesqueConn,
+	ctx context.Context,
+	metadata *kafka.MetadataResponse,
+	groupName string,
+	topicName string,
+) (*ConsumerGroupTopicInformation, error) {
+	_, brokerAddress, err := describeConsumerGroup(c, ctx, groupName)
+	if err != nil {
+		return nil, err
+	}
+	return GetConsumerGroupTopicLag(c, ctx, metadata, brokerAddress, groupName, topicName)
+}
+
+func describeConsumerGroup(
+	c *kafkaesque.KafkaesqueConn,
+	ctx context.Context,
+	groupName string,
+) (ConsumerGroups, string, error) {
 	coordinator, err := c.Client.FindCoordinator(ctx, &kafka.FindCoordinatorRequest{
 		Key:     groupName,
 		KeyType: kafka.CoordinatorKeyTypeConsumer,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("find coordinator: %w", err)
+		return ConsumerGroups{}, "", fmt.Errorf("find coordinator: %w", err)
 	}
 	if coordinator.Error != nil {
-		return nil, fmt.Errorf("find coordinator: %w", coordinator.Error)
+		return ConsumerGroups{}, "", fmt.Errorf("find coordinator: %w", coordinator.Error)
 	}
 	if coordinator.Coordinator == nil {
-		return nil, fmt.Errorf("find coordinator returned no broker")
+		return ConsumerGroups{}, "", fmt.Errorf("find coordinator returned no broker")
 	}
 
 	brokerAddress := net.JoinHostPort(
@@ -55,23 +95,10 @@ func GetConsumerGroupInformation(
 		BrokerAddress: brokerAddress,
 	})
 	if err != nil {
-		return nil, err
+		return ConsumerGroups{}, "", err
 	}
 	if len(described) != 1 {
-		return nil, fmt.Errorf("describe group returned %d groups, expected 1", len(described))
+		return ConsumerGroups{}, "", fmt.Errorf("describe group returned %d groups, expected 1", len(described))
 	}
-
-	topics, totalLag, err := GetConsumerGroupLag(c, ctx, metadata, brokerAddress, groupName, thresholds)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConsumerGroupInformation{
-		GroupName:    groupName,
-		State:        described[0].State,
-		MembersCount: described[0].MembersCount,
-		TopicsCount:  len(topics),
-		TotalLag:     totalLag,
-		Topics:       topics,
-	}, nil
+	return described[0], brokerAddress, nil
 }

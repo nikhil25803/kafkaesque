@@ -18,12 +18,13 @@ func (r InformationRequest) needsMetadata() bool {
 
 // KafkaInformation contains the requested Kafka data.
 type KafkaInformation struct {
-	Metadata   *kafkaesque_metadata.MetadataInformation
-	Topics     []kafkaesque_topic.TopicInformation
-	Brokers    []kafkaesque_broker.BrokerInformation
-	Partitions []kafkaesque_partition.PartitionTopicInformation
-	Consumers  []kafkaesque_consumers.ConsumerGroups
-	Consumer   *kafkaesque_consumers.ConsumerGroupInformation
+	Metadata      *kafkaesque_metadata.MetadataInformation
+	Topics        []kafkaesque_topic.TopicInformation
+	Brokers       []kafkaesque_broker.BrokerInformation
+	Partitions    []kafkaesque_partition.PartitionTopicInformation
+	Consumers     []kafkaesque_consumers.ConsumerGroups
+	Consumer      *kafkaesque_consumers.ConsumerGroupInformation
+	ConsumerTopic *kafkaesque_consumers.ConsumerGroupTopicInformation
 }
 
 // GetKafkaInformation fetches the requested Kafka data.
@@ -40,7 +41,7 @@ func GetKafkaInformation(
 
 	if request.needsMetadata() {
 		var topics []string
-		if request.Partitions && !request.Metadata && !request.Topics && !request.Brokers {
+		if request.Topic != "" && (request.Partitions || request.Consumer) && !request.Metadata && !request.Topics && !request.Brokers {
 			topics = []string{request.Topic}
 		}
 
@@ -99,17 +100,31 @@ func GetKafkaInformation(
 		}
 
 		if request.Consumer {
-			consumer, err := kafkaesque_consumers.GetConsumerGroupInformation(
-				conn,
-				ctx,
-				metadata,
-				request.Group,
-				request.lagThresholds,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get consumer group %s: %w", request.Group, err)
+			if request.Topic != "" {
+				consumerTopic, err := kafkaesque_consumers.GetConsumerGroupTopicInformation(
+					conn,
+					ctx,
+					metadata,
+					request.Group,
+					request.Topic,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get consumer group %s topic %s: %w", request.Group, request.Topic, err)
+				}
+				info.ConsumerTopic = consumerTopic
+			} else {
+				consumer, err := kafkaesque_consumers.GetConsumerGroupInformation(
+					conn,
+					ctx,
+					metadata,
+					request.Group,
+					request.lagThresholds,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get consumer group %s: %w", request.Group, err)
+				}
+				info.Consumer = consumer
 			}
-			info.Consumer = consumer
 		}
 	}
 

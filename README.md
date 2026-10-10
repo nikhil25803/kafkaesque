@@ -104,7 +104,7 @@ be as simple as:
 | `-c`  | `--consumers`  | —                  | List consumer groups.                                    |
 | —     | `--consumer`   | —                  | Inspect the consumer group selected by `--group`.        |
 | —     | `--group`      | name               | Select a group for detailed consumer lag inspection.     |
-| —     | `--topic`      | name               | Select a topic for partition inspection.                 |
+| —     | `--topic`      | name               | Select a topic for partition or consumer lag inspection. |
 | —     | `--config`     | path               | Load an explicit YAML configuration file.                |
 | —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection.     |
 | `-h`  | `--help`       | —                  | Show command help.                                       |
@@ -122,6 +122,7 @@ between them.
 # List consumer groups, then inspect one group's lag
 ./bin/kafkaesque --consumers
 ./bin/kafkaesque --consumer --group order-processor
+./bin/kafkaesque --consumer --group order-processor --topic orders
 
 # Validate configuration without connecting
 ./bin/kafkaesque --check config

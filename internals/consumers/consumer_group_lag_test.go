@@ -16,8 +16,10 @@ import (
 
 type lagTransport struct {
 	offsetResponse *offsetfetch.Response
+	offsetTopics   map[string][]int32
 	latestOffsets  map[topicPartition]int64
 	latestError    int16
+	omitLatest     map[topicPartition]bool
 	requests       []string
 	err            error
 }
@@ -30,6 +32,12 @@ func (t *lagTransport) RoundTrip(_ context.Context, address net.Addr, request ka
 	switch request := request.(type) {
 	case *offsetfetch.Request:
 		t.requests = append(t.requests, "offset-fetch:"+address.String()+":"+request.GroupID)
+		if request.Topics != nil {
+			t.offsetTopics = make(map[string][]int32, len(request.Topics))
+			for _, topic := range request.Topics {
+				t.offsetTopics[topic.Name] = append([]int32(nil), topic.PartitionIndexes...)
+			}
+		}
 		return t.offsetResponse, nil
 	case *listoffsets.Request:
 		response := &listoffsets.Response{}
@@ -38,6 +46,9 @@ func (t *lagTransport) RoundTrip(_ context.Context, address net.Addr, request ka
 			for _, partition := range topic.Partitions {
 				key := topicPartition{topic: topic.Topic, partition: int(partition.Partition)}
 				t.requests = append(t.requests, "latest:"+address.String()+":"+topic.Topic)
+				if t.omitLatest[key] {
+					continue
+				}
 				responseTopic.Partitions = append(responseTopic.Partitions, listoffsets.ResponsePartition{
 					Partition: partition.Partition,
 					ErrorCode: t.latestError,
@@ -50,6 +61,53 @@ func (t *lagTransport) RoundTrip(_ context.Context, address net.Addr, request ka
 		return response, nil
 	default:
 		return nil, errors.New("unexpected request")
+	}
+}
+
+func TestGetConsumerGroupTopicLagReturnsPartitionDetails(t *testing.T) {
+	transport := &lagTransport{
+		offsetResponse: &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{
+			{Name: "orders", Partitions: []offsetfetch.ResponsePartition{
+				{PartitionIndex: 1, CommittedOffset: 10},
+				{PartitionIndex: 2, CommittedOffset: -1},
+				{PartitionIndex: 0, CommittedOffset: 10},
+			}},
+		}},
+		latestOffsets: map[topicPartition]int64{
+			{topic: "orders", partition: 0}: 5,
+			{topic: "orders", partition: 1}: 30,
+		},
+	}
+	metadata := consumerLagMetadata()
+	metadata.Topics[0].Partitions = append(metadata.Topics[0].Partitions,
+		kafka.Partition{Topic: "orders", ID: 2, Leader: kafka.Broker{ID: 1, Host: "broker-a", Port: 9092}},
+	)
+
+	got, err := GetConsumerGroupTopicLag(
+		consumerConnection(transport),
+		context.Background(),
+		metadata,
+		"coordinator:9092",
+		"orders-service",
+		"orders",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &ConsumerGroupTopicInformation{
+		GroupName: "orders-service",
+		Topic:     "orders",
+		Partitions: []ConsumerGroupPartitionLag{
+			{Partition: 0, CommittedOffset: 10, LogEndOffset: 5, Lag: 0},
+			{Partition: 1, CommittedOffset: 10, LogEndOffset: 30, Lag: 20},
+		},
+		TotalLag: 20,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("topic lag = %+v, want %+v", got, want)
+	}
+	if !reflect.DeepEqual(transport.offsetTopics, map[string][]int32{"orders": {0, 1, 2}}) {
+		t.Fatalf("offset topics = %v, want orders partitions [0 1 2]", transport.offsetTopics)
 	}
 }
 
@@ -172,6 +230,38 @@ func TestGetConsumerGroupLagReturnsErrors(t *testing.T) {
 		}
 		_, _, err := GetConsumerGroupLag(consumerConnection(transport), context.Background(), consumerLagMetadata(), "coordinator:9092", "group", LagThresholds{})
 		if err == nil || !strings.Contains(err.Error(), "fetch latest offset for orders partition 0") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("topic not found", func(t *testing.T) {
+		_, err := GetConsumerGroupTopicLag(consumerConnection(&lagTransport{}), context.Background(), consumerLagMetadata(), "coordinator:9092", "group", "unknown")
+		if err == nil || !strings.Contains(err.Error(), "topic unknown not found") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("no committed offsets", func(t *testing.T) {
+		transport := &lagTransport{offsetResponse: &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{
+			{Name: "orders", Partitions: []offsetfetch.ResponsePartition{{PartitionIndex: 0, CommittedOffset: -1}}},
+		}}}
+		_, err := GetConsumerGroupTopicLag(consumerConnection(transport), context.Background(), consumerLagMetadata(), "coordinator:9092", "group", "orders")
+		if err == nil || !strings.Contains(err.Error(), "group has no committed offsets for topic orders") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("missing latest offset", func(t *testing.T) {
+		key := topicPartition{topic: "orders", partition: 0}
+		transport := &lagTransport{
+			offsetResponse: &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{
+				{Name: "orders", Partitions: []offsetfetch.ResponsePartition{{PartitionIndex: 0, CommittedOffset: 1}}},
+			}},
+			latestOffsets: map[topicPartition]int64{key: 2},
+			omitLatest:    map[topicPartition]bool{key: true},
+		}
+		_, err := GetConsumerGroupTopicLag(consumerConnection(transport), context.Background(), consumerLagMetadata(), "coordinator:9092", "group", "orders")
+		if err == nil || !strings.Contains(err.Error(), "log end offset not returned for orders partition 0") {
 			t.Fatalf("error = %v", err)
 		}
 	})

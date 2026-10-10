@@ -20,8 +20,11 @@ import (
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	kafka "github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/protocol/describegroups"
+	"github.com/segmentio/kafka-go/protocol/findcoordinator"
 	"github.com/segmentio/kafka-go/protocol/listgroups"
+	"github.com/segmentio/kafka-go/protocol/listoffsets"
 	"github.com/segmentio/kafka-go/protocol/metadata"
+	"github.com/segmentio/kafka-go/protocol/offsetfetch"
 	"github.com/spf13/cobra"
 )
 
@@ -67,6 +70,18 @@ func (t *recordingTransport) RoundTrip(_ context.Context, address net.Addr, requ
 				{GroupID: request.Groups[0], GroupState: "Empty"},
 			},
 		}, nil
+	case *findcoordinator.Request:
+		return &findcoordinator.Response{NodeID: 1, Host: "broker", Port: 9092}, nil
+	case *offsetfetch.Request:
+		return &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{
+			{Name: "orders", Partitions: []offsetfetch.ResponsePartition{{PartitionIndex: 0, CommittedOffset: 0}}},
+		}}, nil
+	case *listoffsets.Request:
+		return &listoffsets.Response{Topics: []listoffsets.ResponseTopic{
+			{Topic: "orders", Partitions: []listoffsets.ResponsePartition{
+				{Partition: 0, Timestamp: kafka.LastOffset, Offset: 0},
+			}},
+		}}, nil
 	default:
 		return nil, errors.New("unexpected Kafka request")
 	}
@@ -159,6 +174,51 @@ func TestGetKafkaInformationPartitionsOnlyFiltersTopic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(transport.metadataTopics, [][]string{{"orders"}}) {
 		t.Fatalf("metadata topic filters = %v, want [[orders]]", transport.metadataTopics)
+	}
+}
+
+func TestGetKafkaInformationConsumerTopicUsesOneFilteredMetadataRequest(t *testing.T) {
+	transport := &recordingTransport{}
+	request := InformationRequest{Consumer: true, Group: "orders-service", Topic: "orders"}
+
+	info, err := GetKafkaInformation(context.Background(), connectionWithTransport(transport), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(transport.metadataTopics, [][]string{{"orders"}}) {
+		t.Fatalf("metadata topic filters = %v, want [[orders]]", transport.metadataTopics)
+	}
+	want := &kafkaesque_consumers.ConsumerGroupTopicInformation{
+		GroupName: "orders-service",
+		Topic:     "orders",
+		Partitions: []kafkaesque_consumers.ConsumerGroupPartitionLag{
+			{Partition: 0, CommittedOffset: 0, LogEndOffset: 0, Lag: 0},
+		},
+		TotalLag: 0,
+	}
+	if !reflect.DeepEqual(info.ConsumerTopic, want) {
+		t.Fatalf("consumer topic = %+v, want %+v", info.ConsumerTopic, want)
+	}
+}
+
+func TestGetKafkaInformationCombinesMetadataAndConsumerTopicRequest(t *testing.T) {
+	transport := &recordingTransport{}
+	request := InformationRequest{
+		Metadata: true,
+		Consumer: true,
+		Group:    "orders-service",
+		Topic:    "orders",
+	}
+
+	info, err := GetKafkaInformation(context.Background(), connectionWithTransport(transport), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(transport.metadataTopics) != 1 || transport.metadataTopics[0] != nil {
+		t.Fatalf("metadata requests = %v, want one unfiltered request", transport.metadataTopics)
+	}
+	if info.Metadata == nil || info.ConsumerTopic == nil {
+		t.Fatalf("combined information is incomplete: %+v", info)
 	}
 }
 
@@ -441,6 +501,40 @@ func TestPrintConsumerGroupInformation(t *testing.T) {
 	}
 }
 
+func TestPrintConsumerGroupTopicInformation(t *testing.T) {
+	topic := &kafkaesque_consumers.ConsumerGroupTopicInformation{
+		GroupName: "orders-service",
+		Topic:     "orders",
+		Partitions: []kafkaesque_consumers.ConsumerGroupPartitionLag{
+			{Partition: 0, CommittedOffset: 128932, LogEndOffset: 129056, Lag: 124},
+			{Partition: 1, CommittedOffset: 98231, LogEndOffset: 98231, Lag: 0},
+			{Partition: 2, CommittedOffset: 78291, LogEndOffset: 78452, Lag: 161},
+			{Partition: 3, CommittedOffset: 91231, LogEndOffset: 91240, Lag: 9},
+			{Partition: 4, CommittedOffset: 93111, LogEndOffset: 93111, Lag: 0},
+			{Partition: 5, CommittedOffset: 88421, LogEndOffset: 88421, Lag: 0},
+		},
+		TotalLag: 294,
+	}
+
+	var output bytes.Buffer
+	printConsumerGroupTopicInformation(&output, topic)
+
+	want := "\nConsumer Group: orders-service\n" +
+		"Topic: orders\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"PARTITION    COMMITTED OFFSET    LOG END OFFSET    LAG         \n" +
+		"0            128932              129056            124         \n" +
+		"1            98231               98231             0           \n" +
+		"2            78291               78452             161         \n" +
+		"3            91231               91240             9           \n" +
+		"4            93111               93111             0           \n" +
+		"5            88421               88421             0           \n" +
+		"TOTAL 294\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
 func TestRootCommandWithoutFlagsShowsHelp(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()
@@ -482,6 +576,11 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--group") {
 		t.Fatalf("consumer detail flags are missing from help:\n%s", output.String())
 	}
+	consumerIndex := strings.Index(output.String(), "      --consumer ")
+	groupIndex := strings.Index(output.String(), "      --group string")
+	if consumerIndex == -1 || groupIndex == -1 || consumerIndex > groupIndex {
+		t.Fatalf("--group should follow --consumer in help:\n%s", output.String())
+	}
 }
 
 func TestRootCommandValidatesConsumerDetailFlags(t *testing.T) {
@@ -493,6 +592,8 @@ func TestRootCommandValidatesConsumerDetailFlags(t *testing.T) {
 		{name: "missing group", args: []string{"--consumer"}, want: "please provide a consumer group name using the --group flag"},
 		{name: "group without consumer", args: []string{"--group", "orders-service"}, want: "--group requires --consumer"},
 		{name: "list and detail", args: []string{"--consumers", "--consumer", "--group", "orders-service"}, want: "--consumer cannot be combined with --consumers"},
+		{name: "topic without inspection", args: []string{"--topic", "orders"}, want: "--topic requires --partitions or --consumer"},
+		{name: "topic with consumer list", args: []string{"--consumers", "--topic", "orders"}, want: "--topic requires --partitions or --consumer"},
 	}
 
 	for _, test := range tests {
