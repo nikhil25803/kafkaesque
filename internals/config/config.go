@@ -29,7 +29,8 @@ type Config struct {
 
 // KafkaConfig contains Kafka connection settings.
 type KafkaConfig struct {
-	BootstrapServer string `yaml:"bootstrap_server"`
+	BootstrapServer        string            `yaml:"bootstrap_server"`
+	BrokerAddressOverrides map[string]string `yaml:"broker_address_overrides"`
 }
 
 // LagConfig contains consumer lag health thresholds.
@@ -63,7 +64,10 @@ func Load(path string) (*Config, error) {
 
 func load(path string, explicit bool) (*Config, error) {
 	cfg := &Config{
-		Kafka: KafkaConfig{BootstrapServer: DefaultBootstrapServer},
+		Kafka: KafkaConfig{
+			BootstrapServer:        DefaultBootstrapServer,
+			BrokerAddressOverrides: map[string]string{},
+		},
 		Lag: LagConfig{
 			WarningThreshold:   DefaultLagWarningThreshold,
 			UnhealthyThreshold: DefaultLagUnhealthyThreshold,
@@ -94,6 +98,11 @@ func load(path string, explicit bool) (*Config, error) {
 		cfg.Kafka.BootstrapServer = value
 	}
 	cfg.Kafka.BootstrapServer = strings.TrimSpace(cfg.Kafka.BootstrapServer)
+	overrides, err := normalizeBrokerAddressOverrides(cfg.Kafka.BrokerAddressOverrides)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Kafka.BrokerAddressOverrides = overrides
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -118,14 +127,16 @@ func (c *Config) Validate() error {
 	if address == "" {
 		return fmt.Errorf("kafka bootstrap server cannot be empty")
 	}
-
-	host, port, err := net.SplitHostPort(address)
-	if err != nil || host == "" || port == "" {
-		return fmt.Errorf("invalid Kafka bootstrap server %q: expected host:port", address)
+	if err := validateKafkaAddress(address, "bootstrap server"); err != nil {
+		return err
 	}
-	portNumber, err := strconv.Atoi(port)
-	if err != nil || portNumber < 1 || portNumber > 65535 {
-		return fmt.Errorf("invalid Kafka bootstrap server %q: port must be between 1 and 65535", address)
+	for advertised, connect := range c.Kafka.BrokerAddressOverrides {
+		if err := validateKafkaAddress(advertised, "broker address override source"); err != nil {
+			return err
+		}
+		if err := validateKafkaAddress(connect, "broker address override destination"); err != nil {
+			return err
+		}
 	}
 	if c.Lag.WarningThreshold < 0 {
 		return fmt.Errorf("lag warning threshold cannot be negative")
@@ -135,6 +146,31 @@ func (c *Config) Validate() error {
 	}
 	if c.Lag.WarningThreshold >= c.Lag.UnhealthyThreshold {
 		return fmt.Errorf("lag warning threshold must be lower than unhealthy threshold")
+	}
+	return nil
+}
+
+func normalizeBrokerAddressOverrides(overrides map[string]string) (map[string]string, error) {
+	normalized := make(map[string]string, len(overrides))
+	for advertised, connect := range overrides {
+		advertised = strings.TrimSpace(advertised)
+		connect = strings.TrimSpace(connect)
+		if _, exists := normalized[advertised]; exists {
+			return nil, fmt.Errorf("duplicate Kafka broker address override source %q", advertised)
+		}
+		normalized[advertised] = connect
+	}
+	return normalized, nil
+}
+
+func validateKafkaAddress(address, name string) error {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || strings.TrimSpace(host) == "" || port == "" {
+		return fmt.Errorf("invalid Kafka %s %q: expected host:port", name, address)
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return fmt.Errorf("invalid Kafka %s %q: port must be between 1 and 65535", name, address)
 	}
 	return nil
 }

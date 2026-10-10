@@ -54,7 +54,7 @@ func GetKafkaInformation(
 			info.Metadata = kafkaesque_metadata.GetMetadataInformation(metadata)
 		}
 
-		brokers := kafkaesque_broker.GetBrokerInformation(metadata)
+		brokers := kafkaesque_broker.GetBrokerInformation(metadata, conn.ResolveBrokerAddress)
 		if request.Brokers {
 			info.Brokers = brokers
 		}

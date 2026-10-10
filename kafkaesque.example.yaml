@@ -1,5 +1,8 @@
 kafka:
   bootstrap_server: localhost:9092
+  # Map an advertised broker address to its reachable listener when required.
+  # broker_address_overrides:
+  #   "broker-0.kafka.svc.cluster.local:9092": "broker-0.example.com:9094"
 
 lag:
   warning_threshold: 100

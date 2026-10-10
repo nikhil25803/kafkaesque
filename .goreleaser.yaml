@@ -8,6 +8,9 @@ builds:
     binary: kafkaesque
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/nikhil25803/kafkaesque/internals.Version={{ .Tag }}
     goos:
       - linux
       - darwin

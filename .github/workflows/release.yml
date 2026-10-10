@@ -70,6 +70,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}" INSTALL_DIR="${RUNNER_TEMP}/bin" sh ./install.sh
           "${RUNNER_TEMP}/bin/kafkaesque" --help
+          test "$("${RUNNER_TEMP}/bin/kafkaesque" --version)" = "kafkaesque version ${GITHUB_REF_NAME}"
       - name: Install and run Kafkaesque
         if: runner.os == 'Windows'
         shell: pwsh
@@ -78,3 +79,7 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "bin"
           & .\install.ps1 -Version $env:GITHUB_REF_NAME -InstallDir $installDir
           & (Join-Path $installDir "kafkaesque.exe") --help
+          $versionOutput = & (Join-Path $installDir "kafkaesque.exe") --version
+          if ($versionOutput -ne "kafkaesque version $env:GITHUB_REF_NAME") {
+            throw "Unexpected version output: $versionOutput"
+          }
