@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafka "github.com/segmentio/kafka-go"
@@ -18,13 +19,15 @@ type descriptionTransport struct {
 	err      error
 	address  string
 	groups   []string
+	deadline bool
 }
 
-func (t *descriptionTransport) RoundTrip(_ context.Context, address net.Addr, request kafka.Request) (kafka.Response, error) {
+func (t *descriptionTransport) RoundTrip(ctx context.Context, address net.Addr, request kafka.Request) (kafka.Response, error) {
 	if t.err != nil {
 		return nil, t.err
 	}
 
+	_, t.deadline = ctx.Deadline()
 	t.address = address.String()
 	t.groups = append([]string(nil), request.(*describegroups.Request).Groups...)
 	return t.response, nil
@@ -32,8 +35,18 @@ func (t *descriptionTransport) RoundTrip(_ context.Context, address net.Addr, re
 
 func consumerConnection(transport kafka.RoundTripper) *kafkaesque.KafkaesqueConn {
 	return &kafkaesque.KafkaesqueConn{
-		Client: &kafka.Client{Transport: transport},
+		Client: &kafka.Client{Transport: transport, Timeout: time.Second},
 	}
+}
+
+var kafkaV3MemberMetadata = []byte{
+	0x00, 0x03, // version 3
+	0x00, 0x00, 0x00, 0x01, // one topic
+	0x00, 0x06, 'o', 'r', 'd', 'e', 'r', 's',
+	0xff, 0xff, 0xff, 0xff, // null user data
+	0x00, 0x00, 0x00, 0x00, // no owned partitions
+	0xff, 0xff, 0xff, 0xff, // unknown generation
+	0xff, 0xff, // null rack ID
 }
 
 func TestGetConsumerGroupDescription(t *testing.T) {
@@ -44,8 +57,8 @@ func TestGetConsumerGroupDescription(t *testing.T) {
 					GroupID:    "order-processor",
 					GroupState: "Stable",
 					Members: []describegroups.ResponseGroupMember{
-						{MemberID: "member-1"},
-						{MemberID: "member-2"},
+						{MemberID: "member-1", MemberMetadata: kafkaV3MemberMetadata},
+						{MemberID: "member-2", MemberMetadata: kafkaV3MemberMetadata},
 					},
 				},
 			},
@@ -81,6 +94,9 @@ func TestGetConsumerGroupDescription(t *testing.T) {
 	}
 	if !reflect.DeepEqual(transport.groups, []string{"order-processor"}) {
 		t.Fatalf("requested groups = %v, want [order-processor]", transport.groups)
+	}
+	if !transport.deadline {
+		t.Fatal("describe groups request has no deadline")
 	}
 }
 
@@ -122,6 +138,22 @@ func TestGetConsumerGroupDescriptionReturnsErrors(t *testing.T) {
 			},
 		)
 		if err == nil || !strings.Contains(err.Error(), "error describing group order-processor") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("unexpected response", func(t *testing.T) {
+		transport := &descriptionTransport{}
+
+		_, err := GetConsumerGroupDescription(
+			consumerConnection(transport),
+			context.Background(),
+			ConsumerGroupDescriptionRequest{
+				Group:         ConsumerGroups{GroupName: "order-processor"},
+				BrokerAddress: "broker-2:9092",
+			},
+		)
+		if err == nil || !strings.Contains(err.Error(), "unexpected describe groups response type") {
 			t.Fatalf("error = %v", err)
 		}
 	})
