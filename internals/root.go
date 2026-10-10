@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	"github.com/spf13/cobra"
 )
@@ -17,10 +18,14 @@ type InformationRequest struct {
 	Partitions bool
 	Topic      string
 	Consumers  bool
+	Consumer   bool
+	Group      string
+
+	lagThresholds kafkaesque_consumers.LagThresholds
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Group != ""
 }
 
 func newRootCommand() *cobra.Command {
@@ -36,7 +41,7 @@ func newRootCommandWithConnectionCheck(checkConnection func(context.Context, str
 		Use:   "kafkaesque",
 		Short: "Kafkaesque is a tool for interacting with Kafka clusters.",
 		Long: `Kafkaesque is a lightweight, read-only Kafka cluster inspector for viewing cluster
-metadata, brokers, topics, and partitions.`,
+metadata, brokers, topics, partitions, and consumer groups.`,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -69,6 +74,12 @@ metadata, brokers, topics, and partitions.`,
 	// -c: Consumers flag
 	cmd.Flags().BoolVarP(&request.Consumers, "consumers", "c", false, "Retrieve consumer group information")
 
+	// --consumer: Consumer group detail flag
+	cmd.Flags().BoolVar(&request.Consumer, "consumer", false, "Retrieve detailed information for one consumer group")
+
+	// --group: Consumer group name flag
+	cmd.Flags().StringVar(&request.Group, "group", "", "Consumer group name")
+
 	return cmd
 }
 
@@ -91,6 +102,15 @@ func runRootCommand(
 	if request.Partitions && request.Topic == "" {
 		return fmt.Errorf("please provide a topic name using the --topic flag")
 	}
+	if request.Consumer && request.Consumers {
+		return fmt.Errorf("--consumer cannot be combined with --consumers")
+	}
+	if request.Consumer && request.Group == "" {
+		return fmt.Errorf("please provide a consumer group name using the --group flag")
+	}
+	if !request.Consumer && request.Group != "" {
+		return fmt.Errorf("--group requires --consumer")
+	}
 
 	cfg, err := kafkaesque_config.Load(configPath)
 	if err != nil {
@@ -99,6 +119,10 @@ func runRootCommand(
 	if check == "config" {
 		fmt.Fprintln(cmd.OutOrStdout(), "Configuration is valid")
 		return nil
+	}
+	request.lagThresholds = kafkaesque_consumers.LagThresholds{
+		Warning:   cfg.Lag.WarningThreshold,
+		Unhealthy: cfg.Lag.UnhealthyThreshold,
 	}
 
 	ctx := cmd.Context()

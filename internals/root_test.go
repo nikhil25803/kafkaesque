@@ -409,6 +409,38 @@ func TestPrintConsumersInformationTotals(t *testing.T) {
 	}
 }
 
+func TestPrintConsumerGroupInformation(t *testing.T) {
+	consumer := &kafkaesque_consumers.ConsumerGroupInformation{
+		GroupName:    "orders-service",
+		State:        "Stable",
+		MembersCount: 3,
+		TopicsCount:  2,
+		TotalLag:     136,
+		Topics: []kafkaesque_consumers.ConsumerGroupTopicLag{
+			{Topic: "orders", Partitions: 6, Lag: 124, Status: "WARNING"},
+			{Topic: "payments", Partitions: 3, Lag: 12, Status: "HEALTHY"},
+		},
+	}
+
+	var output bytes.Buffer
+	printConsumerGroupInformation(&output, consumer)
+
+	want := "\nConsumer Group: orders-service\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"STATE: STABLE\n" +
+		"MEMBERS: 3\n" +
+		"TOPICS: 2\n" +
+		"TOTAL LAG: 136\n" +
+		"\nTOPICS\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"TOPIC                            PARTITIONS   LAG        STATUS    \n" +
+		"orders                           6            124        WARNING   \n" +
+		"payments                         3            12         HEALTHY   \n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
 func TestRootCommandWithoutFlagsShowsHelp(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()
@@ -446,6 +478,32 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "-c, --consumers") {
 		t.Fatalf("consumer flag is missing from help:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--group") {
+		t.Fatalf("consumer detail flags are missing from help:\n%s", output.String())
+	}
+}
+
+func TestRootCommandValidatesConsumerDetailFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "missing group", args: []string{"--consumer"}, want: "please provide a consumer group name using the --group flag"},
+		{name: "group without consumer", args: []string{"--group", "orders-service"}, want: "--group requires --consumer"},
+		{name: "list and detail", args: []string{"--consumers", "--consumer", "--group", "orders-service"}, want: "--consumer cannot be combined with --consumers"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := newRootCommand()
+			cmd.SetArgs(test.args)
+			err := cmd.Execute()
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

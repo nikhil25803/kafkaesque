@@ -95,16 +95,19 @@ be as simple as:
 
 ## Flags
 
-| Short | Long           | Value              | Description                                          |
-| ----- | -------------- | ------------------ | ---------------------------------------------------- |
-| `-m`  | `--metadata`   | —                  | Show cluster metadata and connection status.         |
-| `-b`  | `--brokers`    | —                  | List Kafka brokers.                                  |
-| `-t`  | `--topics`     | —                  | List Kafka topics.                                   |
-| `-p`  | `--partitions` | —                  | List partitions for the topic selected by `--topic`. |
-| —     | `--topic`      | name               | Select a topic for partition inspection.             |
-| —     | `--config`     | path               | Load an explicit YAML configuration file.            |
-| —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection. |
-| `-h`  | `--help`       | —                  | Show command help.                                   |
+| Short | Long           | Value              | Description                                              |
+| ----- | -------------- | ------------------ | -------------------------------------------------------- |
+| `-m`  | `--metadata`   | —                  | Show cluster metadata and connection status.             |
+| `-b`  | `--brokers`    | —                  | List Kafka brokers.                                      |
+| `-t`  | `--topics`     | —                  | List Kafka topics.                                       |
+| `-p`  | `--partitions` | —                  | List partitions for the topic selected by `--topic`.     |
+| `-c`  | `--consumers`  | —                  | List consumer groups.                                    |
+| —     | `--consumer`   | —                  | Inspect the consumer group selected by `--group`.        |
+| —     | `--group`      | name               | Select a group for detailed consumer lag inspection.     |
+| —     | `--topic`      | name               | Select a topic for partition inspection.                 |
+| —     | `--config`     | path               | Load an explicit YAML configuration file.                |
+| —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection.     |
+| `-h`  | `--help`       | —                  | Show command help.                                       |
 
 Information flags can be combined; Kafkaesque shares the metadata request
 between them.
@@ -115,6 +118,10 @@ between them.
 
 # Inspect one topic's partitions
 ./bin/kafkaesque --partitions --topic orders
+
+# List consumer groups, then inspect one group's lag
+./bin/kafkaesque --consumers
+./bin/kafkaesque --consumer --group order-processor
 
 # Validate configuration without connecting
 ./bin/kafkaesque --check config
@@ -135,7 +142,16 @@ winning:
 ```yaml
 kafka:
   bootstrap_server: localhost:9092
+
+lag:
+  warning_threshold: 100
+  unhealthy_threshold: 500
 ```
+
+Consumer topic lag up to the warning threshold is `HEALTHY`, lag above the
+warning threshold is `WARNING`, and lag above the unhealthy threshold is
+`UNHEALTHY`. Both thresholds must be non-negative, and the warning threshold
+must be lower than the unhealthy threshold.
 
 The default YAML locations are:
 

@@ -15,18 +15,27 @@ import (
 )
 
 const (
-	DefaultBootstrapServer = "localhost:9092"
-	BootstrapServerEnv     = "KAFKAESQUE_BOOTSTRAP_SERVER"
+	DefaultBootstrapServer       = "localhost:9092"
+	DefaultLagWarningThreshold   = int64(100)
+	DefaultLagUnhealthyThreshold = int64(500)
+	BootstrapServerEnv           = "KAFKAESQUE_BOOTSTRAP_SERVER"
 )
 
 // Config contains Kafkaesque's runtime configuration.
 type Config struct {
 	Kafka KafkaConfig `yaml:"kafka"`
+	Lag   LagConfig   `yaml:"lag"`
 }
 
 // KafkaConfig contains Kafka connection settings.
 type KafkaConfig struct {
 	BootstrapServer string `yaml:"bootstrap_server"`
+}
+
+// LagConfig contains consumer lag health thresholds.
+type LagConfig struct {
+	WarningThreshold   int64 `yaml:"warning_threshold"`
+	UnhealthyThreshold int64 `yaml:"unhealthy_threshold"`
 }
 
 // DefaultPath returns the platform-specific default configuration path.
@@ -53,7 +62,13 @@ func Load(path string) (*Config, error) {
 }
 
 func load(path string, explicit bool) (*Config, error) {
-	cfg := &Config{Kafka: KafkaConfig{BootstrapServer: DefaultBootstrapServer}}
+	cfg := &Config{
+		Kafka: KafkaConfig{BootstrapServer: DefaultBootstrapServer},
+		Lag: LagConfig{
+			WarningThreshold:   DefaultLagWarningThreshold,
+			UnhealthyThreshold: DefaultLagUnhealthyThreshold,
+		},
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -111,6 +126,15 @@ func (c *Config) Validate() error {
 	portNumber, err := strconv.Atoi(port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
 		return fmt.Errorf("invalid Kafka bootstrap server %q: port must be between 1 and 65535", address)
+	}
+	if c.Lag.WarningThreshold < 0 {
+		return fmt.Errorf("lag warning threshold cannot be negative")
+	}
+	if c.Lag.UnhealthyThreshold < 0 {
+		return fmt.Errorf("lag unhealthy threshold cannot be negative")
+	}
+	if c.Lag.WarningThreshold >= c.Lag.UnhealthyThreshold {
+		return fmt.Errorf("lag warning threshold must be lower than unhealthy threshold")
 	}
 	return nil
 }

@@ -1,2 +1,6 @@
 kafka:
   bootstrap_server: localhost:9092
+
+lag:
+  warning_threshold: 100
+  unhealthy_threshold: 500

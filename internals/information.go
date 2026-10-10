@@ -13,7 +13,7 @@ import (
 )
 
 func (r InformationRequest) needsMetadata() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer
 }
 
 // KafkaInformation contains the requested Kafka data.
@@ -23,6 +23,7 @@ type KafkaInformation struct {
 	Brokers    []kafkaesque_broker.BrokerInformation
 	Partitions []kafkaesque_partition.PartitionTopicInformation
 	Consumers  []kafkaesque_consumers.ConsumerGroups
+	Consumer   *kafkaesque_consumers.ConsumerGroupInformation
 }
 
 // GetKafkaInformation fetches the requested Kafka data.
@@ -95,6 +96,20 @@ func GetKafkaInformation(
 				}
 				info.Consumers = append(info.Consumers, describedGroups...)
 			}
+		}
+
+		if request.Consumer {
+			consumer, err := kafkaesque_consumers.GetConsumerGroupInformation(
+				conn,
+				ctx,
+				metadata,
+				request.Group,
+				request.lagThresholds,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get consumer group %s: %w", request.Group, err)
+			}
+			info.Consumer = consumer
 		}
 	}
 

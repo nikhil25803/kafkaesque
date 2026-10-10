@@ -17,6 +17,22 @@ func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
 	if cfg.Kafka.BootstrapServer != DefaultBootstrapServer {
 		t.Fatalf("bootstrap server = %q, want %q", cfg.Kafka.BootstrapServer, DefaultBootstrapServer)
 	}
+	if cfg.Lag.WarningThreshold != DefaultLagWarningThreshold || cfg.Lag.UnhealthyThreshold != DefaultLagUnhealthyThreshold {
+		t.Fatalf("lag thresholds = %+v, want %d/%d", cfg.Lag, DefaultLagWarningThreshold, DefaultLagUnhealthyThreshold)
+	}
+}
+
+func TestLoadReadsLagThresholds(t *testing.T) {
+	unsetEnvironment(t, BootstrapServerEnv)
+	path := writeConfig(t, "kafka:\n  bootstrap_server: localhost:9092\nlag:\n  warning_threshold: 25\n  unhealthy_threshold: 200\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Lag.WarningThreshold != 25 || cfg.Lag.UnhealthyThreshold != 200 {
+		t.Fatalf("lag thresholds = %+v, want 25/200", cfg.Lag)
+	}
 }
 
 func TestLoadReadsYAMLAndAppliesEnvironmentOverride(t *testing.T) {
@@ -53,6 +69,10 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{name: "URL scheme", content: "kafka:\n  bootstrap_server: kafka://localhost:9092\n", want: "expected host:port"},
 		{name: "invalid port", content: "kafka:\n  bootstrap_server: localhost:70000\n", want: "port must be between"},
 		{name: "multiple documents", content: "kafka: {}\n---\nkafka: {}\n", want: "multiple YAML documents"},
+		{name: "negative warning threshold", content: "lag:\n  warning_threshold: -1\n", want: "warning threshold cannot be negative"},
+		{name: "negative unhealthy threshold", content: "lag:\n  unhealthy_threshold: -1\n", want: "unhealthy threshold cannot be negative"},
+		{name: "equal lag thresholds", content: "lag:\n  warning_threshold: 500\n", want: "warning threshold must be lower"},
+		{name: "reversed lag thresholds", content: "lag:\n  warning_threshold: 600\n  unhealthy_threshold: 500\n", want: "warning threshold must be lower"},
 	}
 
 	for _, test := range tests {

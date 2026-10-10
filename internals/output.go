@@ -31,7 +31,27 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 	if request.Consumers {
 		printConsumersInformation(out, info.Consumers)
 	}
+	if request.Consumer {
+		printConsumerGroupInformation(out, info.Consumer)
+	}
 	return nil
+}
+
+func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers.ConsumerGroupInformation) {
+	fmt.Fprintf(out, "\nConsumer Group: %s\n", consumer.GroupName)
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+	fmt.Fprintf(out, "STATE: %s\n", strings.ToUpper(consumer.State))
+	fmt.Fprintf(out, "MEMBERS: %d\n", consumer.MembersCount)
+	fmt.Fprintf(out, "TOPICS: %d\n", consumer.TopicsCount)
+	fmt.Fprintf(out, "TOTAL LAG: %d\n", consumer.TotalLag)
+	fmt.Println()
+	fmt.Fprintln(out, "\nTOPICS")
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+
+	fmt.Fprintf(out, "%-32s %-12s %-10s %-10s\n", "TOPIC", "PARTITIONS", "LAG", "STATUS")
+	for _, topic := range consumer.Topics {
+		fmt.Fprintf(out, "%-32s %-12d %-10d %-10s\n", topic.Topic, topic.Partitions, topic.Lag, topic.Status)
+	}
 }
 
 func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataInformation) {
