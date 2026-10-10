@@ -18,12 +18,124 @@
 
 ![Kafkaesque product vision](asset/image/KafkaesqueBanner.png)
 
-## Upcoming Releases
+## Table of contents
+
+- [Install](#install)
+- [Flags](#flags)
+- [Upcoming releases](#upcoming-releases)
+- [Combining flags](#combining-flags)
+- [Build from source](#build-from-source)
+- [Configuration](#configuration)
+- [Local Kafka environment](#local-kafka-environment)
+- [Command documentation](DOCS.md)
+- [Contributing](CONTRIBUTING.md)
+- [License](#license)
+
+## Install
+
+### Linux and macOS
+
+The installer detects your platform, verifies the release checksum, and installs
+Kafkaesque into `~/.local/bin` without `sudo`.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | sh
+```
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+```sh
+kafkaesque --help
+```
+
+<details>
+<summary><code>kafkaesque: command not found</code></summary>
+
+The installer places Kafkaesque in `~/.local/bin`. Add it to the current shell:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Persist the change for Bash:
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+source "$HOME/.bashrc"
+```
+
+Or for Zsh:
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+source "$HOME/.zshrc"
+```
+
+</details>
+
+<details>
+<summary>Windows PowerShell installation</summary>
+
+Download and run the checksum-verifying installer:
+
+```powershell
+curl.exe -fsSLo install.ps1 https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.ps1
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Open a new terminal, then verify the installation:
+
+```powershell
+kafkaesque --help
+```
+
+</details>
+
+<details>
+<summary>Install a specific version</summary>
+
+Both installers use the latest release by default. Pin a release when needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | VERSION=v0.0.1 sh
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.0.1
+```
+
+</details>
+
+## Flags
+
+| Short | Long           | Value              | Description                                              | Example                                                        |
+| ----- | -------------- | ------------------ | -------------------------------------------------------- | -------------------------------------------------------------- |
+| `-m`  | `--metadata`   | —                  | Show cluster metadata and connection status.             | `kafkaesque --metadata`                                        |
+| `-b`  | `--brokers`    | —                  | List Kafka brokers.                                      | `kafkaesque --brokers`                                         |
+| `-t`  | `--topics`     | —                  | List Kafka topics.                                       | `kafkaesque --topics`                                          |
+| `-p`  | `--partitions` | —                  | List partitions for the topic selected by `--topic`.     | `kafkaesque --partitions --topic orders`                       |
+| `-c`  | `--consumers`  | —                  | List consumer groups.                                    | `kafkaesque --consumers`                                       |
+| —     | `--consumer`   | —                  | Inspect the consumer group selected by `--group`.        | `kafkaesque --consumer --group order-processor`                |
+| —     | `--group`      | name               | Select a consumer group.                                 | `kafkaesque --consumer --group order-processor`                |
+| —     | `--topic`      | name               | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
+| —     | `--config`     | path               | Load an explicit YAML configuration file.                | `kafkaesque --config /path/to/config.yaml --metadata`          |
+| —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection.     | `kafkaesque --check conn`                                      |
+| `-h`  | `--help`       | —                  | Show command help.                                       | `kafkaesque --help`                                            |
+
+See [Command documentation](DOCS.md) for complete examples and representative
+output.
+
+## Upcoming releases
 
 | Version | Release Info                                  | Status      |
 | ------- | --------------------------------------------- | ----------- |
 | v0.0.1  | Kafka Cluster Inspector                       | Released    |
-| v0.1.0  | Consumer Groups & Basic Lag                   | Coming Soon |
+| v0.1.0  | Consumer Groups & Partition Lag               | Released    |
 | v0.2.0  | Kafka Connectivity & Authentication           | Coming Soon |
 | v0.3.0  | Deep Consumer Observability                   | Coming Soon |
 | v0.4.0  | Cluster Health & Diagnostics                  | Coming Soon |
@@ -34,46 +146,26 @@
 | v0.9.0  | Slack Alerts & Production Hardening           | Coming Soon |
 | v1.0.0  | Stable Read-Only Kafka Observability Platform | Coming Soon |
 
-## Install
+## Combining flags
 
-### Linux and macOS
+<details>
+<summary>Inspect several parts of a cluster in one command</summary>
 
-The installer detects your operating system and architecture, verifies the
-downloaded archive, and installs Kafkaesque into `~/.local/bin`.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-kafkaesque --help
-```
-
-### Windows
-
-Download and run the PowerShell installer. It verifies the archive, installs
-Kafkaesque under `%LOCALAPPDATA%\Programs\kafkaesque`, and adds that directory
-to your user PATH.
-
-```powershell
-curl.exe -fsSLo install.ps1 https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-Open a new terminal, then verify the installation:
-
-```powershell
-kafkaesque --help
-```
-
-Both installers use the latest release by default. To install v0.0.1
-explicitly:
+Information flags can be combined. Kafkaesque shares the Kafka metadata request
+between them and prints each requested section in a stable order.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | VERSION=v0.0.1 sh
+kafkaesque --metadata --brokers --topics
 ```
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.0.1
+```sh
+kafkaesque --metadata --partitions --topic orders
 ```
+
+Consumer list and consumer detail modes are intentionally separate, so
+`--consumers` cannot be combined with `--consumer`.
+
+</details>
 
 ## Build from source
 
@@ -86,58 +178,18 @@ make build
 ./bin/kafkaesque --help
 ```
 
-Kafkaesque connects to `localhost:9092` by default, so a first inspection can
-be as simple as:
-
-```sh
-./bin/kafkaesque --metadata
-```
-
-## Flags
-
-| Short | Long           | Value              | Description                                              |
-| ----- | -------------- | ------------------ | -------------------------------------------------------- |
-| `-m`  | `--metadata`   | —                  | Show cluster metadata and connection status.             |
-| `-b`  | `--brokers`    | —                  | List Kafka brokers.                                      |
-| `-t`  | `--topics`     | —                  | List Kafka topics.                                       |
-| `-p`  | `--partitions` | —                  | List partitions for the topic selected by `--topic`.     |
-| `-c`  | `--consumers`  | —                  | List consumer groups.                                    |
-| —     | `--consumer`   | —                  | Inspect the consumer group selected by `--group`.        |
-| —     | `--group`      | name               | Select a group for detailed consumer lag inspection.     |
-| —     | `--topic`      | name               | Select a topic for partition or consumer lag inspection. |
-| —     | `--config`     | path               | Load an explicit YAML configuration file.                |
-| —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection.     |
-| `-h`  | `--help`       | —                  | Show command help.                                       |
-
-Information flags can be combined; Kafkaesque shares the metadata request
-between them.
-
-```sh
-# Inspect cluster metadata, brokers, and topics together
-./bin/kafkaesque --metadata --brokers --topics
-
-# Inspect one topic's partitions
-./bin/kafkaesque --partitions --topic orders
-
-# List consumer groups, then inspect one group's lag
-./bin/kafkaesque --consumers
-./bin/kafkaesque --consumer --group order-processor
-./bin/kafkaesque --consumer --group order-processor --topic orders
-
-# Validate configuration without connecting
-./bin/kafkaesque --check config
-
-# Validate configuration and connect to Kafka
-./bin/kafkaesque --check conn
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for tests, architecture, and the complete
+development workflow.
 
 ## Configuration
 
-The effective bootstrap server is resolved in this order, with later values
-winning:
+<details>
+<summary>Bootstrap server, YAML paths, environment override, and lag thresholds</summary>
+
+Configuration precedence is:
 
 1. The built-in `localhost:9092` default.
-2. YAML from the platform configuration path, or the file selected by `--config`.
+2. YAML from the platform default path or the file selected by `--config`.
 3. The `KAFKAESQUE_BOOTSTRAP_SERVER` environment variable.
 
 ```yaml
@@ -149,41 +201,58 @@ lag:
   unhealthy_threshold: 500
 ```
 
-Consumer topic lag up to the warning threshold is `HEALTHY`, lag above the
-warning threshold is `WARNING`, and lag above the unhealthy threshold is
-`UNHEALTHY`. Both thresholds must be non-negative, and the warning threshold
-must be lower than the unhealthy threshold.
-
-The default YAML locations are:
-
-| Platform | Path                                                                            |
+| Platform | Default path                                                                    |
 | -------- | ------------------------------------------------------------------------------- |
 | Linux    | `$XDG_CONFIG_HOME/kafkaesque/config.yaml` or `~/.config/kafkaesque/config.yaml` |
 | macOS    | `~/Library/Application Support/kafkaesque/config.yaml`                          |
 | Windows  | `%AppData%\kafkaesque\config.yaml`                                              |
 
+Lag up to the warning threshold is `HEALTHY`, lag above it is `WARNING`, and
+lag above the unhealthy threshold is `UNHEALTHY`. The warning threshold must
+be lower than the unhealthy threshold.
+
 See [`kafkaesque.example.yaml`](kafkaesque.example.yaml) for a ready-to-copy
-example. Configuration files are not created automatically.
+configuration. Kafkaesque never creates configuration files automatically.
+
+</details>
 
 ## Local Kafka environment
 
-The repository includes a disposable five-broker Kafka cluster with seeded
-topics and partitions. It uses `localhost:9090`, leaving the conventional
-`9092` port available for another local cluster.
+<details>
+<summary>Run the disposable five-broker development cluster</summary>
+
+The repository includes a plaintext Kafka fixture on `localhost:9090` with
+seeded topics, partitions, records, and consumer groups.
 
 ```sh
 make kafka-up
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --metadata
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --topics
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --partitions --topic orders
+```
+
+```sh
+KAFKAESQUE_BOOTSTRAP_SERVER=localhost:9090 kafkaesque --metadata
+```
+
+Start the optional activity simulator to keep consumer groups active:
+
+```sh
+make kafka-simulator-start
+KAFKAESQUE_BOOTSTRAP_SERVER=localhost:9090 kafkaesque --consumers
+make kafka-simulator-stop
+```
+
+```sh
 make kafka-down
 ```
 
-See [`kafka-env/README.md`](kafka-env/README.md) for fixture details, logs,
-reset commands, and direct Docker Compose usage.
+See [`kafka-env/README.md`](kafka-env/README.md) for fixture contents, reset,
+logs, and direct Docker Compose commands.
 
-Kafkaesque will grow in small, reviewable releases while remaining read-only
-by design.
+</details>
+
+## Documentation
+
+- [Command reference and sample output](DOCS.md)
+- [Contributor guide and architecture](CONTRIBUTING.md)
 
 ## License
 
