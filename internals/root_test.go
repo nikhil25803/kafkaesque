@@ -13,21 +13,28 @@ import (
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
 	kafka "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/protocol/describegroups"
+	"github.com/segmentio/kafka-go/protocol/findcoordinator"
+	"github.com/segmentio/kafka-go/protocol/listgroups"
+	"github.com/segmentio/kafka-go/protocol/listoffsets"
 	"github.com/segmentio/kafka-go/protocol/metadata"
+	"github.com/segmentio/kafka-go/protocol/offsetfetch"
 	"github.com/spf13/cobra"
 )
 
 type recordingTransport struct {
-	metadataTopics [][]string
-	err            error
+	metadataTopics    [][]string
+	describeAddresses []string
+	err               error
 }
 
-func (t *recordingTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
+func (t *recordingTransport) RoundTrip(_ context.Context, address net.Addr, request kafka.Request) (kafka.Response, error) {
 	if t.err != nil {
 		return nil, t.err
 	}
@@ -50,8 +57,56 @@ func (t *recordingTransport) RoundTrip(_ context.Context, _ net.Addr, request ka
 				},
 			},
 		}, nil
+	case *listgroups.Request:
+		return &listgroups.Response{
+			Groups: []listgroups.ResponseGroup{
+				{GroupID: "order-processor", ProtocolType: "consumer", BrokerID: 1},
+			},
+		}, nil
+	case *describegroups.Request:
+		t.describeAddresses = append(t.describeAddresses, address.String())
+		return &describegroups.Response{
+			Groups: []describegroups.ResponseGroup{
+				{GroupID: request.Groups[0], GroupState: "Empty"},
+			},
+		}, nil
+	case *findcoordinator.Request:
+		return &findcoordinator.Response{NodeID: 1, Host: "broker", Port: 9092}, nil
+	case *offsetfetch.Request:
+		return &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{
+			{Name: "orders", Partitions: []offsetfetch.ResponsePartition{{PartitionIndex: 0, CommittedOffset: 0}}},
+		}}, nil
+	case *listoffsets.Request:
+		return &listoffsets.Response{Topics: []listoffsets.ResponseTopic{
+			{Topic: "orders", Partitions: []listoffsets.ResponsePartition{
+				{Partition: 0, Timestamp: kafka.LastOffset, Offset: 0},
+			}},
+		}}, nil
 	default:
 		return nil, errors.New("unexpected Kafka request")
+	}
+}
+
+func TestGetKafkaInformationCompletesConsumerGroups(t *testing.T) {
+	transport := &recordingTransport{}
+
+	info, err := GetKafkaInformation(
+		context.Background(),
+		connectionWithTransport(transport),
+		InformationRequest{Consumers: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []kafkaesque_consumers.ConsumerGroups{
+		{GroupName: "order-processor", Type: "consumer", CoordinatorID: 1, State: "Empty"},
+	}
+	if !reflect.DeepEqual(info.Consumers, want) {
+		t.Fatalf("consumers = %+v, want %+v", info.Consumers, want)
+	}
+	if !reflect.DeepEqual(transport.describeAddresses, []string{"broker:9092"}) {
+		t.Fatalf("describe addresses = %v, want [broker:9092]", transport.describeAddresses)
 	}
 }
 
@@ -119,6 +174,51 @@ func TestGetKafkaInformationPartitionsOnlyFiltersTopic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(transport.metadataTopics, [][]string{{"orders"}}) {
 		t.Fatalf("metadata topic filters = %v, want [[orders]]", transport.metadataTopics)
+	}
+}
+
+func TestGetKafkaInformationConsumerTopicUsesOneFilteredMetadataRequest(t *testing.T) {
+	transport := &recordingTransport{}
+	request := InformationRequest{Consumer: true, Group: "orders-service", Topic: "orders"}
+
+	info, err := GetKafkaInformation(context.Background(), connectionWithTransport(transport), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(transport.metadataTopics, [][]string{{"orders"}}) {
+		t.Fatalf("metadata topic filters = %v, want [[orders]]", transport.metadataTopics)
+	}
+	want := &kafkaesque_consumers.ConsumerGroupTopicInformation{
+		GroupName: "orders-service",
+		Topic:     "orders",
+		Partitions: []kafkaesque_consumers.ConsumerGroupPartitionLag{
+			{Partition: 0, CommittedOffset: 0, LogEndOffset: 0, Lag: 0},
+		},
+		TotalLag: 0,
+	}
+	if !reflect.DeepEqual(info.ConsumerTopic, want) {
+		t.Fatalf("consumer topic = %+v, want %+v", info.ConsumerTopic, want)
+	}
+}
+
+func TestGetKafkaInformationCombinesMetadataAndConsumerTopicRequest(t *testing.T) {
+	transport := &recordingTransport{}
+	request := InformationRequest{
+		Metadata: true,
+		Consumer: true,
+		Group:    "orders-service",
+		Topic:    "orders",
+	}
+
+	info, err := GetKafkaInformation(context.Background(), connectionWithTransport(transport), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(transport.metadataTopics) != 1 || transport.metadataTopics[0] != nil {
+		t.Fatalf("metadata requests = %v, want one unfiltered request", transport.metadataTopics)
+	}
+	if info.Metadata == nil || info.ConsumerTopic == nil {
+		t.Fatalf("combined information is incomplete: %+v", info)
 	}
 }
 
@@ -330,6 +430,111 @@ func TestPrintPartitionsInformation(t *testing.T) {
 	}
 }
 
+func TestPrintConsumersInformation(t *testing.T) {
+	consumerGroups := []kafkaesque_consumers.ConsumerGroups{
+		{
+			GroupName:     "order-processor",
+			Type:          "consumer",
+			CoordinatorID: 1,
+			State:         "Empty",
+			MembersCount:  0,
+			TopicsCount:   0,
+		},
+	}
+
+	var output bytes.Buffer
+	printConsumersInformation(&output, consumerGroups)
+
+	want := "\nKafka Consumers\n" +
+		strings.Repeat("=", 117) + "\n" +
+		"GROUP NAME                       TYPE         COORDINATOR      STATE                MEMBERS COUNT    TOPICS          \n" +
+		"order-processor                  consumer     broker-1         Empty                0                0               \n" +
+		"\n1 group · 0 topics · 0 members\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintConsumersInformationTotals(t *testing.T) {
+	consumerGroups := []kafkaesque_consumers.ConsumerGroups{
+		{GroupName: "order-processor", MembersCount: 2, TopicsCount: 1},
+		{GroupName: "notification-dispatcher", MembersCount: 3, TopicsCount: 2},
+	}
+
+	var output bytes.Buffer
+	printConsumersInformation(&output, consumerGroups)
+
+	if !strings.HasSuffix(output.String(), "\n2 groups · 3 topics · 5 members\n") {
+		t.Fatalf("unexpected summary:\n%s", output.String())
+	}
+}
+
+func TestPrintConsumerGroupInformation(t *testing.T) {
+	consumer := &kafkaesque_consumers.ConsumerGroupInformation{
+		GroupName:    "orders-service",
+		State:        "Stable",
+		MembersCount: 3,
+		TopicsCount:  2,
+		TotalLag:     136,
+		Topics: []kafkaesque_consumers.ConsumerGroupTopicLag{
+			{Topic: "orders", Partitions: 6, Lag: 124, Status: "WARNING"},
+			{Topic: "payments", Partitions: 3, Lag: 12, Status: "HEALTHY"},
+		},
+	}
+
+	var output bytes.Buffer
+	printConsumerGroupInformation(&output, consumer)
+
+	want := "\nConsumer Group: orders-service\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"STATE: STABLE\n" +
+		"MEMBERS: 3\n" +
+		"TOPICS: 2\n" +
+		"TOTAL LAG: 136\n" +
+		"\nTOPICS\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"TOPIC                            PARTITIONS   LAG        STATUS    \n" +
+		"orders                           6            124        WARNING   \n" +
+		"payments                         3            12         HEALTHY   \n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintConsumerGroupTopicInformation(t *testing.T) {
+	topic := &kafkaesque_consumers.ConsumerGroupTopicInformation{
+		GroupName: "orders-service",
+		Topic:     "orders",
+		Partitions: []kafkaesque_consumers.ConsumerGroupPartitionLag{
+			{Partition: 0, CommittedOffset: 128932, LogEndOffset: 129056, Lag: 124},
+			{Partition: 1, CommittedOffset: 98231, LogEndOffset: 98231, Lag: 0},
+			{Partition: 2, CommittedOffset: 78291, LogEndOffset: 78452, Lag: 161},
+			{Partition: 3, CommittedOffset: 91231, LogEndOffset: 91240, Lag: 9},
+			{Partition: 4, CommittedOffset: 93111, LogEndOffset: 93111, Lag: 0},
+			{Partition: 5, CommittedOffset: 88421, LogEndOffset: 88421, Lag: 0},
+		},
+		TotalLag: 294,
+	}
+
+	var output bytes.Buffer
+	printConsumerGroupTopicInformation(&output, topic)
+
+	want := "\nConsumer Group: orders-service\n" +
+		"Topic: orders\n" +
+		strings.Repeat("=", 80) + "\n" +
+		"PARTITION    COMMITTED OFFSET    LOG END OFFSET    LAG         \n" +
+		"0            128932              129056            124         \n" +
+		"1            98231               98231             0           \n" +
+		"2            78291               78452             161         \n" +
+		"3            91231               91240             9           \n" +
+		"4            93111               93111             0           \n" +
+		"5            88421               88421             0           \n" +
+		"TOTAL 294\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
 func TestRootCommandWithoutFlagsShowsHelp(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()
@@ -355,7 +560,7 @@ func TestRootCommandRequiresTopicForPartitions(t *testing.T) {
 	}
 }
 
-func TestRootCommandDoesNotExposeConsumers(t *testing.T) {
+func TestRootCommandExposesConsumers(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()
 	cmd.SetOut(&output)
@@ -365,14 +570,41 @@ func TestRootCommandDoesNotExposeConsumers(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(output.String(), "--consumers") {
-		t.Fatalf("consumer flag is present in help:\n%s", output.String())
+	if !strings.Contains(output.String(), "-c, --consumers") {
+		t.Fatalf("consumer flag is missing from help:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--group") {
+		t.Fatalf("consumer detail flags are missing from help:\n%s", output.String())
+	}
+	consumerIndex := strings.Index(output.String(), "      --consumer ")
+	groupIndex := strings.Index(output.String(), "      --group string")
+	if consumerIndex == -1 || groupIndex == -1 || consumerIndex > groupIndex {
+		t.Fatalf("--group should follow --consumer in help:\n%s", output.String())
+	}
+}
+
+func TestRootCommandValidatesConsumerDetailFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "missing group", args: []string{"--consumer"}, want: "please provide a consumer group name using the --group flag"},
+		{name: "group without consumer", args: []string{"--group", "orders-service"}, want: "--group requires --consumer"},
+		{name: "list and detail", args: []string{"--consumers", "--consumer", "--group", "orders-service"}, want: "--consumer cannot be combined with --consumers"},
+		{name: "topic without inspection", args: []string{"--topic", "orders"}, want: "--topic requires --partitions or --consumer"},
+		{name: "topic with consumer list", args: []string{"--consumers", "--topic", "orders"}, want: "--topic requires --partitions or --consumer"},
 	}
 
-	cmd = newRootCommand()
-	cmd.SetArgs([]string{"--consumers"})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag") {
-		t.Fatalf("error = %v, want unknown flag", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := newRootCommand()
+			cmd.SetArgs(test.args)
+			err := cmd.Execute()
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

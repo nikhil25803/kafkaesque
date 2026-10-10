@@ -93,3 +93,17 @@ services:
       - ./provision.sh:/opt/kafkaesque/provision.sh:ro
     entrypoint: ["/bin/bash", "/opt/kafkaesque/provision.sh"]
     restart: "no"
+
+  simulator:
+    image: apache/kafka:4.3.0
+    profiles: ["simulator"]
+    volumes:
+      - ./simulate.sh:/opt/kafkaesque/simulate.sh:ro
+    entrypoint: ["/bin/bash", "/opt/kafkaesque/simulate.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/kafkaesque-simulator-ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 5s
+    restart: "no"

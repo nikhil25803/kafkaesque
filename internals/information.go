@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
@@ -12,15 +13,18 @@ import (
 )
 
 func (r InformationRequest) needsMetadata() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer
 }
 
 // KafkaInformation contains the requested Kafka data.
 type KafkaInformation struct {
-	Metadata   *kafkaesque_metadata.MetadataInformation
-	Topics     []kafkaesque_topic.TopicInformation
-	Brokers    []kafkaesque_broker.BrokerInformation
-	Partitions []kafkaesque_partition.PartitionTopicInformation
+	Metadata      *kafkaesque_metadata.MetadataInformation
+	Topics        []kafkaesque_topic.TopicInformation
+	Brokers       []kafkaesque_broker.BrokerInformation
+	Partitions    []kafkaesque_partition.PartitionTopicInformation
+	Consumers     []kafkaesque_consumers.ConsumerGroups
+	Consumer      *kafkaesque_consumers.ConsumerGroupInformation
+	ConsumerTopic *kafkaesque_consumers.ConsumerGroupTopicInformation
 }
 
 // GetKafkaInformation fetches the requested Kafka data.
@@ -37,7 +41,7 @@ func GetKafkaInformation(
 
 	if request.needsMetadata() {
 		var topics []string
-		if request.Partitions && !request.Metadata && !request.Topics && !request.Brokers {
+		if request.Topic != "" && (request.Partitions || request.Consumer) && !request.Metadata && !request.Topics && !request.Brokers {
 			topics = []string{request.Topic}
 		}
 
@@ -50,8 +54,9 @@ func GetKafkaInformation(
 			info.Metadata = kafkaesque_metadata.GetMetadataInformation(metadata)
 		}
 
+		brokers := kafkaesque_broker.GetBrokerInformation(metadata)
 		if request.Brokers {
-			info.Brokers = kafkaesque_broker.GetBrokerInformation(metadata)
+			info.Brokers = brokers
 		}
 
 		if request.Topics {
@@ -64,6 +69,62 @@ func GetKafkaInformation(
 				return nil, fmt.Errorf("failed to get partition information for topic %s: %w", request.Topic, err)
 			}
 			info.Partitions = partitions
+		}
+
+		if request.Consumers {
+			consumerGroups, err := kafkaesque_consumers.GetConsumerInformation(conn, ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get consumer group information: %w", err)
+			}
+
+			brokerAddresses := make(map[int]string, len(brokers))
+			for _, broker := range brokers {
+				brokerAddresses[broker.ID] = broker.Address
+			}
+
+			for _, group := range consumerGroups {
+				brokerAddress, ok := brokerAddresses[group.CoordinatorID]
+				if !ok {
+					return nil, fmt.Errorf("coordinator broker %d for consumer group %s not found", group.CoordinatorID, group.GroupName)
+				}
+
+				describedGroups, err := kafkaesque_consumers.GetConsumerGroupDescription(conn, ctx, kafkaesque_consumers.ConsumerGroupDescriptionRequest{
+					Group:         group,
+					BrokerAddress: brokerAddress,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("failed to describe consumer group %s: %w", group.GroupName, err)
+				}
+				info.Consumers = append(info.Consumers, describedGroups...)
+			}
+		}
+
+		if request.Consumer {
+			if request.Topic != "" {
+				consumerTopic, err := kafkaesque_consumers.GetConsumerGroupTopicInformation(
+					conn,
+					ctx,
+					metadata,
+					request.Group,
+					request.Topic,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get consumer group %s topic %s: %w", request.Group, request.Topic, err)
+				}
+				info.ConsumerTopic = consumerTopic
+			} else {
+				consumer, err := kafkaesque_consumers.GetConsumerGroupInformation(
+					conn,
+					ctx,
+					metadata,
+					request.Group,
+					request.lagThresholds,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get consumer group %s: %w", request.Group, err)
+				}
+				info.Consumer = consumer
+			}
 		}
 	}
 

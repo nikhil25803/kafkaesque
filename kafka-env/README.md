@@ -26,6 +26,35 @@ make kafka-down
 Re-running `make kafka-up` does not duplicate records. Use `make kafka-reset`
 for a clean fixture set.
 
+## Activity simulator
+
+After starting the fixture, run the optional activity simulator to continuously
+produce records and keep consumer groups active:
+
+```sh
+make kafka-up
+make kafka-simulator-start
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml -c
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor --topic orders
+make kafka-simulator-stop
+make kafka-down
+```
+
+The simulator reuses the fixture groups and adds one multi-topic group:
+
+| Consumer group | Topics | Active members |
+| --- | ---: | ---: |
+| `order-processor` | 1 | 2 |
+| `payment-worker` | 1 | 1 |
+| `inventory-sync` | 1 | 1 |
+| `notification-dispatcher` | 2 | 1 |
+
+Use `make kafka-simulator-status` to inspect the container and
+`make kafka-simulator-logs` to follow its output. The simulator requires an
+existing fixture and will not start Kafka automatically. Produced records and
+consumer offsets remain until `make kafka-reset`.
+
 The equivalent direct Compose commands are:
 
 ```sh

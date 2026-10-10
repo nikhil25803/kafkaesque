@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	"github.com/spf13/cobra"
 )
@@ -16,10 +17,15 @@ type InformationRequest struct {
 	Brokers    bool
 	Partitions bool
 	Topic      string
+	Consumers  bool
+	Consumer   bool
+	Group      string
+
+	lagThresholds kafkaesque_consumers.LagThresholds
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Group != "" || r.Topic != ""
 }
 
 func newRootCommand() *cobra.Command {
@@ -35,7 +41,7 @@ func newRootCommandWithConnectionCheck(checkConnection func(context.Context, str
 		Use:   "kafkaesque",
 		Short: "Kafkaesque is a tool for interacting with Kafka clusters.",
 		Long: `Kafkaesque is a lightweight, read-only Kafka cluster inspector for viewing cluster
-metadata, brokers, topics, and partitions.`,
+metadata, brokers, topics, partitions, and consumer groups.`,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -44,11 +50,16 @@ metadata, brokers, topics, and partitions.`,
 		},
 	}
 
+	cmd.Flags().SortFlags = false
+
 	cmd.Flags().BoolVarP(&request.Metadata, "metadata", "m", false, "Retrieve cluster metadata")
-	cmd.Flags().BoolVarP(&request.Topics, "topics", "t", false, "Retrieve topic information")
 	cmd.Flags().BoolVarP(&request.Brokers, "brokers", "b", false, "Retrieve broker information")
+	cmd.Flags().BoolVarP(&request.Topics, "topics", "t", false, "Retrieve topic information")
 	cmd.Flags().BoolVarP(&request.Partitions, "partitions", "p", false, "Retrieve partition information for a topic")
-	cmd.Flags().StringVar(&request.Topic, "topic", "", "Topic name")
+	cmd.Flags().StringVar(&request.Topic, "topic", "", "Topic name for partition or consumer group inspection")
+	cmd.Flags().BoolVarP(&request.Consumers, "consumers", "c", false, "Retrieve consumer group information")
+	cmd.Flags().BoolVar(&request.Consumer, "consumer", false, "Retrieve detailed information for one consumer group")
+	cmd.Flags().StringVar(&request.Group, "group", "", "Consumer group name")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
 
@@ -74,6 +85,18 @@ func runRootCommand(
 	if request.Partitions && request.Topic == "" {
 		return fmt.Errorf("please provide a topic name using the --topic flag")
 	}
+	if request.Topic != "" && !request.Partitions && !request.Consumer {
+		return fmt.Errorf("--topic requires --partitions or --consumer")
+	}
+	if request.Consumer && request.Consumers {
+		return fmt.Errorf("--consumer cannot be combined with --consumers")
+	}
+	if request.Consumer && request.Group == "" {
+		return fmt.Errorf("please provide a consumer group name using the --group flag")
+	}
+	if !request.Consumer && request.Group != "" {
+		return fmt.Errorf("--group requires --consumer")
+	}
 
 	cfg, err := kafkaesque_config.Load(configPath)
 	if err != nil {
@@ -82,6 +105,10 @@ func runRootCommand(
 	if check == "config" {
 		fmt.Fprintln(cmd.OutOrStdout(), "Configuration is valid")
 		return nil
+	}
+	request.lagThresholds = kafkaesque_consumers.LagThresholds{
+		Warning:   cfg.Lag.WarningThreshold,
+		Unhealthy: cfg.Lag.UnhealthyThreshold,
 	}
 
 	ctx := cmd.Context()
