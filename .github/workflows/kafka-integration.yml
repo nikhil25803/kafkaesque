@@ -127,13 +127,21 @@ jobs:
             sleep 1
           done
           test "${api_ready}" = true
+          curl --fail --silent http://127.0.0.1:18085/ >"${RUNNER_TEMP}/root.json"
+          curl --fail --silent http://127.0.0.1:18085/ui >"${RUNNER_TEMP}/dashboard.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/assets/app.css >"${RUNNER_TEMP}/app.css"
+          curl --fail --silent http://127.0.0.1:18085/ui/assets/app.js >"${RUNNER_TEMP}/app.js"
+          grep -q "Demo data" "${RUNNER_TEMP}/dashboard.html"
+          grep -q "orders-service" "${RUNNER_TEMP}/dashboard.html"
+          grep -q -- "--canvas: #050505" "${RUNNER_TEMP}/app.css"
+          grep -q "event.key === 'Escape'" "${RUNNER_TEMP}/app.js"
           curl --fail --silent http://127.0.0.1:18085/api/v1/metadata/connection >"${RUNNER_TEMP}/connection.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/metadata/cluster >"${RUNNER_TEMP}/cluster.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/health/cluster >"${RUNNER_TEMP}/health.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/consumers/groups >"${RUNNER_TEMP}/groups.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/topics/orders/partitions >"${RUNNER_TEMP}/partitions.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/brokers >"${RUNNER_TEMP}/brokers.json"
-          python3 -c 'import json,os; root=os.environ["RUNNER_TEMP"]; load=lambda name: json.load(open(os.path.join(root,name),encoding="utf-8")); docs=[load(name) for name in ("uptime.json","connection.json","cluster.json","health.json","groups.json","partitions.json","brokers.json")]; assert all(doc["success"] is True and doc["status"] == 200 and "data" in doc for doc in docs); uptime,connection,cluster,health,groups,partitions,brokers=docs; assert uptime["data"]["status"] == "UP"; assert connection["data"]["status"] == "CONNECTED"; assert cluster["data"]["broker_count"] == 2; assert health["data"]["status"] in ("HEALTHY", "DEGRADED"); assert groups["meta"]["total_items"] >= 1; assert len(partitions["data"]) == 6; assert len(brokers["data"]) == 2'
+          python3 -c 'import json,os; root=os.environ["RUNNER_TEMP"]; load=lambda name: json.load(open(os.path.join(root,name),encoding="utf-8")); discovery=load("root.json"); docs=[load(name) for name in ("uptime.json","connection.json","cluster.json","health.json","groups.json","partitions.json","brokers.json")]; assert discovery == {"success":True,"status":200,"data":{"name":"Kafkaesque","api":"/api/v1","health":"/api/v1/health","ui":"/ui"}}; assert all(doc["success"] is True and doc["status"] == 200 and "data" in doc for doc in docs); uptime,connection,cluster,health,groups,partitions,brokers=docs; assert uptime["data"]["status"] == "UP"; assert connection["data"]["status"] == "CONNECTED"; assert cluster["data"]["broker_count"] == 2; assert health["data"]["status"] in ("HEALTHY", "DEGRADED"); assert groups["meta"]["total_items"] >= 1; assert len(partitions["data"]) == 6; assert len(brokers["data"]) == 2'
       - name: Show Kafka diagnostics
         if: failure()
         run: make kafka-ci-diagnostics

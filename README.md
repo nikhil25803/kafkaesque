@@ -322,7 +322,7 @@ kafkaesque serve --config kafkaesque.yaml --port 8085
 ```
 
 The API defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` values
-override the YAML `api` section. It serves live, read-only Kafka snapshots and
+override the YAML `api` section. It serves the read-only API and web UI, and
 keeps one authenticated Kafka connection for the server lifetime. Because API
 authentication is not included yet, restrict `api.host` or `--host` when the
 machine is connected to an untrusted network.
@@ -333,6 +333,16 @@ GET /api/v1/health
 
 See [API documentation](API.md) for all endpoints, filters, envelopes, and
 status codes.
+
+The first UI preview is available from the same process:
+
+```http
+GET /ui
+```
+
+It currently contains a responsive Dashboard populated with clearly labelled
+demo data. Consumer Groups, Topics, Brokers, and Cluster Health pages remain
+disabled until they are implemented and reviewed one at a time.
 
 ## Local Kafka environment
 

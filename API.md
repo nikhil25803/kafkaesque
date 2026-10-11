@@ -11,6 +11,16 @@ The listener defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` flags
 override `api.host` and `api.port` from YAML. The API has no application
 authentication yet, so restrict the listener on untrusted networks.
 
+## Discovery
+
+| Method | Path | Query Params | Description |
+| --- | --- | --- | --- |
+| `GET` | `/` | — | Service name and links to the API, uptime check, and web UI. |
+
+```json
+{"success":true,"status":200,"data":{"name":"Kafkaesque","api":"/api/v1","health":"/api/v1/health","ui":"/ui"}}
+```
+
 ## Response format
 
 Successful responses use a data envelope. Non-list endpoints return an empty

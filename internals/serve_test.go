@@ -2,10 +2,15 @@ package internals
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 )
 
 func TestServeCommandUsesConfigAndExplicitOverrides(t *testing.T) {
@@ -48,4 +53,43 @@ func TestServeCommandRejectsInvalidFlagOverrides(t *testing.T) {
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected invalid API configuration")
 	}
+}
+
+func TestApplicationRoutes(t *testing.T) {
+	handler := newApplicationHandler(&kafkaesque.KafkaesqueConn{}, &kafkaesque_config.Config{})
+
+	t.Run("discovery", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+		}
+		var body struct {
+			Success bool              `json:"success"`
+			Status  int               `json:"status"`
+			Data    map[string]string `json:"data"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if !body.Success || body.Status != http.StatusOK || body.Data["ui"] != "/ui" || body.Data["api"] != "/api/v1" {
+			t.Fatalf("unexpected discovery response: %+v", body)
+		}
+	})
+
+	t.Run("dashboard", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ui", nil))
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+			t.Fatalf("dashboard response = %d %q", response.Code, response.Header().Get("Content-Type"))
+		}
+	})
+
+	t.Run("API", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/json" {
+			t.Fatalf("API response = %d %q", response.Code, response.Header().Get("Content-Type"))
+		}
+	})
 }
