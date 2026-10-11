@@ -6,6 +6,7 @@ import (
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
+	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
@@ -13,12 +14,13 @@ import (
 )
 
 func (r InformationRequest) needsMetadata() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer
+	return r.Metadata || r.Health || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer
 }
 
 // KafkaInformation contains the requested Kafka data.
 type KafkaInformation struct {
 	Metadata      *kafkaesque_metadata.MetadataInformation
+	Health        *kafkaesque_health.Information
 	Topics        []kafkaesque_topic.TopicInformation
 	Brokers       []kafkaesque_broker.BrokerInformation
 	Partitions    []kafkaesque_partition.PartitionTopicInformation
@@ -52,6 +54,13 @@ func GetKafkaInformation(
 
 		if request.Metadata {
 			info.Metadata = kafkaesque_metadata.GetMetadataInformation(metadata)
+		}
+		if request.Health {
+			health, err := kafkaesque_health.GetInformation(conn, ctx, metadata, request.lagThresholds)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get cluster health: %w", err)
+			}
+			info.Health = health
 		}
 
 		brokers := kafkaesque_broker.GetBrokerInformation(metadata, conn.ResolveBrokerAddress)

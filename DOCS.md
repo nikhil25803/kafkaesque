@@ -11,6 +11,7 @@ offsets, lag, member counts, and consumer states vary by cluster and over time.
 - [Configuration checks](#configuration-checks)
 - [Version](#version)
 - [Cluster metadata](#cluster-metadata)
+- [Cluster health](#cluster-health)
 - [Brokers](#brokers)
 - [Topics](#topics)
 - [Topic partitions](#topic-partitions)
@@ -101,6 +102,58 @@ Topics:                                 6
 
 STATUS: CONNECTED
 ```
+
+## Cluster health
+
+Inspect cluster, partition, and consumer-group health in one command:
+
+```sh
+kafkaesque --health
+```
+
+```text
+Kafka Cluster Health
+================================================================================
+Status: HEALTHY
+CLUSTER
+  Brokers: 3
+  Topics: 24
+  Partitions: 186
+  Consumer Groups: 17
+PARTITIONS
+  Offline: 0
+  Under-replicated: 0
+CONSUMERS
+  Rebalancing: 0
+  Dead: 0
+  Lagging: 0
+```
+
+A cluster with any offline or under-replicated partition, rebalancing or dead
+consumer group, or group lag above the configured warning threshold is
+reported as degraded:
+
+```text
+Kafka Cluster Health
+================================================================================
+Status: DEGRADED
+CLUSTER
+  Brokers: 3
+  Topics: 24
+  Partitions: 186
+  Consumer Groups: 17
+PARTITIONS
+  Offline: 0
+  Under-replicated: 3
+CONSUMERS
+  Rebalancing: 1
+  Dead: 0
+  Lagging: 2
+```
+
+Both `HEALTHY` and `DEGRADED` are successful inspections and exit with code
+`0`. Collection and configuration failures remain nonzero. `--health` can use
+`--config`, but cannot be combined with other information flags or selectors.
 
 ## Brokers
 

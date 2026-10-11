@@ -9,6 +9,7 @@ import (
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
+	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
@@ -18,6 +19,9 @@ import (
 func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info *KafkaInformation) error {
 	out := cmd.OutOrStdout()
 
+	if request.Health {
+		printHealthInformation(out, info.Health)
+	}
 	if request.Metadata {
 		printMetadataInformation(out, info.Metadata)
 	}
@@ -41,6 +45,24 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 		}
 	}
 	return nil
+}
+
+func printHealthInformation(out io.Writer, info *kafkaesque_health.Information) {
+	fmt.Fprintln(out, "Kafka Cluster Health")
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+	fmt.Fprintf(out, "Status: %s\n", info.Status)
+	fmt.Fprintln(out, "CLUSTER")
+	fmt.Fprintf(out, "  Brokers: %d\n", info.BrokerCount)
+	fmt.Fprintf(out, "  Topics: %d\n", info.TopicCount)
+	fmt.Fprintf(out, "  Partitions: %d\n", info.PartitionCount)
+	fmt.Fprintf(out, "  Consumer Groups: %d\n", info.ConsumerGroupCount)
+	fmt.Fprintln(out, "PARTITIONS")
+	fmt.Fprintf(out, "  Offline: %d\n", info.OfflinePartitionCount)
+	fmt.Fprintf(out, "  Under-replicated: %d\n", info.UnderReplicatedCount)
+	fmt.Fprintln(out, "CONSUMERS")
+	fmt.Fprintf(out, "  Rebalancing: %d\n", info.RebalancingGroupCount)
+	fmt.Fprintf(out, "  Dead: %d\n", info.DeadGroupCount)
+	fmt.Fprintf(out, "  Lagging: %d\n", info.LaggingGroupCount)
 }
 
 func printConsumerGroupTopicInformation(out io.Writer, topic *kafkaesque_consumers.ConsumerGroupTopicInformation) {

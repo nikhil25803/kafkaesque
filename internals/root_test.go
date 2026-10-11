@@ -16,6 +16,7 @@ import (
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
+	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
@@ -109,6 +110,28 @@ func TestGetKafkaInformationCompletesConsumerGroups(t *testing.T) {
 	}
 	if !reflect.DeepEqual(transport.describeAddresses, []string{"broker:9092"}) {
 		t.Fatalf("describe addresses = %v, want [broker:9092]", transport.describeAddresses)
+	}
+}
+
+func TestGetKafkaInformationHealthUsesSharedMetadata(t *testing.T) {
+	transport := &recordingTransport{}
+	request := InformationRequest{
+		Health:        true,
+		lagThresholds: kafkaesque_consumers.LagThresholds{Warning: 100, Unhealthy: 500},
+	}
+	info, err := GetKafkaInformation(context.Background(), connectionWithTransport(transport), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &kafkaesque_health.Information{
+		Status: kafkaesque_health.StatusHealthy, BrokerCount: 1, TopicCount: 1,
+		PartitionCount: 1, ConsumerGroupCount: 1,
+	}
+	if !reflect.DeepEqual(info.Health, want) {
+		t.Fatalf("health = %+v, want %+v", info.Health, want)
+	}
+	if !reflect.DeepEqual(transport.metadataTopics, [][]string{nil}) {
+		t.Fatalf("metadata requests = %v, want one complete request", transport.metadataTopics)
 	}
 }
 
@@ -324,6 +347,54 @@ func TestPrintMetadataInformation(t *testing.T) {
 		"\n" +
 		"STATUS: CONNECTED\n" +
 		"\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintHealthInformation(t *testing.T) {
+	info := &kafkaesque_health.Information{
+		Status: kafkaesque_health.StatusDegraded, BrokerCount: 3, TopicCount: 24,
+		PartitionCount: 186, ConsumerGroupCount: 17, OfflinePartitionCount: 0,
+		UnderReplicatedCount: 3, RebalancingGroupCount: 1, DeadGroupCount: 0, LaggingGroupCount: 2,
+	}
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	if err := printKafkaInformation(cmd, InformationRequest{Health: true}, &KafkaInformation{Health: info}); err != nil {
+		t.Fatal(err)
+	}
+	want := "Kafka Cluster Health\n" + strings.Repeat("=", 80) + "\n" +
+		"Status: DEGRADED\n" +
+		"CLUSTER\n" +
+		"  Brokers: 3\n" +
+		"  Topics: 24\n" +
+		"  Partitions: 186\n" +
+		"  Consumer Groups: 17\n" +
+		"PARTITIONS\n" +
+		"  Offline: 0\n" +
+		"  Under-replicated: 3\n" +
+		"CONSUMERS\n" +
+		"  Rebalancing: 1\n" +
+		"  Dead: 0\n" +
+		"  Lagging: 2\n"
+	if output.String() != want {
+		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintHealthyHealthInformation(t *testing.T) {
+	info := &kafkaesque_health.Information{
+		Status: kafkaesque_health.StatusHealthy, BrokerCount: 3, TopicCount: 24,
+		PartitionCount: 186, ConsumerGroupCount: 17,
+	}
+	var output bytes.Buffer
+	printHealthInformation(&output, info)
+	want := "Kafka Cluster Health\n" + strings.Repeat("=", 80) + "\n" +
+		"Status: HEALTHY\n" +
+		"CLUSTER\n  Brokers: 3\n  Topics: 24\n  Partitions: 186\n  Consumer Groups: 17\n" +
+		"PARTITIONS\n  Offline: 0\n  Under-replicated: 0\n" +
+		"CONSUMERS\n  Rebalancing: 0\n  Dead: 0\n  Lagging: 0\n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
 	}
@@ -653,6 +724,9 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	if !strings.Contains(output.String(), "-c, --consumers") {
 		t.Fatalf("consumer flag is missing from help:\n%s", output.String())
 	}
+	if !strings.Contains(output.String(), "--health") {
+		t.Fatalf("health flag is missing from help:\n%s", output.String())
+	}
 	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--member") || !strings.Contains(output.String(), "--group") {
 		t.Fatalf("consumer detail flags are missing from help:\n%s", output.String())
 	}
@@ -661,6 +735,31 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	groupIndex := strings.Index(output.String(), "      --group string")
 	if consumerIndex == -1 || memberIndex == -1 || groupIndex == -1 || consumerIndex > memberIndex || memberIndex > groupIndex {
 		t.Fatalf("--member and --group should follow --consumer in help:\n%s", output.String())
+	}
+}
+
+func TestRootCommandRequiresHealthToBeStandalone(t *testing.T) {
+	tests := [][]string{
+		{"--health", "--metadata"},
+		{"--health", "--brokers"},
+		{"--health", "--topics"},
+		{"--health", "--partitions", "--topic", "orders"},
+		{"--health", "--consumers"},
+		{"--health", "--consumer", "--group", "orders-service"},
+		{"--health", "--member"},
+		{"--health", "--group", "orders-service"},
+		{"--health", "--topic", "orders"},
+	}
+
+	for _, args := range tests {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cmd := newRootCommand()
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			if err == nil || err.Error() != "--health cannot be combined with other information flags" {
+				t.Fatalf("error = %v", err)
+			}
+		})
 	}
 }
 
@@ -749,15 +848,17 @@ func TestRootCommandRejectsInvalidChecks(t *testing.T) {
 		}
 	})
 
-	t.Run("combined with information flag", func(t *testing.T) {
-		cmd := newRootCommand()
-		cmd.SetArgs([]string{"--check", "config", "--metadata"})
+	for _, flag := range []string{"--metadata", "--health"} {
+		t.Run("combined with "+flag, func(t *testing.T) {
+			cmd := newRootCommand()
+			cmd.SetArgs([]string{"--check", "config", flag})
 
-		err := cmd.Execute()
-		if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
-			t.Fatalf("error = %v", err)
-		}
-	})
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
 }
 
 func TestRootCommandReturnsConnectionCheckErrors(t *testing.T) {

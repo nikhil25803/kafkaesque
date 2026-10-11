@@ -74,6 +74,31 @@ jobs:
           grep -q "Warning Partitions:" <<<"${consumer}"
           grep -q "Unhealthy Partitions:" <<<"${consumer}"
           grep -Eq '[1-9][0-9]* assigned partitions' <<<"${consumer}"
+
+          health=""
+          health_ready=false
+          for _ in {1..30}; do
+            if health="$(./bin/kafkaesque --config "${config}" --health 2>&1)" &&
+              grep -q "Status: HEALTHY" <<<"${health}"; then
+              health_ready=true
+              break
+            fi
+            sleep 2
+          done
+          printf '%s\n' "${health}"
+          test "${health_ready}" = true
+          grep -q "CLUSTER" <<<"${health}"
+          grep -q "Brokers:" <<<"${health}"
+          grep -q "Topics:" <<<"${health}"
+          grep -q "Partitions:" <<<"${health}"
+          grep -q "Consumer Groups:" <<<"${health}"
+          grep -q "PARTITIONS" <<<"${health}"
+          grep -q "Offline:" <<<"${health}"
+          grep -q "Under-replicated:" <<<"${health}"
+          grep -q "CONSUMERS" <<<"${health}"
+          grep -q "Rebalancing:" <<<"${health}"
+          grep -q "Dead:" <<<"${health}"
+          grep -q "Lagging:" <<<"${health}"
       - name: Show Kafka diagnostics
         if: failure()
         run: make kafka-ci-diagnostics

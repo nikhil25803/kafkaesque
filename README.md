@@ -132,6 +132,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 | Short | Long           | Value | Description                                              | Example                                                        |
 | ----- | -------------- | ----- | -------------------------------------------------------- | -------------------------------------------------------------- |
 | `-m`  | `--metadata`   | —     | Show cluster metadata and connection status.             | `kafkaesque --metadata`                                        |
+| —     | `--health`     | —     | Show cluster, partition, and consumer health.             | `kafkaesque --health`                                          |
 | `-b`  | `--brokers`    | —     | List Kafka brokers.                                      | `kafkaesque --brokers`                                         |
 | `-t`  | `--topics`     | —     | List Kafka topics.                                       | `kafkaesque --topics`                                          |
 | `-p`  | `--partitions` | —     | List partitions for the topic selected by `--topic`.     | `kafkaesque --partitions --topic orders`                       |
@@ -179,6 +180,9 @@ kafkaesque --metadata --partitions --topic orders
 
 Consumer list and consumer detail modes are intentionally separate, so
 `--consumers` cannot be combined with `--consumer`.
+
+Cluster health is a standalone inspection. `--health` can be combined with
+`--config`, but not with other information flags or selectors.
 
 </details>
 
