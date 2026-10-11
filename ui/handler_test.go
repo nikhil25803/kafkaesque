@@ -22,7 +22,7 @@ func TestDashboard(t *testing.T) {
 		t.Fatalf("Cache-Control = %q", got)
 	}
 	for _, text := range []string{
-		"<main", "<nav", `aria-current="page"`, `aria-disabled="true"`,
+		"<main", "<nav", `aria-current="page"`,
 		"Dashboard", "Demo data", "CONNECTED", "42ms", "SASL_SSL", "SCRAM-SHA-256",
 		">3</strong>", ">24</strong>", ">186</strong>", ">17</strong>",
 		"orders-service", "analytics", "notification", "payments",

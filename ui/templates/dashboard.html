@@ -101,7 +101,10 @@
               <p class="eyebrow">Diagnostics</p>
               <h2 id="health-title">Cluster health</h2>
             </div>
-            <span class="status-label warning"><span class="status-dot warning" aria-hidden="true"></span>{{.Health.Status}}</span>
+            <div class="panel-actions">
+              <span class="status-label warning"><span class="status-dot warning" aria-hidden="true"></span>{{.Health.Status}}</span>
+              <a class="text-link" href="/ui/cluster-health">View details</a>
+            </div>
           </div>
           <dl class="health-list">
             <div><dt>Offline partitions</dt><dd>{{.Health.Offline}}</dd></div>

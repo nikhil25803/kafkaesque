@@ -1,0 +1,73 @@
+{{define "cluster-health"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Cluster Health · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <header class="page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <div class="title-with-badge">
+              <h1>Cluster Health</h1>
+              <span class="demo-badge">Demo data</span>
+            </div>
+            <p>Current cluster, partition, and consumer diagnostics</p>
+          </div>
+        </div>
+      </header>
+
+      <section class="health-status-panel" aria-labelledby="overall-health-title">
+        <div>
+          <p class="eyebrow">Overall status</p>
+          <h2 id="overall-health-title">Cluster requires attention</h2>
+          <p>The cluster is available, but one or more health signals require attention.</p>
+        </div>
+        <span class="status-label {{.StatusClass}}"><span class="status-dot {{.StatusClass}}" aria-hidden="true"></span>{{.Status}}</span>
+      </section>
+
+      <section aria-labelledby="health-overview-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Inventory</p><h2 id="health-overview-title">Cluster overview</h2></div>
+        </div>
+        <div class="metric-grid">
+          {{range .Metrics}}<article class="metric-card"><strong>{{.Value}}</strong><span>{{.Label}}</span></article>{{end}}
+        </div>
+      </section>
+
+      <div class="health-diagnostics-grid">
+        <section class="panel" aria-labelledby="partition-health-title">
+          <div class="panel-heading"><div><p class="eyebrow">Replication</p><h2 id="partition-health-title">Partition health</h2></div></div>
+          <dl class="diagnostic-list">
+            {{range .PartitionDiagnostics}}
+            <div><dt>{{.Label}}</dt><dd><strong>{{.Value}}</strong><span class="status-label {{.StatusClass}}"><span class="status-dot {{.StatusClass}}" aria-hidden="true"></span>{{.Status}}</span></dd></div>
+            {{end}}
+          </dl>
+        </section>
+
+        <section class="panel" aria-labelledby="consumer-health-title">
+          <div class="panel-heading"><div><p class="eyebrow">Workloads</p><h2 id="consumer-health-title">Consumer health</h2></div></div>
+          <dl class="diagnostic-list">
+            {{range .ConsumerDiagnostics}}
+            <div><dt>{{.Label}}</dt><dd><strong>{{.Value}}</strong><span class="status-label {{.StatusClass}}"><span class="status-dot {{.StatusClass}}" aria-hidden="true"></span>{{.Status}}</span></dd></div>
+            {{end}}
+          </dl>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+{{end}}

@@ -139,6 +139,7 @@ jobs:
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/topics?q=state&level=internal' >"${RUNNER_TEMP}/topics-fragment.html"
           curl --fail --silent http://127.0.0.1:18085/ui/brokers >"${RUNNER_TEMP}/ui-brokers.html"
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/brokers?q=rack-b' >"${RUNNER_TEMP}/brokers-fragment.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/cluster-health >"${RUNNER_TEMP}/cluster-health.html"
           curl --fail --silent http://127.0.0.1:18085/ui/assets/app.css >"${RUNNER_TEMP}/app.css"
           curl --fail --silent http://127.0.0.1:18085/ui/assets/app.js >"${RUNNER_TEMP}/app.js"
           curl --fail --silent http://127.0.0.1:18085/ui/assets/htmx-4.0.0.min.js >"${RUNNER_TEMP}/htmx.min.js"
@@ -161,6 +162,9 @@ jobs:
           grep -q "1–3 of 3 brokers" "${RUNNER_TEMP}/ui-brokers.html"
           grep -q 'broker-2.kafka.local:9092' "${RUNNER_TEMP}/brokers-fragment.html"
           test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/brokers-fragment.html")" -eq 0
+          grep -q 'Cluster requires attention' "${RUNNER_TEMP}/cluster-health.html"
+          grep -q 'Under-replicated partitions' "${RUNNER_TEMP}/cluster-health.html"
+          grep -q 'Lagging groups' "${RUNNER_TEMP}/cluster-health.html"
           grep -q -- "--canvas: #050505" "${RUNNER_TEMP}/app.css"
           grep -q "event.key === 'Escape'" "${RUNNER_TEMP}/app.js"
           grep -q "var htmx=" "${RUNNER_TEMP}/htmx.min.js"

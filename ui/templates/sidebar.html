@@ -24,10 +24,10 @@
       <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="6" rx="1"/><rect x="4" y="15" width="16" height="6" rx="1"/><path d="M8 6h.01M8 18h.01M12 9v6"/></svg>
       <span>Brokers</span>
     </a>
-    <span class="nav-item disabled" aria-disabled="true" aria-label="Cluster Health, not yet available">
+    <a class="nav-item{{if eq .Active "cluster-health"}} active{{end}}" href="/ui/cluster-health"{{if eq .Active "cluster-health"}} aria-current="page"{{end}} aria-label="Cluster Health">
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.2 8.4 8 10 4.8-1.6 8-5 8-10V6l-8-3Z"/><path d="m8 12 2.5 2.5L16 9"/></svg>
       <span>Cluster Health</span>
-    </span>
+    </a>
   </nav>
 
   <p class="sidebar-note">Read-only Kafka observability</p>
