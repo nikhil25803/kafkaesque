@@ -55,11 +55,6 @@ type pageRequest struct {
 	pageSize int
 }
 
-type connectionSnapshot struct {
-	metadata *kafka.MetadataResponse
-	latency  time.Duration
-}
-
 type connectionSnapshotKey struct{}
 
 type connectionInformation struct {
@@ -160,13 +155,13 @@ func (s *server) connection(w http.ResponseWriter, r *http.Request) {
 		Status: "CONNECTED", Protocol: kafkaesque.SecurityProtocol(s.config.Kafka),
 		SASLMechanism: s.config.Kafka.Security.SASL.Mechanism,
 		MTLS:          s.config.Kafka.Security.TLS.ClientCertFile != "",
-		LatencyMS:     snapshot.latency.Milliseconds(),
+		LatencyMS:     snapshot.Latency.Milliseconds(),
 	}
 	writeSuccess(w, http.StatusOK, info, map[string]any{})
 }
 
 func (s *server) cluster(w http.ResponseWriter, r *http.Request) {
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	base := kafkaesque_metadata.GetMetadataInformation(metadata)
 	writeSuccess(w, http.StatusOK, clusterInformation{
 		ClusterID: base.ClusterID, ControllerID: base.ControllerID,
@@ -176,7 +171,7 @@ func (s *server) cluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	info, err := kafkaesque_health.GetInformation(s.conn, r.Context(), metadata, s.thresholds)
 	if err != nil {
 		writeUpstreamError(w, err)
@@ -192,7 +187,7 @@ func (s *server) consumerGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	groups, err := kafkaesque_consumers.GetConsumerGroupsInformation(s.conn, r.Context(), metadata, s.thresholds)
 	if err != nil {
 		writeUpstreamError(w, err)
@@ -217,7 +212,7 @@ func (s *server) consumerGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) consumerGroup(w http.ResponseWriter, r *http.Request) {
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	group := r.PathValue("group")
 	info, err := kafkaesque_consumers.GetConsumerGroupInformation(s.conn, r.Context(), metadata, group, s.thresholds, true)
 	if err != nil {
@@ -237,7 +232,7 @@ func (s *server) consumerTopicPartitions(w http.ResponseWriter, r *http.Request)
 		writeInvalid(w, err.Error())
 		return
 	}
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	group, topic := r.PathValue("group"), r.PathValue("topic")
 	info, err := kafkaesque_consumers.GetConsumerGroupTopicInformation(s.conn, r.Context(), metadata, group, topic)
 	if err != nil {
@@ -260,7 +255,7 @@ func (s *server) topics(w http.ResponseWriter, r *http.Request) {
 		writeInvalid(w, "level must be internal or external")
 		return
 	}
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	items := kafkaesque_topics.GetTopicInformation(metadata)
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	filtered := make([]kafkaesque_topics.TopicInformation, 0, len(items))
@@ -274,7 +269,7 @@ func (s *server) topics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) topic(w http.ResponseWriter, r *http.Request) {
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	name := r.PathValue("topic")
 	for _, topic := range kafkaesque_topics.GetTopicInformation(metadata) {
 		if topic.Name == name {
@@ -296,7 +291,7 @@ func (s *server) topicPartitions(w http.ResponseWriter, r *http.Request) {
 		writeInvalid(w, "status must be healthy or degraded")
 		return
 	}
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	name := r.PathValue("topic")
 	items, err := kafkaesque_partitions.GetPartitionInformation(metadata, name)
 	if err != nil {
@@ -319,7 +314,7 @@ func (s *server) brokers(w http.ResponseWriter, r *http.Request) {
 		writeInvalid(w, err.Error())
 		return
 	}
-	metadata := snapshotFrom(r).metadata
+	metadata := snapshotFrom(r).Metadata
 	items := kafkaesque_brokers.GetBrokerInformation(metadata, s.conn.ResolveBrokerAddress)
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	filtered := make([]kafkaesque_brokers.BrokerInformation, 0, len(items))
@@ -335,31 +330,17 @@ func (s *server) brokers(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) withConnection(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		started := time.Now()
-		metadata, err := s.conn.GetMetadata(r.Context(), nil)
+		snapshot, err := s.conn.GetMetadataSnapshot(r.Context())
 		if err != nil {
 			writeUpstreamError(w, err)
 			return
 		}
-		for _, topic := range metadata.Topics {
-			if topic.Error != nil {
-				writeUpstreamError(w, topic.Error)
-				return
-			}
-			for _, partition := range topic.Partitions {
-				if partition.Error != nil && !errors.Is(partition.Error, kafka.LeaderNotAvailable) && !errors.Is(partition.Error, kafka.ReplicaNotAvailable) {
-					writeUpstreamError(w, partition.Error)
-					return
-				}
-			}
-		}
-		snapshot := connectionSnapshot{metadata: metadata, latency: time.Since(started)}
 		next(w, r.WithContext(context.WithValue(r.Context(), connectionSnapshotKey{}, snapshot)))
 	}
 }
 
-func snapshotFrom(r *http.Request) connectionSnapshot {
-	return r.Context().Value(connectionSnapshotKey{}).(connectionSnapshot)
+func snapshotFrom(r *http.Request) *kafkaesque.MetadataSnapshot {
+	return r.Context().Value(connectionSnapshotKey{}).(*kafkaesque.MetadataSnapshot)
 }
 
 func parsePage(r *http.Request) (pageRequest, error) {

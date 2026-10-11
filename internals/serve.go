@@ -2,6 +2,7 @@ package internals
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/nikhil25803/kafkaesque/apis"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	"github.com/nikhil25803/kafkaesque/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -20,12 +22,32 @@ func serveAPI(ctx context.Context, address string, handler http.Handler) error {
 	return apis.Serve(ctx, address, handler)
 }
 
+func newApplicationHandler(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/api/", apis.NewHandler(conn, cfg))
+	uiHandler := ui.NewHandler(conn, cfg)
+	mux.Handle("/ui", uiHandler)
+	mux.Handle("/ui/", uiHandler)
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"status":  http.StatusOK,
+			"data": map[string]string{
+				"name": "Kafkaesque", "api": "/api/v1", "health": "/api/v1/health", "ui": "/ui",
+			},
+		})
+	})
+	return mux
+}
+
 func newServeCommand(serve apiServer) *cobra.Command {
 	var configPath, host string
 	var port int
 	cmd := &cobra.Command{
 		Use:          "serve",
-		Short:        "Serve the read-only Kafka HTTP API",
+		Short:        "Serve the read-only Kafka HTTP API and UI",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -49,8 +71,8 @@ func newServeCommand(serve apiServer) *cobra.Command {
 			defer conn.Close()
 
 			address := net.JoinHostPort(strings.TrimSpace(cfg.API.Host), strconv.Itoa(cfg.API.Port))
-			fmt.Fprintf(cmd.OutOrStdout(), "Kafkaesque API listening on http://%s\n", address)
-			return serve(cmd.Context(), address, apis.NewHandler(conn, cfg))
+			fmt.Fprintf(cmd.OutOrStdout(), "Kafkaesque server listening on http://%s\n", address)
+			return serve(cmd.Context(), address, newApplicationHandler(conn, cfg))
 		},
 	}
 	cmd.Flags().SortFlags = false

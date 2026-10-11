@@ -130,5 +130,6 @@ partition leader.
 | `internals/config`                                         | YAML, environment precedence, and validation.            |
 | `internals/kafka`                                          | Kafka connection and native metadata access.             |
 | `internals/{metadata,brokers,topics,partitions,consumers}` | Domain-specific structured results.                      |
+| `ui`                                                       | Embedded Go templates and assets for the web interface.  |
 | `kafka-env`                                                | Local Kafka fixture and activity simulator.              |
 | `.github/workflows`                                        | Build, tests, integration, and release automation.       |

@@ -127,13 +127,50 @@ jobs:
             sleep 1
           done
           test "${api_ready}" = true
+          curl --fail --silent http://127.0.0.1:18085/ >"${RUNNER_TEMP}/root.json"
+          curl --fail --silent http://127.0.0.1:18085/ui >"${RUNNER_TEMP}/dashboard.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/consumer-groups >"${RUNNER_TEMP}/consumer-groups.html"
+          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/consumer-groups?q=order&state=Stable' >"${RUNNER_TEMP}/consumer-groups-fragment.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/consumer-groups/order-processor >"${RUNNER_TEMP}/consumer-lag.html"
+          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/consumer-groups/order-processor?topic=orders&group_by=member&sort=lag&direction=desc' >"${RUNNER_TEMP}/partition-lag-fragment.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/topics >"${RUNNER_TEMP}/topics.html"
+          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/topics?q=consumer&level=internal' >"${RUNNER_TEMP}/topics-fragment.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/brokers >"${RUNNER_TEMP}/ui-brokers.html"
+          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/brokers?q=2' >"${RUNNER_TEMP}/brokers-fragment.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/cluster-health >"${RUNNER_TEMP}/cluster-health.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/assets/app.css >"${RUNNER_TEMP}/app.css"
+          curl --fail --silent http://127.0.0.1:18085/ui/assets/app.js >"${RUNNER_TEMP}/app.js"
+          curl --fail --silent http://127.0.0.1:18085/ui/assets/htmx-4.0.0.min.js >"${RUNNER_TEMP}/htmx.min.js"
+          grep -q "order-processor" "${RUNNER_TEMP}/dashboard.html"
+          grep -Eq '[0-9]+ of [0-9]+' "${RUNNER_TEMP}/dashboard.html"
+          grep -q "order-processor" "${RUNNER_TEMP}/consumer-groups.html"
+          grep -q 'id="consumer-groups-results"' "${RUNNER_TEMP}/consumer-groups-fragment.html"
+          grep -q "order-processor" "${RUNNER_TEMP}/consumer-groups-fragment.html"
+          test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/consumer-groups-fragment.html")" -eq 0
+          grep -q "Maximum Partition Lag" "${RUNNER_TEMP}/consumer-lag.html"
+          grep -q "Members and assignments" "${RUNNER_TEMP}/consumer-lag.html"
+          grep -q 'Partition lag · orders' "${RUNNER_TEMP}/partition-lag-fragment.html"
+          grep -q 'Assigned Member' "${RUNNER_TEMP}/partition-lag-fragment.html"
+          test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/partition-lag-fragment.html")" -eq 0
+          grep -q "1–6 of 6 topics" "${RUNNER_TEMP}/topics.html"
+          grep -q '__consumer_offsets' "${RUNNER_TEMP}/topics-fragment.html"
+          test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/topics-fragment.html")" -eq 0
+          grep -q "1–2 of 2 brokers" "${RUNNER_TEMP}/ui-brokers.html"
+          grep -q 'localhost:9095' "${RUNNER_TEMP}/brokers-fragment.html"
+          test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/brokers-fragment.html")" -eq 0
+          grep -q 'Cluster is healthy' "${RUNNER_TEMP}/cluster-health.html"
+          grep -q 'Under-replicated partitions' "${RUNNER_TEMP}/cluster-health.html"
+          grep -q 'Lagging groups' "${RUNNER_TEMP}/cluster-health.html"
+          grep -q -- "--canvas: #050505" "${RUNNER_TEMP}/app.css"
+          grep -q "event.key === 'Escape'" "${RUNNER_TEMP}/app.js"
+          grep -q "var htmx=" "${RUNNER_TEMP}/htmx.min.js"
           curl --fail --silent http://127.0.0.1:18085/api/v1/metadata/connection >"${RUNNER_TEMP}/connection.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/metadata/cluster >"${RUNNER_TEMP}/cluster.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/health/cluster >"${RUNNER_TEMP}/health.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/consumers/groups >"${RUNNER_TEMP}/groups.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/topics/orders/partitions >"${RUNNER_TEMP}/partitions.json"
           curl --fail --silent http://127.0.0.1:18085/api/v1/brokers >"${RUNNER_TEMP}/brokers.json"
-          python3 -c 'import json,os; root=os.environ["RUNNER_TEMP"]; load=lambda name: json.load(open(os.path.join(root,name),encoding="utf-8")); docs=[load(name) for name in ("uptime.json","connection.json","cluster.json","health.json","groups.json","partitions.json","brokers.json")]; assert all(doc["success"] is True and doc["status"] == 200 and "data" in doc for doc in docs); uptime,connection,cluster,health,groups,partitions,brokers=docs; assert uptime["data"]["status"] == "UP"; assert connection["data"]["status"] == "CONNECTED"; assert cluster["data"]["broker_count"] == 2; assert health["data"]["status"] in ("HEALTHY", "DEGRADED"); assert groups["meta"]["total_items"] >= 1; assert len(partitions["data"]) == 6; assert len(brokers["data"]) == 2'
+          python3 -c 'import json,os; root=os.environ["RUNNER_TEMP"]; load=lambda name: json.load(open(os.path.join(root,name),encoding="utf-8")); discovery=load("root.json"); docs=[load(name) for name in ("uptime.json","connection.json","cluster.json","health.json","groups.json","partitions.json","brokers.json")]; assert discovery == {"success":True,"status":200,"data":{"name":"Kafkaesque","api":"/api/v1","health":"/api/v1/health","ui":"/ui"}}; assert all(doc["success"] is True and doc["status"] == 200 and "data" in doc for doc in docs); uptime,connection,cluster,health,groups,partitions,brokers=docs; assert uptime["data"]["status"] == "UP"; assert connection["data"]["status"] == "CONNECTED"; assert cluster["data"]["broker_count"] == 2; assert health["data"]["status"] in ("HEALTHY", "DEGRADED"); assert groups["meta"]["total_items"] >= 1; assert len(partitions["data"]) == 6; assert len(brokers["data"]) == 2'
       - name: Show Kafka diagnostics
         if: failure()
         run: make kafka-ci-diagnostics

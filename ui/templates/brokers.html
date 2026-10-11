@@ -1,0 +1,103 @@
+{{define "brokers"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Brokers · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/htmx-4.0.0.min.js" defer></script>
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <header class="page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <div class="title-with-badge">
+              <h1>Brokers</h1>
+            </div>
+            <p>Inspect broker addresses and rack placement</p>
+          </div>
+        </div>
+      </header>
+
+      <section class="filter-panel" aria-labelledby="broker-filters-title">
+        <div class="filter-heading">
+          <div>
+            <p class="eyebrow">Find brokers</p>
+            <h2 id="broker-filters-title">Filters</h2>
+          </div>
+          <span class="htmx-indicator loading-label" id="brokers-loading" role="status">Loading…</span>
+        </div>
+        <form class="filter-form" action="/ui/brokers" method="get"
+              hx-get="/ui/brokers" hx-target="#brokers-results"
+              hx-swap="outerHTML" hx-push-url="true" hx-indicator="#brokers-loading">
+          <label class="field search-field">
+            <span>Broker ID, address, or rack</span>
+            <input type="search" name="q" value="{{.Query}}" placeholder="Search brokers…" autocomplete="off">
+          </label>
+          <button class="primary-button" type="submit">Apply filters</button>
+          {{if .Results.HasFilters}}<a class="secondary-button" href="/ui/brokers">Clear filters</a>{{end}}
+        </form>
+      </section>
+
+      {{template "brokers-results" .Results}}
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "brokers-results"}}
+<section class="panel brokers-panel" id="brokers-results" aria-labelledby="brokers-title" aria-live="polite">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">Kafka inventory</p>
+      <h2 id="brokers-title">Brokers</h2>
+    </div>
+    <span class="panel-count">{{.Range}}</span>
+  </div>
+
+  {{if .Brokers}}
+  <div class="table-scroll" tabindex="0" aria-label="Brokers table, horizontally scrollable">
+    <table>
+      <thead><tr><th scope="col" class="number">Broker ID</th><th scope="col">Advertised address</th><th scope="col">Connect address</th><th scope="col">Rack</th></tr></thead>
+      <tbody>
+        {{range .Brokers}}
+        <tr class="broker-row">
+          <th scope="row" class="number mono">{{.ID}}</th>
+          <td class="mono">{{.Address}}</td>
+          <td class="mono">{{.ConnectAddress}}</td>
+          <td class="mono">{{if .Rack}}{{.Rack}}{{else}}<span class="muted-value" aria-label="No rack configured">—</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <h3>No brokers found</h3>
+    <p>No brokers match the current search.</p>
+    {{if .HasFilters}}<a class="secondary-button" href="/ui/brokers">Clear filters</a>{{end}}
+  </div>
+  {{end}}
+
+  {{if .Pages}}
+  <nav class="pagination" aria-label="Broker pages">
+    {{if .PreviousURL}}<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#brokers-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#brokers-loading">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
+    <div class="page-links">
+      {{range .Pages}}{{if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#brokers-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#brokers-loading">{{.Number}}</a>{{end}}{{end}}
+    </div>
+    {{if .NextURL}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#brokers-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#brokers-loading">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+  </nav>
+  {{end}}
+</section>
+{{end}}

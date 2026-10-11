@@ -1,0 +1,109 @@
+{{define "topics"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Topics · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/htmx-4.0.0.min.js" defer></script>
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <header class="page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <div class="title-with-badge">
+              <h1>Topics</h1>
+            </div>
+            <p>Inspect topic visibility, partitions, and replication</p>
+          </div>
+        </div>
+      </header>
+
+      <section class="filter-panel" aria-labelledby="topic-filters-title">
+        <div class="filter-heading">
+          <div>
+            <p class="eyebrow">Find topics</p>
+            <h2 id="topic-filters-title">Filters</h2>
+          </div>
+          <span class="htmx-indicator loading-label" id="topics-loading" role="status">Loading…</span>
+        </div>
+        <form class="filter-form" action="/ui/topics" method="get"
+              hx-get="/ui/topics" hx-target="#topics-results"
+              hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">
+          <label class="field search-field">
+            <span>Topic name</span>
+            <input type="search" name="q" value="{{.Query}}" placeholder="Search topics…" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Level</span>
+            <select name="level">
+              {{range .Levels}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+            </select>
+          </label>
+          <button class="primary-button" type="submit">Apply filters</button>
+          {{if .Results.HasFilters}}<a class="secondary-button" href="/ui/topics">Clear filters</a>{{end}}
+        </form>
+      </section>
+
+      {{template "topics-results" .Results}}
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "topics-results"}}
+<section class="panel topics-panel" id="topics-results" aria-labelledby="topics-title" aria-live="polite">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">Kafka inventory</p>
+      <h2 id="topics-title">Topics</h2>
+    </div>
+    <span class="panel-count">{{.Range}}</span>
+  </div>
+
+  {{if .Topics}}
+  <div class="table-scroll" tabindex="0" aria-label="Topics table, horizontally scrollable">
+    <table>
+      <thead><tr><th scope="col">Topic</th><th scope="col">Level</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Replication factor</th></tr></thead>
+      <tbody>
+        {{range .Topics}}
+        <tr>
+          <th scope="row"><span class="mono topic-name">{{.Name}}</span></th>
+          <td><span class="level-label">{{.Level}}</span></td>
+          <td class="number">{{.Partitions}}</td>
+          <td class="number">{{.ReplicationFactor}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <h3>No topics found</h3>
+    <p>No topics match the current search and level filter.</p>
+    {{if .HasFilters}}<a class="secondary-button" href="/ui/topics">Clear filters</a>{{end}}
+  </div>
+  {{end}}
+
+  {{if .Pages}}
+  <nav class="pagination" aria-label="Topics pages">
+    {{if .PreviousURL}}<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#topics-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
+    <div class="page-links">
+      {{range .Pages}}{{if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#topics-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">{{.Number}}</a>{{end}}{{end}}
+    </div>
+    {{if .NextURL}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#topics-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+  </nav>
+  {{end}}
+</section>
+{{end}}

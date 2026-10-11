@@ -16,6 +16,7 @@ import (
 
 type groupInformationTransport struct {
 	requests []string
+	state    string
 }
 
 func (t *groupInformationTransport) RoundTrip(_ context.Context, address net.Addr, request kafka.Request) (kafka.Response, error) {
@@ -25,10 +26,14 @@ func (t *groupInformationTransport) RoundTrip(_ context.Context, address net.Add
 		return &findcoordinator.Response{NodeID: 2, Host: "coordinator", Port: 9093}, nil
 	case *describegroups.Request:
 		t.requests = append(t.requests, "describe:"+address.String()+":"+request.Groups[0])
+		state := t.state
+		if state == "" {
+			state = "Stable"
+		}
 		return &describegroups.Response{Groups: []describegroups.ResponseGroup{
 			{
 				GroupID:    request.Groups[0],
-				GroupState: "Stable",
+				GroupState: state,
 				Members: []describegroups.ResponseGroupMember{
 					{
 						MemberID: "member-1", ClientID: "worker", ClientHost: "/10.0.0.12",
@@ -53,6 +58,25 @@ func (t *groupInformationTransport) RoundTrip(_ context.Context, address net.Add
 		}}, nil
 	default:
 		return nil, errors.New("unexpected request")
+	}
+}
+
+func TestGetConsumerGroupInformationSkipsLagForDeadGroup(t *testing.T) {
+	transport := &groupInformationTransport{state: "Dead"}
+	connection := consumerConnection(transport)
+	connection.Client.Addr = kafka.TCP("bootstrap:9092")
+	got, err := GetConsumerGroupInformation(
+		connection, context.Background(), &kafka.MetadataResponse{}, "removed-group",
+		LagThresholds{Warning: 100, Unhealthy: 500}, true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "Dead" || len(got.Topics) != 0 {
+		t.Fatalf("consumer group = %+v", got)
+	}
+	if len(transport.requests) != 2 {
+		t.Fatalf("requests = %v, want coordinator and description only", transport.requests)
 	}
 }
 

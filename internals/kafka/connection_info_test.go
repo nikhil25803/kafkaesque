@@ -32,6 +32,9 @@ func TestClassifyConnectionError(t *testing.T) {
 	if code, reason := ClassifyConnectionError(context.DeadlineExceeded); code != 3 || reason != "connection timeout" {
 		t.Fatalf("timeout = %d %q", code, reason)
 	}
+	if code, reason := ClassifyConnectionError(kafkago.RequestTimedOut); code != 3 || reason != "connection timeout" {
+		t.Fatalf("Kafka timeout = %d %q", code, reason)
+	}
 	if code, reason := ClassifyConnectionError(kafkago.SASLAuthenticationFailed); code != 2 || reason != "SASL authentication failed" {
 		t.Fatalf("authentication = %d %q", code, reason)
 	}

@@ -37,20 +37,22 @@ func GetInformation(
 	metadata *kafka.MetadataResponse,
 	thresholds kafkaesque_consumers.LagThresholds,
 ) (*Information, error) {
-	info := &Information{
-		Status:      StatusHealthy,
-		BrokerCount: len(metadata.Brokers),
-		TopicCount:  len(metadata.Topics),
+	groups, err := kafkaesque_consumers.GetConsumerGroupsInformation(c, ctx, metadata, thresholds)
+	if err != nil {
+		return nil, err
 	}
+	return BuildInformation(metadata, groups, thresholds)
+}
 
+// BuildInformation derives health from an existing metadata and consumer-group snapshot.
+func BuildInformation(metadata *kafka.MetadataResponse, groups []kafkaesque_consumers.ConsumerGroupInformation, thresholds kafkaesque_consumers.LagThresholds) (*Information, error) {
+	info := &Information{Status: StatusHealthy, BrokerCount: len(metadata.Brokers), TopicCount: len(metadata.Topics)}
 	for _, topic := range metadata.Topics {
 		if topic.Error != nil {
 			return nil, fmt.Errorf("metadata for topic %s: %w", topic.Name, topic.Error)
 		}
 		for _, partition := range topic.Partitions {
-			if partition.Error != nil &&
-				!errors.Is(partition.Error, kafka.LeaderNotAvailable) &&
-				!errors.Is(partition.Error, kafka.ReplicaNotAvailable) {
+			if partition.Error != nil && !errors.Is(partition.Error, kafka.LeaderNotAvailable) && !errors.Is(partition.Error, kafka.ReplicaNotAvailable) {
 				return nil, fmt.Errorf("metadata for topic %s partition %d: %w", topic.Name, partition.ID, partition.Error)
 			}
 			info.PartitionCount++
@@ -61,11 +63,6 @@ func GetInformation(
 				info.UnderReplicatedCount++
 			}
 		}
-	}
-
-	groups, err := kafkaesque_consumers.GetConsumerGroupsInformation(c, ctx, metadata, thresholds)
-	if err != nil {
-		return nil, err
 	}
 	info.ConsumerGroupCount = len(groups)
 

@@ -1,0 +1,202 @@
+{{define "consumer-group-detail"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{.Group.Name}} · Consumer Lag · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/htmx-4.0.0.min.js" defer></script>
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/ui/consumer-groups">Consumer Groups</a><span aria-hidden="true">/</span><span aria-current="page">{{.Group.Name}}</span>
+      </nav>
+      <header class="page-header detail-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <div class="title-with-badge">
+              <h1>{{.Group.Name}}</h1>
+              <span class="status-label {{.Group.StateClass}}"><span class="status-dot {{.Group.StateClass}}" aria-hidden="true"></span>{{.Group.State}}</span>
+            </div>
+            <p>Consumer lag, partition offsets, and member assignments</p>
+          </div>
+        </div>
+      </header>
+
+      <section aria-labelledby="group-overview-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Current group</p><h2 id="group-overview-title">Overview</h2></div>
+        </div>
+        <div class="metric-grid">
+          {{range .Metrics}}
+          <article class="metric-card"><strong>{{.Value}}</strong><span>{{.Label}}</span></article>
+          {{end}}
+        </div>
+      </section>
+
+      <section class="panel lag-summary-panel" aria-labelledby="lag-summary-title">
+        <div class="panel-heading">
+          <div><p class="eyebrow">All committed partitions</p><h2 id="lag-summary-title">Lag summary</h2></div>
+        </div>
+        <dl class="lag-summary-grid">
+          <div><dt>Average Partition Lag</dt><dd>{{printf "%.1f" .Summary.Average}}</dd></div>
+          <div><dt>Healthy Partitions</dt><dd class="healthy-text">{{.Summary.Healthy}}</dd></div>
+          <div><dt>Warning Partitions</dt><dd class="warning-text">{{.Summary.Warning}}</dd></div>
+          <div><dt>Unhealthy Partitions</dt><dd class="critical-text">{{.Summary.Unhealthy}}</dd></div>
+        </dl>
+      </section>
+
+      {{template "partition-lag" .Partition}}
+
+      <section class="panel detail-section" aria-labelledby="topic-summary-title">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Committed offsets</p><h2 id="topic-summary-title">Topic summary</h2></div>
+        </div>
+        <div class="table-scroll" tabindex="0" aria-label="Topic lag summary, horizontally scrollable">
+          <table>
+            <thead><tr><th scope="col">Topic</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Total lag</th><th scope="col">Status</th></tr></thead>
+            <tbody>
+              {{range .Group.Topics}}
+              <tr{{if .Selected}} class="selected-row"{{end}}>
+                <th scope="row"><a class="group-link" href="{{.URL}}">{{.Name}}</a></th>
+                <td class="number">{{len .Partitions}}</td>
+                <td class="number mono">{{.Lag}}</td>
+                <td><span class="status-label {{.HealthClass}}"><span class="status-dot {{.HealthClass}}" aria-hidden="true"></span>{{.Health}}</span></td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel detail-section" aria-labelledby="members-title">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Active ownership</p><h2 id="members-title">Members and assignments</h2></div>
+          <span class="panel-count">{{len .Group.Members}} members</span>
+        </div>
+        {{if .Group.Members}}
+        <div class="table-scroll" tabindex="0" aria-label="Consumer group members, horizontally scrollable">
+          <table class="members-table">
+            <thead><tr><th scope="col">Member ID</th><th scope="col">Client ID</th><th scope="col">Host</th><th scope="col">Assignments</th></tr></thead>
+            <tbody>
+              {{range .Group.Members}}
+              <tr><th scope="row" class="mono">{{.ID}}</th><td>{{.ClientID}}</td><td class="mono">{{.Host}}</td><td class="mono">{{.Assignments}}</td></tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <div class="empty-state compact"><h3>No active members</h3><p>This consumer group currently has no member assignments.</p></div>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "partition-lag"}}
+<section class="panel detail-section partition-panel" id="partition-lag" aria-labelledby="partition-lag-title" aria-live="polite">
+  {{if .Empty}}
+  <div class="panel-heading"><div><p class="eyebrow">Selected topic</p><h2 id="partition-lag-title">Partition lag</h2></div></div>
+  <div class="empty-state compact"><h3>No committed topics</h3><p>This consumer group currently has no committed topic offsets.</p></div>
+  {{else}}
+  <div class="panel-heading partition-heading">
+    <div><p class="eyebrow">Selected topic</p><h2 id="partition-lag-title">Partition lag · {{.Topic}}</h2></div>
+    <span class="panel-count">Total lag {{.TotalLag}}</span>
+  </div>
+  <form class="partition-controls" action="{{.Action}}" method="get"
+        hx-get="{{.Action}}" hx-target="#partition-lag" hx-swap="outerHTML"
+        hx-push-url="true" hx-indicator="#partition-loading">
+    <label class="field">
+      <span>Topic</span>
+      <select name="topic">
+        {{range .TopicOptions}}<option value="{{.Name}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <label class="field">
+      <span>Group partitions</span>
+      <select name="group_by">
+        {{range .GroupOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+    <button class="primary-button" type="submit">View topic</button>
+    <span class="htmx-indicator loading-label" id="partition-loading" role="status">Loading…</span>
+  </form>
+
+  {{range .Groups}}
+    {{if .Name}}<h3 class="partition-group-heading">{{.Name}}</h3>{{end}}
+    <div class="table-scroll" tabindex="0" aria-label="Partition lag for {{$.Topic}}, horizontally scrollable">
+      <table class="partition-table">
+        <thead>
+          <tr>
+            <th scope="col" class="number">Partition</th>
+            <th scope="col" class="number">Committed Offset</th>
+            <th scope="col" class="number">Log End Offset</th>
+            <th scope="col" class="number"><a class="sort-link" href="{{$.LagSortURL}}" aria-label="{{$.LagSortLabel}}" hx-get="{{$.LagSortURL}}" hx-target="#partition-lag" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#partition-loading">Lag <span aria-hidden="true">{{$.LagSortIcon}}</span></a></th>
+            <th scope="col">Assigned Member</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Partitions}}
+          <tr>
+            <th scope="row" class="number mono">{{.Partition}}</th>
+            <td class="number mono">{{.CommittedOffset}}</td>
+            <td class="number mono">{{.LogEndOffset}}</td>
+            <td class="number"><span class="lag-content"><span class="mono">{{.Lag}}</span><span class="status-label {{.HealthClass}}"><span class="status-dot {{.HealthClass}}" aria-hidden="true"></span>{{.Health}}</span></span></td>
+            <td class="mono">{{.Member}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  {{end}}
+</section>
+{{end}}
+
+{{define "ui-error"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{.Status}} · {{.Title}} · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+    <main class="main-content" id="main-content">
+      <header class="page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+          <div><p class="eyebrow">Error {{.Status}}</p><h1>{{.Title}}</h1><p>{{.Message}}</p></div>
+        </div>
+      </header>
+      <a class="secondary-button inline-button" href="/ui">Back to Dashboard</a>
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "ui-error-fragment"}}
+<section class="panel error-panel" role="alert">
+  <p class="eyebrow">Error {{.Status}}</p>
+  <h2>{{.Title}}</h2>
+  <p>{{.Message}}</p>
+</section>
+{{end}}
