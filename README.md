@@ -113,20 +113,32 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 
 ## Flags
 
-| Short | Long           | Value              | Description                                              | Example                                                        |
-| ----- | -------------- | ------------------ | -------------------------------------------------------- | -------------------------------------------------------------- |
-| `-m`  | `--metadata`   | —                  | Show cluster metadata and connection status.             | `kafkaesque --metadata`                                        |
-| `-b`  | `--brokers`    | —                  | List Kafka brokers.                                      | `kafkaesque --brokers`                                         |
-| `-t`  | `--topics`     | —                  | List Kafka topics.                                       | `kafkaesque --topics`                                          |
-| `-p`  | `--partitions` | —                  | List partitions for the topic selected by `--topic`.     | `kafkaesque --partitions --topic orders`                       |
-| `-c`  | `--consumers`  | —                  | List consumer groups.                                    | `kafkaesque --consumers`                                       |
-| —     | `--consumer`   | —                  | Inspect the consumer group selected by `--group`.        | `kafkaesque --consumer --group order-processor`                |
-| —     | `--group`      | name               | Select a consumer group.                                 | `kafkaesque --consumer --group order-processor`                |
-| —     | `--topic`      | name               | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
-| —     | `--config`     | path               | Load an explicit YAML configuration file.                | `kafkaesque --config /path/to/config.yaml --metadata`          |
-| —     | `--check`      | optional `config` or `conn` | Validate configuration or test the Kafka connection. | `kafkaesque --check`                                           |
-| `-v`  | `--version`    | —                  | Show the installed Kafkaesque version.                   | `kafkaesque --version`                                         |
-| `-h`  | `--help`       | —                  | Show command help.                                       | `kafkaesque --help`                                            |
+### General
+
+| Short | Long        | Value | Description                            | Example                |
+| ----- | ----------- | ----- | -------------------------------------- | ---------------------- |
+| `-v`  | `--version` | —     | Show the installed Kafkaesque version. | `kafkaesque --version` |
+| `-h`  | `--help`    | —     | Show command help.                     | `kafkaesque --help`    |
+
+### Checks and configuration
+
+| Short | Long       | Value                       | Description                                          | Example                                               |
+| ----- | ---------- | --------------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| —     | `--check`  | optional `config` or `conn` | Validate configuration or test the Kafka connection. | `kafkaesque --check`                                  |
+| —     | `--config` | path                        | Load an explicit YAML configuration file.            | `kafkaesque --config /path/to/config.yaml --metadata` |
+
+### Information
+
+| Short | Long           | Value | Description                                              | Example                                                        |
+| ----- | -------------- | ----- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| `-m`  | `--metadata`   | —     | Show cluster metadata and connection status.             | `kafkaesque --metadata`                                        |
+| `-b`  | `--brokers`    | —     | List Kafka brokers.                                      | `kafkaesque --brokers`                                         |
+| `-t`  | `--topics`     | —     | List Kafka topics.                                       | `kafkaesque --topics`                                          |
+| `-p`  | `--partitions` | —     | List partitions for the topic selected by `--topic`.     | `kafkaesque --partitions --topic orders`                       |
+| `-c`  | `--consumers`  | —     | List consumer groups.                                    | `kafkaesque --consumers`                                       |
+| —     | `--consumer`   | —     | Inspect the consumer group selected by `--group`.        | `kafkaesque --consumer --group order-processor`                |
+| —     | `--group`      | name  | Select a consumer group.                                 | `kafkaesque --consumer --group order-processor`                |
+| —     | `--topic`      | name  | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
 
 See [Command documentation](DOCS.md) for complete examples and representative
 output.
