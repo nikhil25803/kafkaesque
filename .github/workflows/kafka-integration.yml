@@ -57,14 +57,18 @@ jobs:
           grep -q "STATUS" <<<"${partitions}"
 
           consumer=""
+          consumer_ready=false
           for _ in {1..30}; do
             if consumer="$(./bin/kafkaesque --config "${config}" --consumer --member --group order-processor)" &&
+              grep -q "State: STABLE" <<<"${consumer}" &&
               grep -Eq '[1-9][0-9]* assigned partitions' <<<"${consumer}"; then
+              consumer_ready=true
               break
             fi
             sleep 2
           done
-          grep -q "State: STABLE" <<<"${consumer}"
+          printf '%s\n' "${consumer}"
+          test "${consumer_ready}" = true
           grep -q "Lag Summary" <<<"${consumer}"
           grep -q "Healthy Partitions:" <<<"${consumer}"
           grep -q "Warning Partitions:" <<<"${consumer}"
