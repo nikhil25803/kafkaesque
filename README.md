@@ -21,7 +21,7 @@
 
 - [Install](#install)
 - [Flags](#flags)
-- [Upcoming releases](#upcoming-releases)
+- [UI sneak peek](#ui-sneak-peek)
 - [Combining flags](#combining-flags)
 - [Build from source](#build-from-source)
 - [Configuration](#configuration)
@@ -148,22 +148,46 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 See [Command documentation](DOCS.md) for complete examples and representative
 output.
 
-## Upcoming releases
+## UI sneak peek
 
-| Version | Release Info                                  | Status      |
-| ------- | --------------------------------------------- | ----------- |
-| v0.0.1  | Kafka Cluster Inspector                       | Released    |
-| v0.1.0  | Consumer Groups & Partition Lag               | Released    |
-| v0.1.1  | Broker Address Overrides & Version Flag       | Released    |
-| v0.2.0  | Kafka Connectivity & Authentication           | Released    |
-| v0.3.0  | Deep Consumer Observability                   | Released    |
-| v0.4.0  | Cluster Health & Diagnostics                  | Released    |
-| v0.5.0  | CLI UX & Structured Output                    | Coming Soon |
-| v0.6.0  | Watch Mode & Lag Trends                       | Coming Soon |
-| v0.7.0  | HTMX Web UI                                   | Coming Soon |
-| v0.8.0  | Web Authentication                            | Coming Soon |
-| v0.9.0  | Slack Alerts & Production Hardening           | Coming Soon |
-| v1.0.0  | Stable Read-Only Kafka Observability Platform | Coming Soon |
+<table>
+  <tr>
+    <td colspan="2" align="center">
+      <strong>Dashboard</strong><br>
+      <img src="asset/ui/dashboard.png" alt="Kafkaesque dashboard showing connection status, cluster totals, consumer groups, and cluster health" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Consumer Groups</strong><br>
+      <img src="asset/ui/consumer_groups.png" alt="Kafkaesque consumer groups list with search, state filtering, and lag status" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Consumer Group Summary</strong><br>
+      <img src="asset/ui/consumer_group_summary.png" alt="Kafkaesque consumer group summary showing lag totals and member information" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Partition Lag and Topic Summary</strong><br>
+      <img src="asset/ui/partition_lag_and_topic_summary.png" alt="Kafkaesque partition lag and topic summary with offsets and assignments" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Topics</strong><br>
+      <img src="asset/ui/topics.png" alt="Kafkaesque topics list with search and level filtering" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Brokers</strong><br>
+      <img src="asset/ui/brokers.png" alt="Kafkaesque brokers list showing advertised addresses, connect addresses, and racks" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Cluster Health</strong><br>
+      <img src="asset/ui/cluster_health.png" alt="Kafkaesque cluster health page showing cluster, partition, and consumer diagnostics" width="100%">
+    </td>
+  </tr>
+</table>
 
 ## Combining flags
 
