@@ -54,6 +54,20 @@ func memberMetadataV3(topics ...string) []byte {
 	return metadata
 }
 
+func memberAssignment(assignments ...ConsumerGroupMemberAssignment) []byte {
+	data := []byte{0x00, 0x00}
+	data = binary.BigEndian.AppendUint32(data, uint32(len(assignments)))
+	for _, assignment := range assignments {
+		data = binary.BigEndian.AppendUint16(data, uint16(len(assignment.Topic)))
+		data = append(data, assignment.Topic...)
+		data = binary.BigEndian.AppendUint32(data, uint32(len(assignment.Partitions)))
+		for _, partition := range assignment.Partitions {
+			data = binary.BigEndian.AppendUint32(data, uint32(partition))
+		}
+	}
+	return binary.BigEndian.AppendUint32(data, ^uint32(0))
+}
+
 var kafkaV3MemberMetadata = memberMetadataV3("orders")
 
 func TestGetConsumerGroupDescription(t *testing.T) {
@@ -64,8 +78,16 @@ func TestGetConsumerGroupDescription(t *testing.T) {
 					GroupID:    "order-processor",
 					GroupState: "Stable",
 					Members: []describegroups.ResponseGroupMember{
-						{MemberID: "member-1", MemberMetadata: kafkaV3MemberMetadata},
-						{MemberID: "member-2", MemberMetadata: kafkaV3MemberMetadata},
+						{
+							MemberID: "member-2", ClientID: "worker", ClientHost: "/10.0.0.13",
+							MemberMetadata:   kafkaV3MemberMetadata,
+							MemberAssignment: memberAssignment(ConsumerGroupMemberAssignment{Topic: "orders", Partitions: []int{3, 2}}),
+						},
+						{
+							MemberID: "member-1", ClientID: "worker", ClientHost: "/10.0.0.12",
+							MemberMetadata:   kafkaV3MemberMetadata,
+							MemberAssignment: memberAssignment(ConsumerGroupMemberAssignment{Topic: "orders", Partitions: []int{1, 0}}),
+						},
 					},
 				},
 			},
@@ -77,7 +99,8 @@ func TestGetConsumerGroupDescription(t *testing.T) {
 			Type:          "consumer",
 			CoordinatorID: 2,
 		},
-		BrokerAddress: "broker-2:9092",
+		BrokerAddress:  "broker-2:9092",
+		IncludeMembers: true,
 	}
 
 	got, err := GetConsumerGroupDescription(consumerConnection(transport), context.Background(), request)
@@ -92,6 +115,10 @@ func TestGetConsumerGroupDescription(t *testing.T) {
 			MembersCount:  2,
 			State:         "Stable",
 			TopicsCount:   1,
+			Members: []ConsumerGroupMember{
+				{MemberID: "member-1", ClientID: "worker", Host: "10.0.0.12", Assignments: []ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{0, 1}}}},
+				{MemberID: "member-2", ClientID: "worker", Host: "10.0.0.13", Assignments: []ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{2, 3}}}},
+			},
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -105,6 +132,63 @@ func TestGetConsumerGroupDescription(t *testing.T) {
 	}
 	if !transport.deadline {
 		t.Fatal("describe groups request has no deadline")
+	}
+}
+
+func TestDecodeMemberAssignments(t *testing.T) {
+	got, err := decodeMemberAssignments(memberAssignment(
+		ConsumerGroupMemberAssignment{Topic: "payments", Partitions: []int{3, 1}},
+		ConsumerGroupMemberAssignment{Topic: "orders", Partitions: []int{2, 0}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ConsumerGroupMemberAssignment{
+		{Topic: "orders", Partitions: []int{0, 2}},
+		{Topic: "payments", Partitions: []int{1, 3}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("assignments = %+v, want %+v", got, want)
+	}
+}
+
+func TestDecodeMemberAssignmentsRejectsMalformedData(t *testing.T) {
+	tests := [][]byte{
+		{0x00},
+		{0xff, 0xff, 0, 0, 0, 0},
+		{0, 0, 0xff, 0xff, 0xff, 0xff},
+		{0, 0, 0, 0, 0, 1},
+		{0, 0, 0, 0, 0, 1, 0xff, 0xff},
+		{0, 0, 0, 0, 0, 1, 0, 3, 'a'},
+		{0, 0, 0, 0, 0, 1, 0, 1, 'a'},
+		{0, 0, 0, 0, 0, 1, 0, 1, 'a', 0xff, 0xff, 0xff, 0xff},
+	}
+	for _, data := range tests {
+		if _, err := decodeMemberAssignments(data); err == nil {
+			t.Fatalf("expected malformed assignment error for %v", data)
+		}
+	}
+}
+
+func TestGetConsumerGroupDescriptionDecodesAssignmentsOnlyWhenRequested(t *testing.T) {
+	transport := &descriptionTransport{response: &describegroups.Response{
+		Groups: []describegroups.ResponseGroup{{
+			GroupID: "group-1", GroupState: "Stable",
+			Members: []describegroups.ResponseGroupMember{{
+				MemberID: "member-1", MemberMetadata: kafkaV3MemberMetadata, MemberAssignment: []byte{0x00},
+			}},
+		}},
+	}}
+	request := ConsumerGroupDescriptionRequest{
+		Group: ConsumerGroups{GroupName: "group-1", Type: "consumer"}, BrokerAddress: "broker-1:9092",
+	}
+
+	if _, err := GetConsumerGroupDescription(consumerConnection(transport), context.Background(), request); err != nil {
+		t.Fatalf("assignment decoding affected ordinary inspection: %v", err)
+	}
+	request.IncludeMembers = true
+	if _, err := GetConsumerGroupDescription(consumerConnection(transport), context.Background(), request); err == nil || !strings.Contains(err.Error(), "decode member member-1 assignments") {
+		t.Fatalf("error = %v, want member assignment decoding error", err)
 	}
 }
 

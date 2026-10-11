@@ -155,13 +155,15 @@ func TestGetKafkaInformationFetchesRequestedNativeResponses(t *testing.T) {
 	}) {
 		t.Fatalf("unexpected topic information: %+v", info.Topics)
 	}
-	if len(info.Partitions) != 1 || info.Partitions[0] != (kafkaesque_partition.PartitionTopicInformation{
+	wantPartition := kafkaesque_partition.PartitionTopicInformation{
 		TopicName:   "orders",
 		PartitionID: 0,
 		Leader:      "broker-1",
-		Replicas:    1,
-		Isr:         1,
-	}) {
+		Replicas:    []int{1},
+		ISR:         []int{1},
+		Status:      "HEALTHY",
+	}
+	if len(info.Partitions) != 1 || !reflect.DeepEqual(info.Partitions[0], wantPartition) {
 		t.Fatalf("unexpected partition information: %+v", info.Partitions)
 	}
 }
@@ -262,7 +264,7 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 			{ID: 1, Address: "broker:9092", Rack: "rack-a"},
 		},
 		Partitions: []kafkaesque_partition.PartitionTopicInformation{
-			{TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: 1, Isr: 1},
+			{TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: []int{1}, ISR: []int{1}, Status: "HEALTHY"},
 		},
 	}
 
@@ -294,8 +296,8 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		"\n1 topic available\n" +
 		"\nTopic: orders\n" +
 		strings.Repeat("=", 80) + "\n" +
-		"PARTITION  LEADER                           REPLICAS     ISR             \n" +
-		"0          broker-1                         1            1               \n"
+		"PARTITION  LEADER               REPLICAS         ISR              STATUS    \n" +
+		"0          broker-1             1                1                HEALTHY   \n"
 	if output.String() != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", output.String(), want)
 	}
@@ -430,8 +432,8 @@ func TestPrintTopicsInformation(t *testing.T) {
 
 func TestPrintPartitionsInformation(t *testing.T) {
 	partitions := []kafkaesque_partition.PartitionTopicInformation{
-		{TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: 3, Isr: 3},
-		{TopicName: "orders", PartitionID: 1, Leader: "broker-2", Replicas: 3, Isr: 2},
+		{TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: []int{1, 2, 3}, ISR: []int{1, 2, 3}, Status: "HEALTHY"},
+		{TopicName: "orders", PartitionID: 1, Leader: "broker-2", Replicas: []int{1, 2, 3}, ISR: []int{1, 2}, Status: "DEGRADED"},
 	}
 
 	var output bytes.Buffer
@@ -439,9 +441,9 @@ func TestPrintPartitionsInformation(t *testing.T) {
 
 	want := "\nTopic: orders\n" +
 		strings.Repeat("=", 80) + "\n" +
-		"PARTITION  LEADER                           REPLICAS     ISR             \n" +
-		"0          broker-1                         3            3               \n" +
-		"1          broker-2                         3            2               \n"
+		"PARTITION  LEADER               REPLICAS         ISR              STATUS    \n" +
+		"0          broker-1             1,2,3            1,2,3            HEALTHY   \n" +
+		"1          broker-2             1,2,3            1,2              DEGRADED  \n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
 	}
@@ -493,6 +495,10 @@ func TestPrintConsumerGroupInformation(t *testing.T) {
 		MembersCount: 3,
 		TopicsCount:  2,
 		TotalLag:     136,
+		LagSummary: kafkaesque_consumers.ConsumerGroupLagSummary{
+			TotalLag: 136, MaximumPartitionLag: 70, AveragePartitionLag: 45.3,
+			HealthyPartitions: 2, WarningPartitions: 1,
+		},
 		Topics: []kafkaesque_consumers.ConsumerGroupTopicLag{
 			{Topic: "orders", Partitions: 6, Lag: 124, Status: "WARNING"},
 			{Topic: "payments", Partitions: 3, Lag: 12, Status: "HEALTHY"},
@@ -500,14 +506,18 @@ func TestPrintConsumerGroupInformation(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	printConsumerGroupInformation(&output, consumer)
+	printConsumerGroupInformation(&output, consumer, false)
 
 	want := "\nConsumer Group: orders-service\n" +
+		"State: STABLE\n" +
+		"\nLag Summary\n" +
 		strings.Repeat("=", 80) + "\n" +
-		"STATE: STABLE\n" +
-		"MEMBERS: 3\n" +
-		"TOPICS: 2\n" +
-		"TOTAL LAG: 136\n" +
+		"Total Lag: 136\n" +
+		"Maximum Partition Lag: 70\n" +
+		"Average Partition Lag: 45.3\n" +
+		"Healthy Partitions: 2\n" +
+		"Warning Partitions: 1\n" +
+		"Unhealthy Partitions: 0\n" +
 		"\nTOPICS\n" +
 		strings.Repeat("=", 80) + "\n" +
 		"TOPIC                            PARTITIONS   LAG        STATUS    \n" +
@@ -515,6 +525,40 @@ func TestPrintConsumerGroupInformation(t *testing.T) {
 		"payments                         3            12         HEALTHY   \n"
 	if output.String() != want {
 		t.Fatalf("output:\n%q\nwant:\n%q", output.String(), want)
+	}
+}
+
+func TestPrintConsumerGroupMembers(t *testing.T) {
+	consumer := &kafkaesque_consumers.ConsumerGroupInformation{
+		GroupName: "orders-service",
+		State:     "Stable",
+		Members: []kafkaesque_consumers.ConsumerGroupMember{
+			{MemberID: "consumer-1", ClientID: "order-worker", Host: "10.0.0.12", Assignments: []kafkaesque_consumers.ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{0, 1}}}},
+			{MemberID: "consumer-2", ClientID: "order-worker", Host: "10.0.0.13", Assignments: []kafkaesque_consumers.ConsumerGroupMemberAssignment{
+				{Topic: "orders", Partitions: []int{2, 3}},
+				{Topic: "payments", Partitions: []int{0}},
+			}},
+		},
+	}
+
+	var output bytes.Buffer
+	printConsumerGroupInformation(&output, consumer, true)
+	if !strings.Contains(output.String(), "consumer-1") || !strings.Contains(output.String(), "orders:0,1") {
+		t.Fatalf("group-wide topic qualification missing:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "orders:2,3; payments:0") {
+		t.Fatalf("multi-topic assignment missing:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "2 members · 5 assigned partitions") {
+		t.Fatalf("member summary missing:\n%s", output.String())
+	}
+
+	formatted, count := formatMemberAssignments(
+		[]kafkaesque_consumers.ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{0, 1}}},
+		false,
+	)
+	if formatted != "0,1" || count != 2 {
+		t.Fatalf("single-topic assignment = %q/%d, want 0,1/2", formatted, count)
 	}
 }
 
@@ -609,13 +653,14 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	if !strings.Contains(output.String(), "-c, --consumers") {
 		t.Fatalf("consumer flag is missing from help:\n%s", output.String())
 	}
-	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--group") {
+	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--member") || !strings.Contains(output.String(), "--group") {
 		t.Fatalf("consumer detail flags are missing from help:\n%s", output.String())
 	}
 	consumerIndex := strings.Index(output.String(), "      --consumer ")
+	memberIndex := strings.Index(output.String(), "      --member")
 	groupIndex := strings.Index(output.String(), "      --group string")
-	if consumerIndex == -1 || groupIndex == -1 || consumerIndex > groupIndex {
-		t.Fatalf("--group should follow --consumer in help:\n%s", output.String())
+	if consumerIndex == -1 || memberIndex == -1 || groupIndex == -1 || consumerIndex > memberIndex || memberIndex > groupIndex {
+		t.Fatalf("--member and --group should follow --consumer in help:\n%s", output.String())
 	}
 }
 
@@ -626,10 +671,13 @@ func TestRootCommandValidatesConsumerDetailFlags(t *testing.T) {
 		want string
 	}{
 		{name: "missing group", args: []string{"--consumer"}, want: "please provide a consumer group name using the --group flag"},
+		{name: "member missing group", args: []string{"--consumer", "--member"}, want: "please provide a consumer group name using the --group flag"},
 		{name: "group without consumer", args: []string{"--group", "orders-service"}, want: "--group requires --consumer"},
 		{name: "list and detail", args: []string{"--consumers", "--consumer", "--group", "orders-service"}, want: "--consumer cannot be combined with --consumers"},
 		{name: "topic without inspection", args: []string{"--topic", "orders"}, want: "--topic requires --partitions or --consumer"},
 		{name: "topic with consumer list", args: []string{"--consumers", "--topic", "orders"}, want: "--topic requires --partitions or --consumer"},
+		{name: "member without consumer", args: []string{"--member", "--group", "orders-service"}, want: "--member requires --consumer"},
+		{name: "member with topic", args: []string{"--consumer", "--member", "--group", "orders-service", "--topic", "orders"}, want: "--member cannot be combined with --topic"},
 	}
 
 	for _, test := range tests {

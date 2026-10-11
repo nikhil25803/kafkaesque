@@ -40,6 +40,16 @@ type ConsumerGroupPartitionLag struct {
 	Lag             int64 `json:"lag"`
 }
 
+// ConsumerGroupLagSummary contains group-wide partition lag statistics.
+type ConsumerGroupLagSummary struct {
+	TotalLag            int64   `json:"total_lag"`
+	MaximumPartitionLag int64   `json:"maximum_partition_lag"`
+	AveragePartitionLag float64 `json:"average_partition_lag"`
+	HealthyPartitions   int     `json:"healthy_partitions"`
+	WarningPartitions   int     `json:"warning_partitions"`
+	UnhealthyPartitions int     `json:"unhealthy_partitions"`
+}
+
 // ConsumerGroupTopicInformation contains partition lag details for one group topic.
 type ConsumerGroupTopicInformation struct {
 	GroupName  string                      `json:"group_name"`
@@ -61,10 +71,10 @@ func GetConsumerGroupLag(
 	coordinatorAddress string,
 	groupName string,
 	thresholds LagThresholds,
-) ([]ConsumerGroupTopicLag, int64, error) {
+) ([]ConsumerGroupTopicLag, ConsumerGroupLagSummary, error) {
 	partitionLags, err := getConsumerGroupPartitionLags(c, ctx, metadata, coordinatorAddress, groupName, "")
 	if err != nil {
-		return nil, 0, err
+		return nil, ConsumerGroupLagSummary{}, err
 	}
 
 	topicNames := make([]string, 0, len(partitionLags))
@@ -74,11 +84,24 @@ func GetConsumerGroupLag(
 	sort.Strings(topicNames)
 
 	result := make([]ConsumerGroupTopicLag, 0, len(topicNames))
-	var totalLag int64
+	var summary ConsumerGroupLagSummary
+	partitionCount := 0
 	for _, topicName := range topicNames {
 		var topicLag int64
 		for _, partition := range partitionLags[topicName] {
 			topicLag += partition.Lag
+			partitionCount++
+			if partition.Lag > summary.MaximumPartitionLag {
+				summary.MaximumPartitionLag = partition.Lag
+			}
+			switch ConsumerLagStatus(partition.Lag, thresholds) {
+			case LagStatusHealthy:
+				summary.HealthyPartitions++
+			case LagStatusWarning:
+				summary.WarningPartitions++
+			case LagStatusUnhealthy:
+				summary.UnhealthyPartitions++
+			}
 		}
 		result = append(result, ConsumerGroupTopicLag{
 			Topic:      topicName,
@@ -86,10 +109,13 @@ func GetConsumerGroupLag(
 			Lag:        topicLag,
 			Status:     ConsumerLagStatus(topicLag, thresholds),
 		})
-		totalLag += topicLag
+		summary.TotalLag += topicLag
+	}
+	if partitionCount > 0 {
+		summary.AveragePartitionLag = float64(summary.TotalLag) / float64(partitionCount)
 	}
 
-	return result, totalLag, nil
+	return result, summary, nil
 }
 
 // GetConsumerGroupTopicLag returns partition lag details for one group topic.

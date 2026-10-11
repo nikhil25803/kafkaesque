@@ -19,16 +19,20 @@ func TestGetPartitionInformation(t *testing.T) {
 					{
 						ID:       0,
 						Leader:   kafka.Broker{ID: 2},
-						Replicas: []kafka.Broker{{ID: 1}, {ID: 2}, {ID: 3}},
+						Replicas: []kafka.Broker{{ID: 3}, {ID: 1}, {ID: 2}},
 						Isr:      []kafka.Broker{{ID: 1}, {ID: 2}},
 					},
+					{ID: 1, Leader: kafka.Broker{ID: 1}, Replicas: []kafka.Broker{{ID: 2}, {ID: 1}}, Isr: []kafka.Broker{{ID: 1}, {ID: 2}}},
+					{ID: 2, Leader: kafka.Broker{ID: -1}, Replicas: []kafka.Broker{{ID: 1}}, Isr: []kafka.Broker{{ID: 1}}},
 				},
 			},
 		},
 	}
 
 	want := []PartitionTopicInformation{
-		{TopicName: "orders", PartitionID: 0, Leader: "broker-2", Replicas: 3, Isr: 2},
+		{TopicName: "orders", PartitionID: 0, Leader: "broker-2", Replicas: []int{1, 2, 3}, ISR: []int{1, 2}, Status: "DEGRADED"},
+		{TopicName: "orders", PartitionID: 1, Leader: "broker-1", Replicas: []int{1, 2}, ISR: []int{1, 2}, Status: "HEALTHY"},
+		{TopicName: "orders", PartitionID: 2, Leader: "-", Replicas: []int{1}, ISR: []int{1}, Status: "DEGRADED"},
 	}
 	got, err := GetPartitionInformation(metadata, "orders")
 	if err != nil {

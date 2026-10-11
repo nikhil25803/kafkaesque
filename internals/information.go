@@ -119,6 +119,7 @@ func GetKafkaInformation(
 					metadata,
 					request.Group,
 					request.lagThresholds,
+					request.Member,
 				)
 				if err != nil {
 					return nil, fmt.Errorf("failed to get consumer group %s: %w", request.Group, err)

@@ -131,7 +131,7 @@ func TestGetConsumerGroupLagAggregatesAndRoutesByLeader(t *testing.T) {
 	}
 	metadata := consumerLagMetadata()
 
-	got, total, err := GetConsumerGroupLag(
+	got, summary, err := GetConsumerGroupLag(
 		consumerConnection(transport),
 		context.Background(),
 		metadata,
@@ -146,8 +146,12 @@ func TestGetConsumerGroupLagAggregatesAndRoutesByLeader(t *testing.T) {
 		{Topic: "orders", Partitions: 2, Lag: 124, Status: LagStatusWarning},
 		{Topic: "payments", Partitions: 1, Lag: 12, Status: LagStatusHealthy},
 	}
-	if !reflect.DeepEqual(got, want) || total != 136 {
-		t.Fatalf("lag = %+v total %d, want %+v total 136", got, total, want)
+	wantSummary := ConsumerGroupLagSummary{
+		TotalLag: 136, MaximumPartitionLag: 70, AveragePartitionLag: 136.0 / 3.0,
+		HealthyPartitions: 3,
+	}
+	if !reflect.DeepEqual(got, want) || summary != wantSummary {
+		t.Fatalf("lag = %+v summary %+v, want %+v summary %+v", got, summary, want, wantSummary)
 	}
 
 	sort.Strings(transport.requests)
@@ -178,6 +182,57 @@ func TestConsumerLagStatusBoundaries(t *testing.T) {
 		if got := ConsumerLagStatus(test.lag, thresholds); got != test.want {
 			t.Fatalf("status for %d = %s, want %s", test.lag, got, test.want)
 		}
+	}
+}
+
+func TestGetConsumerGroupLagSummarizesThresholdStates(t *testing.T) {
+	metadata := consumerLagMetadata()
+	transport := &lagTransport{
+		offsetResponse: &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{
+			{Name: "orders", Partitions: []offsetfetch.ResponsePartition{
+				{PartitionIndex: 0, CommittedOffset: 0},
+				{PartitionIndex: 1, CommittedOffset: 0},
+			}},
+			{Name: "payments", Partitions: []offsetfetch.ResponsePartition{
+				{PartitionIndex: 0, CommittedOffset: 0},
+				{PartitionIndex: 1, CommittedOffset: 0},
+			}},
+		}},
+		latestOffsets: map[topicPartition]int64{
+			{topic: "orders", partition: 0}:   0,
+			{topic: "orders", partition: 1}:   100,
+			{topic: "payments", partition: 0}: 500,
+			{topic: "payments", partition: 1}: 501,
+		},
+	}
+
+	_, summary, err := GetConsumerGroupLag(
+		consumerConnection(transport), context.Background(), metadata,
+		"coordinator:9092", "orders-service", LagThresholds{Warning: 100, Unhealthy: 500},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ConsumerGroupLagSummary{
+		TotalLag: 1101, MaximumPartitionLag: 501, AveragePartitionLag: 275.25,
+		HealthyPartitions: 2, WarningPartitions: 1, UnhealthyPartitions: 1,
+	}
+	if summary != want {
+		t.Fatalf("summary = %+v, want %+v", summary, want)
+	}
+}
+
+func TestGetConsumerGroupLagEmptySummary(t *testing.T) {
+	transport := &lagTransport{offsetResponse: &offsetfetch.Response{}}
+	_, summary, err := GetConsumerGroupLag(
+		consumerConnection(transport), context.Background(), consumerLagMetadata(),
+		"coordinator:9092", "orders-service", LagThresholds{Warning: 100, Unhealthy: 500},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary != (ConsumerGroupLagSummary{}) {
+		t.Fatalf("summary = %+v, want zero values", summary)
 	}
 }
 

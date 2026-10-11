@@ -30,7 +30,11 @@ func (t *groupInformationTransport) RoundTrip(_ context.Context, address net.Add
 				GroupID:    request.Groups[0],
 				GroupState: "Stable",
 				Members: []describegroups.ResponseGroupMember{
-					{MemberID: "member-1", MemberMetadata: memberMetadataV3("orders")},
+					{
+						MemberID: "member-1", ClientID: "worker", ClientHost: "/10.0.0.12",
+						MemberMetadata:   kafkaV3MemberMetadata,
+						MemberAssignment: memberAssignment(ConsumerGroupMemberAssignment{Topic: "orders", Partitions: []int{0}}),
+					},
 					{MemberID: "member-2", MemberMetadata: memberMetadataV3("orders")},
 				},
 			},
@@ -68,6 +72,7 @@ func TestGetConsumerGroupInformation(t *testing.T) {
 		metadata,
 		"orders-service",
 		LagThresholds{Warning: 100, Unhealthy: 500},
+		true,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +83,14 @@ func TestGetConsumerGroupInformation(t *testing.T) {
 		MembersCount: 2,
 		TopicsCount:  1,
 		TotalLag:     124,
+		LagSummary: ConsumerGroupLagSummary{
+			TotalLag: 124, MaximumPartitionLag: 124, AveragePartitionLag: 124,
+			WarningPartitions: 1,
+		},
+		Members: []ConsumerGroupMember{
+			{MemberID: "member-1", ClientID: "worker", Host: "10.0.0.12", Assignments: []ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{0}}}},
+			{MemberID: "member-2"},
+		},
 		Topics: []ConsumerGroupTopicLag{
 			{Topic: "orders", Partitions: 1, Lag: 124, Status: LagStatusWarning},
 		},

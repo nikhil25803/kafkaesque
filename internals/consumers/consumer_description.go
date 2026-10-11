@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sort"
+	"strings"
 
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafka "github.com/segmentio/kafka-go"
@@ -11,8 +13,9 @@ import (
 )
 
 type ConsumerGroupDescriptionRequest struct {
-	Group         ConsumerGroups `json:"group"`
-	BrokerAddress string         `json:"broker_address"`
+	Group          ConsumerGroups `json:"group"`
+	BrokerAddress  string         `json:"broker_address"`
+	IncludeMembers bool           `json:"include_members"`
 }
 
 // GetConsumerGroupDescription completes a consumer group with its state and member count.
@@ -61,14 +64,88 @@ func GetConsumerGroupDescription(c *kafkaesque.KafkaesqueConn, ctx context.Conte
 				for _, topic := range memberTopics {
 					topics[topic] = struct{}{}
 				}
+
+				if req.IncludeMembers {
+					assignments, err := decodeMemberAssignments(member.MemberAssignment)
+					if err != nil {
+						return nil, fmt.Errorf("decode member %s assignments for group %s: %w", member.MemberID, group.GroupID, err)
+					}
+					completedGroup.Members = append(completedGroup.Members, ConsumerGroupMember{
+						MemberID:    member.MemberID,
+						ClientID:    member.ClientID,
+						Host:        strings.TrimPrefix(member.ClientHost, "/"),
+						Assignments: assignments,
+					})
+				}
 			}
 			completedGroup.TopicsCount = len(topics)
+			if req.IncludeMembers {
+				sort.Slice(completedGroup.Members, func(i, j int) bool {
+					return completedGroup.Members[i].MemberID < completedGroup.Members[j].MemberID
+				})
+			}
 		}
 
 		consumerGroups = append(consumerGroups, completedGroup)
 	}
 
 	return consumerGroups, nil
+}
+
+func decodeMemberAssignments(data []byte) ([]ConsumerGroupMemberAssignment, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	if len(data) < 6 {
+		return nil, fmt.Errorf("assignment metadata is too short")
+	}
+
+	version := int16(binary.BigEndian.Uint16(data[:2]))
+	if version < 0 {
+		return nil, fmt.Errorf("invalid assignment version %d", version)
+	}
+	topicCount := int32(binary.BigEndian.Uint32(data[2:6]))
+	if topicCount < 0 {
+		return nil, fmt.Errorf("invalid assignment topic count %d", topicCount)
+	}
+
+	offset := 6
+	if int64(topicCount)*6 > int64(len(data)-offset) {
+		return nil, fmt.Errorf("assignment topic count %d exceeds assignment metadata", topicCount)
+	}
+	assignments := make([]ConsumerGroupMemberAssignment, 0, topicCount)
+	for i := range int(topicCount) {
+		if len(data)-offset < 2 {
+			return nil, fmt.Errorf("assignment topic %d is missing its name length", i)
+		}
+		nameLength := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
+		offset += 2
+		if nameLength < 0 || int(nameLength) > len(data)-offset {
+			return nil, fmt.Errorf("assignment topic %d has invalid name length %d", i, nameLength)
+		}
+		topic := string(data[offset : offset+int(nameLength)])
+		offset += int(nameLength)
+
+		if len(data)-offset < 4 {
+			return nil, fmt.Errorf("assignment topic %s is missing its partition count", topic)
+		}
+		partitionCount := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
+		offset += 4
+		if partitionCount < 0 || int64(partitionCount)*4 > int64(len(data)-offset) {
+			return nil, fmt.Errorf("assignment topic %s has invalid partition count %d", topic, partitionCount)
+		}
+
+		partitions := make([]int, 0, partitionCount)
+		for range int(partitionCount) {
+			partitions = append(partitions, int(int32(binary.BigEndian.Uint32(data[offset:offset+4]))))
+			offset += 4
+		}
+		sort.Ints(partitions)
+		assignments = append(assignments, ConsumerGroupMemberAssignment{Topic: topic, Partitions: partitions})
+	}
+
+	sort.Slice(assignments, func(i, j int) bool { return assignments[i].Topic < assignments[j].Topic })
+	return assignments, nil
 }
 
 func decodeSubscribedTopics(metadata []byte) ([]string, error) {

@@ -54,6 +54,7 @@ Start the activity simulator when working on consumer groups or lag:
 make kafka-simulator-start
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumers
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor
+./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --member --group order-processor
 ```
 
 Inspect the simulator and stop it without stopping Kafka:

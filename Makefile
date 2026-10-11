@@ -4,10 +4,11 @@ GORELEASER ?= goreleaser
 KAFKA_COMPOSE := docker compose -f kafka-env/compose.yaml
 KAFKA_CI_COMPOSE := $(KAFKA_COMPOSE) -f kafka-env/compose.ci.yaml
 KAFKA_SIMULATOR_COMPOSE := $(KAFKA_COMPOSE) --profile simulator
+KAFKA_CI_SIMULATOR_COMPOSE := $(KAFKA_CI_COMPOSE) --profile simulator
 KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
 
-.PHONY: build run test release-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-down kafka-ci-diagnostics
+.PHONY: build run test release-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
 
 build:
 	mkdir -p $(BIN_DIR)
@@ -56,9 +57,12 @@ kafka-ci-up:
 	$(KAFKA_CI_COMPOSE) up -d --wait $(KAFKA_CI_BROKERS)
 	$(KAFKA_CI_COMPOSE) run --rm --no-deps init
 
+kafka-ci-simulator-start:
+	$(KAFKA_CI_SIMULATOR_COMPOSE) up -d --no-deps --wait simulator
+
 kafka-ci-down:
-	$(KAFKA_CI_COMPOSE) down --volumes --remove-orphans
+	$(KAFKA_CI_SIMULATOR_COMPOSE) down --volumes --remove-orphans
 
 kafka-ci-diagnostics:
 	$(KAFKA_CI_COMPOSE) ps
-	$(KAFKA_CI_COMPOSE) logs --no-color $(KAFKA_CI_BROKERS)
+	$(KAFKA_CI_SIMULATOR_COMPOSE) logs --no-color $(KAFKA_CI_BROKERS) simulator

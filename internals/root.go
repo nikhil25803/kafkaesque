@@ -27,13 +27,14 @@ type InformationRequest struct {
 	Topic      string
 	Consumers  bool
 	Consumer   bool
+	Member     bool
 	Group      string
 
 	lagThresholds kafkaesque_consumers.LagThresholds
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Group != "" || r.Topic != ""
+	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Member || r.Group != "" || r.Topic != ""
 }
 
 func newRootCommand() *cobra.Command {
@@ -76,6 +77,7 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().StringVar(&request.Topic, "topic", "", "Topic name for partition or consumer group inspection")
 	cmd.Flags().BoolVarP(&request.Consumers, "consumers", "c", false, "Retrieve consumer group information")
 	cmd.Flags().BoolVar(&request.Consumer, "consumer", false, "Retrieve detailed information for one consumer group")
+	cmd.Flags().BoolVar(&request.Member, "member", false, "Include consumer group member assignments")
 	cmd.Flags().StringVar(&request.Group, "group", "", "Consumer group name")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
@@ -109,6 +111,12 @@ func runRootCommand(
 	}
 	if request.Consumer && request.Consumers {
 		return fmt.Errorf("--consumer cannot be combined with --consumers")
+	}
+	if request.Member && !request.Consumer {
+		return fmt.Errorf("--member requires --consumer")
+	}
+	if request.Member && request.Topic != "" {
+		return fmt.Errorf("--member cannot be combined with --topic")
 	}
 	if request.Consumer && request.Group == "" {
 		return fmt.Errorf("please provide a consumer group name using the --group flag")
