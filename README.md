@@ -340,12 +340,12 @@ The first UI preview is available from the same process:
 GET /ui
 ```
 
-It currently contains responsive Dashboard, Consumer Groups, Consumer Lag, and
-Topics pages populated with clearly labelled demo data. Filtering and pagination
-use a locally vendored HTMX runtime and continue to work as ordinary links and
-forms without JavaScript. Consumer Lag includes topic and partition offsets, lag
-sorting, member grouping, and assignments. Brokers and Cluster Health remain
-disabled until they are implemented and reviewed one at a time.
+It currently contains responsive Dashboard, Consumer Groups, Consumer Lag,
+Topics, and Brokers pages populated with clearly labelled demo data. Filtering
+and pagination use a locally vendored HTMX runtime and continue to work as
+ordinary links and forms without JavaScript. Consumer Lag includes topic and
+partition offsets, lag sorting, member grouping, and assignments. Cluster Health
+remains disabled until it is implemented and reviewed.
 
 ## Local Kafka environment
 

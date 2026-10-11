@@ -261,7 +261,10 @@ tbody tr:hover { background: var(--elevated); }
 .groups-panel table { min-width: 760px; }
 .topics-panel { margin-bottom: 24px; }
 .topics-panel table { min-width: 650px; }
+.brokers-panel { margin-bottom: 24px; }
+.brokers-panel table { min-width: 780px; }
 .topic-name { color: var(--text); }
+.muted-value { color: var(--text-muted); }
 .level-label {
   display: inline-flex;
   min-height: 24px;
