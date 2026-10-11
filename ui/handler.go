@@ -102,6 +102,7 @@ func NewHandler() http.Handler {
 		http.Redirect(w, r, "/ui", http.StatusPermanentRedirect)
 	})
 	mux.HandleFunc("GET /ui/consumer-groups", renderConsumerGroups)
+	mux.HandleFunc("GET /ui/consumer-groups/{group}", renderConsumerGroupDetail)
 	mux.Handle("GET /ui/assets/", http.StripPrefix("/ui/assets/", http.FileServerFS(static)))
 	return withHeaders(mux)
 }

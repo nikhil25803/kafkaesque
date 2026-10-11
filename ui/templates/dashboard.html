@@ -82,7 +82,7 @@
               <tbody>
                 {{range .ConsumerGroups}}
                 <tr>
-                  <th scope="row">{{.Name}}</th>
+                  <th scope="row"><a class="group-link" href="/ui/consumer-groups/{{.Name}}">{{.Name}}</a></th>
                   <td class="number">{{.Topics}}</td>
                   <td class="number">{{.Members}}</td>
                   <td>{{.State}}</td>

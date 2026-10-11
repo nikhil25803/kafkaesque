@@ -343,8 +343,10 @@ GET /ui
 It currently contains responsive Dashboard and Consumer Groups pages populated
 with clearly labelled demo data. Consumer-group filtering and pagination use a
 locally vendored HTMX runtime and continue to work as ordinary links and forms
-without JavaScript. Detail pages, Topics, Brokers, and Cluster Health remain
-disabled until they are implemented and reviewed one at a time.
+without JavaScript. Each group links to a Consumer Lag page with topic and
+partition offsets, lag sorting, member grouping, and assignments. Topics,
+Brokers, and Cluster Health remain disabled until they are implemented and
+reviewed one at a time.
 
 ## Local Kafka environment
 
