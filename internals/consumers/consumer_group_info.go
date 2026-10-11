@@ -35,6 +35,12 @@ func GetConsumerGroupInformation(
 	if err != nil {
 		return nil, err
 	}
+	if described.State == "Dead" {
+		return &ConsumerGroupInformation{
+			GroupName: groupName, State: described.State, MembersCount: described.MembersCount,
+			Members: described.Members, Topics: []ConsumerGroupTopicLag{},
+		}, nil
+	}
 
 	topics, summary, err := GetConsumerGroupLag(c, ctx, metadata, brokerAddress, groupName, thresholds)
 	if err != nil {

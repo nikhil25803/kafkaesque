@@ -3,6 +3,8 @@ package internals
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +13,23 @@ import (
 
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafka "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/protocol/listgroups"
+	metadataAPI "github.com/segmentio/kafka-go/protocol/metadata"
 )
+
+type serveTransport struct{}
+
+func (serveTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
+	switch request.(type) {
+	case *metadataAPI.Request:
+		return &metadataAPI.Response{}, nil
+	case *listgroups.Request:
+		return &listgroups.Response{}, nil
+	default:
+		return nil, errors.New("unexpected Kafka request")
+	}
+}
 
 func TestServeCommandUsesConfigAndExplicitOverrides(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "kafkaesque.yaml")
@@ -56,7 +74,8 @@ func TestServeCommandRejectsInvalidFlagOverrides(t *testing.T) {
 }
 
 func TestApplicationRoutes(t *testing.T) {
-	handler := newApplicationHandler(&kafkaesque.KafkaesqueConn{}, &kafkaesque_config.Config{})
+	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("broker:9092"), Transport: serveTransport{}}}
+	handler := newApplicationHandler(conn, &kafkaesque_config.Config{})
 
 	t.Run("discovery", func(t *testing.T) {
 		response := httptest.NewRecorder()

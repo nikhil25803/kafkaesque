@@ -12,7 +12,7 @@ import (
 
 // ClassifyConnectionError returns the CLI exit code and stable public reason for a connection failure.
 func ClassifyConnectionError(err error) (int, string) {
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, kafkago.RequestTimedOut) {
 		return 3, "connection timeout"
 	}
 	var networkError net.Error

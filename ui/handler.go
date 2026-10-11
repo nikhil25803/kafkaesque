@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"html/template"
@@ -11,6 +12,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
+	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
+	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 )
 
 //go:embed templates/*.html static/*
@@ -24,6 +30,7 @@ type dashboardPage struct {
 	Metrics        []metricView
 	ConsumerGroups []consumerGroupView
 	Health         healthView
+	GroupCountText string
 }
 
 type navigationView struct {
@@ -39,16 +46,17 @@ type connectionView struct {
 
 type metricView struct {
 	Label string
-	Value int
+	Value int64
 }
 
 type consumerGroupView struct {
 	Name        string
+	URL         string
 	Topics      int
 	Members     int
 	State       string
 	StateClass  string
-	TotalLag    int
+	TotalLag    int64
 	Health      string
 	HealthClass string
 }
@@ -82,6 +90,7 @@ type pageLink struct {
 
 type healthView struct {
 	Status          string
+	StatusClass     string
 	Offline         int
 	UnderReplicated int
 	Rebalancing     int
@@ -89,8 +98,74 @@ type healthView struct {
 	Lagging         int
 }
 
+func dashboardView(data *dashboardData, source dataSource) dashboardPage {
+	metadata := data.Snapshot.Metadata
+	partitionCount := 0
+	for _, topic := range metadata.Topics {
+		partitionCount += len(topic.Partitions)
+	}
+	groups := consumerGroupViews(data.Groups, source.Thresholds())
+	total := len(groups)
+	shown := min(4, total)
+	return dashboardPage{
+		Navigation:     navigationView{Active: "dashboard"},
+		Connection:     connectionView{Status: "CONNECTED", Latency: strconv.FormatInt(data.Snapshot.Latency.Milliseconds(), 10) + "ms", Protocol: source.Protocol(), Mechanism: source.Authentication()},
+		Metrics:        []metricView{{Label: "Brokers", Value: int64(len(metadata.Brokers))}, {Label: "Topics", Value: int64(len(metadata.Topics))}, {Label: "Partitions", Value: int64(partitionCount)}, {Label: "Consumer Groups", Value: int64(total)}},
+		ConsumerGroups: groups[:shown], Health: healthViewFrom(data.Health),
+		GroupCountText: strconv.Itoa(shown) + " of " + strconv.Itoa(total),
+	}
+}
+
+func consumerGroupViews(groups []kafkaesque_consumers.ConsumerGroupInformation, thresholds kafkaesque_consumers.LagThresholds) []consumerGroupView {
+	views := make([]consumerGroupView, 0, len(groups))
+	for _, group := range groups {
+		health, healthClass := lagStatusView(kafkaesque_consumers.ConsumerLagStatus(group.TotalLag, thresholds))
+		views = append(views, consumerGroupView{Name: group.GroupName, URL: "/ui/consumer-groups/" + url.PathEscape(group.GroupName), Topics: group.TopicsCount, Members: group.MembersCount, State: group.State, StateClass: stateClass(group.State), TotalLag: group.TotalLag, Health: health, HealthClass: healthClass})
+	}
+	sort.Slice(views, func(i, j int) bool { return views[i].Name < views[j].Name })
+	return views
+}
+
+func stateClass(state string) string {
+	switch strings.ToLower(state) {
+	case "stable":
+		return "healthy"
+	case "dead":
+		return "critical"
+	case "empty":
+		return "neutral"
+	default:
+		return "warning"
+	}
+}
+
+func lagStatusView(status string) (string, string) {
+	switch status {
+	case kafkaesque_consumers.LagStatusUnhealthy:
+		return "Critical", "critical"
+	case kafkaesque_consumers.LagStatusWarning:
+		return "Warning", "warning"
+	default:
+		return "Healthy", "healthy"
+	}
+}
+
+func healthViewFrom(info *kafkaesque_health.Information) healthView {
+	class := "healthy"
+	if info.Status != kafkaesque_health.StatusHealthy {
+		class = "warning"
+	}
+	return healthView{Status: info.Status, StatusClass: class, Offline: info.OfflinePartitionCount, UnderReplicated: info.UnderReplicatedCount, Rebalancing: info.RebalancingGroupCount, Dead: info.DeadGroupCount, Lagging: info.LaggingGroupCount}
+}
+
 // NewHandler returns the embedded UI handler.
-func NewHandler() http.Handler {
+func NewHandler(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) http.Handler {
+	return newHandler(newLiveDataSource(conn, cfg))
+}
+
+type dataSourceKey struct{}
+
+func newHandler(source dataSource) http.Handler {
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
@@ -107,12 +182,22 @@ func NewHandler() http.Handler {
 	mux.HandleFunc("GET /ui/brokers", renderBrokers)
 	mux.HandleFunc("GET /ui/cluster-health", renderClusterHealth)
 	mux.Handle("GET /ui/assets/", http.StripPrefix("/ui/assets/", http.FileServerFS(static)))
-	return withHeaders(mux)
+	return withHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), dataSourceKey{}, source)))
+	}))
 }
 
-func renderDashboard(w http.ResponseWriter, _ *http.Request) {
+func sourceFrom(r *http.Request) dataSource { return r.Context().Value(dataSourceKey{}).(dataSource) }
+
+func renderDashboard(w http.ResponseWriter, r *http.Request) {
+	data, err := sourceFrom(r).Dashboard(r.Context())
+	if err != nil {
+		renderUpstreamError(w, r, "dashboard", err)
+		return
+	}
+	view := dashboardView(data, sourceFrom(r))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := dashboardTemplate.ExecuteTemplate(w, "dashboard", demoDashboard()); err != nil {
+	if err := dashboardTemplate.ExecuteTemplate(w, "dashboard", view); err != nil {
 		http.Error(w, "Unable to render Dashboard", http.StatusInternalServerError)
 	}
 }
@@ -120,12 +205,17 @@ func renderDashboard(w http.ResponseWriter, _ *http.Request) {
 func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 	page, err := positivePage(r.URL.Query().Get("page"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderUIError(w, r, http.StatusBadRequest, "consumer-groups", "Invalid consumer group request", err.Error())
 		return
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
-	groups := filterConsumerGroups(demoConsumerGroups(), query, state)
+	information, err := sourceFrom(r).ConsumerGroups(r.Context())
+	if err != nil {
+		renderUpstreamError(w, r, "consumer-groups", err)
+		return
+	}
+	groups := filterConsumerGroups(consumerGroupViews(information, sourceFrom(r).Thresholds()), query, state)
 	results := paginateConsumerGroups(groups, query, state, page)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -229,72 +319,4 @@ func withHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		next.ServeHTTP(w, r)
 	})
-}
-
-func demoDashboard() dashboardPage {
-	return dashboardPage{
-		Navigation: navigationView{Active: "dashboard"},
-		Connection: connectionView{
-			Status: "CONNECTED", Latency: "42ms", Protocol: "SASL_SSL", Mechanism: "SCRAM-SHA-256",
-		},
-		Metrics: []metricView{
-			{Label: "Brokers", Value: 3},
-			{Label: "Topics", Value: 24},
-			{Label: "Partitions", Value: 186},
-			{Label: "Consumer Groups", Value: 17},
-		},
-		ConsumerGroups: []consumerGroupView{
-			{Name: "orders-service", Topics: 2, Members: 3, State: "Stable", TotalLag: 136, Health: "Warning", HealthClass: "warning"},
-			{Name: "analytics", Topics: 5, Members: 2, State: "Stable", TotalLag: 31, Health: "Healthy", HealthClass: "healthy"},
-			{Name: "notification", Topics: 1, Members: 1, State: "Rebalancing", TotalLag: 842, Health: "Critical", HealthClass: "critical"},
-			{Name: "payments", Topics: 2, Members: 4, State: "Stable", TotalLag: 0, Health: "Healthy", HealthClass: "healthy"},
-		},
-		Health: healthView{
-			Status: "DEGRADED", Offline: 0, UnderReplicated: 3, Rebalancing: 1, Dead: 0, Lagging: 2,
-		},
-	}
-}
-
-func demoConsumerGroups() []consumerGroupView {
-	return []consumerGroupView{
-		demoConsumerGroup("analytics", 5, 2, "Stable", 31),
-		demoConsumerGroup("audit-log", 2, 1, "Stable", 12),
-		demoConsumerGroup("billing-events", 4, 2, "Stable", 617),
-		demoConsumerGroup("data-export", 1, 1, "Stable", 0),
-		demoConsumerGroup("email-dispatch", 1, 0, "Empty", 0),
-		demoConsumerGroup("fraud-detection", 6, 5, "Stable", 89),
-		demoConsumerGroup("inventory-sync", 3, 2, "Stable", 54),
-		demoConsumerGroup("mobile-events", 2, 3, "Stable", 520),
-		demoConsumerGroup("notification", 1, 1, "Rebalancing", 842),
-		demoConsumerGroup("orders-service", 2, 3, "Stable", 136),
-		demoConsumerGroup("payments", 2, 4, "Stable", 0),
-		demoConsumerGroup("reporting", 4, 2, "Stable", 114),
-		demoConsumerGroup("recommendations", 5, 3, "Rebalancing", 376),
-		demoConsumerGroup("search-indexer", 2, 0, "Dead", 0),
-		demoConsumerGroup("shipping-service", 2, 3, "Stable", 208),
-		demoConsumerGroup("user-profile", 3, 4, "Stable", 45),
-		demoConsumerGroup("warehouse-sync", 3, 2, "Stable", 72),
-	}
-}
-
-func demoConsumerGroup(name string, topics, members int, state string, lag int) consumerGroupView {
-	stateClass := "healthy"
-	switch state {
-	case "Rebalancing":
-		stateClass = "warning"
-	case "Dead":
-		stateClass = "critical"
-	case "Empty":
-		stateClass = "neutral"
-	}
-	health, healthClass := "Healthy", "healthy"
-	if lag > 500 {
-		health, healthClass = "Critical", "critical"
-	} else if lag > 100 {
-		health, healthClass = "Warning", "warning"
-	}
-	return consumerGroupView{
-		Name: name, Topics: topics, Members: members, State: state, StateClass: stateClass,
-		TotalLag: lag, Health: health, HealthClass: healthClass,
-	}
 }

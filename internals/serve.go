@@ -25,7 +25,7 @@ func serveAPI(ctx context.Context, address string, handler http.Handler) error {
 func newApplicationHandler(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", apis.NewHandler(conn, cfg))
-	uiHandler := ui.NewHandler()
+	uiHandler := ui.NewHandler(conn, cfg)
 	mux.Handle("/ui", uiHandler)
 	mux.Handle("/ui/", uiHandler)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {

@@ -249,10 +249,10 @@ icons. Use the text wordmark until a transparent, simplified mark is designed.
 - The existing `kafkaesque serve` process serves the read-only UI at `/ui` and
   preserves JSON endpoints under `/api/v1`.
 - The Dashboard, Consumer Groups, Consumer Lag detail, Topics, Brokers, and
-  Cluster Health pages are rendered from typed dummy Go view models and marked
-  with a `Demo data` badge.
+  Cluster Health pages render live request-time Kafka data through typed Go
+  view models.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
 - Topic Detail remains deferred until it is explicitly approved.
-- Live Kafka data, charts, authentication, alerts, settings, and new logo assets
-  remain deferred.
+- Charts, authentication, alerts, settings, and new logo assets remain
+  deferred.

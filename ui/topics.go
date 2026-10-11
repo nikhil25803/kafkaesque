@@ -40,16 +40,25 @@ type topicsResults struct {
 func renderTopics(w http.ResponseWriter, r *http.Request) {
 	page, err := positivePage(r.URL.Query().Get("page"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderUIError(w, r, http.StatusBadRequest, "topics", "Invalid topics request", err.Error())
 		return
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	level := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("level")))
 	if level != "" && level != "internal" && level != "external" {
-		http.Error(w, "level must be internal, external, or omitted", http.StatusBadRequest)
+		renderUIError(w, r, http.StatusBadRequest, "topics", "Invalid topics request", "level must be internal, external, or omitted")
 		return
 	}
-	results := paginateTopics(filterTopics(demoTopics(), query, level), query, level, page)
+	information, err := sourceFrom(r).Topics(r.Context())
+	if err != nil {
+		renderUpstreamError(w, r, "topics", err)
+		return
+	}
+	topics := make([]topicView, 0, len(information))
+	for _, topic := range information {
+		topics = append(topics, topicView{Name: topic.Name, Level: topic.Level, Partitions: topic.PartitionCount, ReplicationFactor: topic.ReplicationFactor})
+	}
+	results := paginateTopics(filterTopics(topics, query, level), query, level, page)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -135,33 +144,4 @@ func topicLevelOptions(selected string) []levelOption {
 		options[i].Selected = options[i].Value == selected
 	}
 	return options
-}
-
-func demoTopics() []topicView {
-	return []topicView{
-		{Name: "analytics-events", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "audit-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "billing-events", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "customer-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "data-export", Level: "External", Partitions: 3, ReplicationFactor: 2},
-		{Name: "email-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "fraud-alerts", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "inventory-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "mobile-events", Level: "External", Partitions: 4, ReplicationFactor: 3},
-		{Name: "notification-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "orders", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "orders-dlq", Level: "External", Partitions: 3, ReplicationFactor: 2},
-		{Name: "payments", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "payments-dlq", Level: "External", Partitions: 3, ReplicationFactor: 2},
-		{Name: "recommendation-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "reporting-events", Level: "External", Partitions: 3, ReplicationFactor: 2},
-		{Name: "search-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "shipping-events", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "user-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "warehouse-events", Level: "External", Partitions: 3, ReplicationFactor: 3},
-		{Name: "web-events", Level: "External", Partitions: 6, ReplicationFactor: 3},
-		{Name: "__cluster_metadata", Level: "Internal", Partitions: 1, ReplicationFactor: 3},
-		{Name: "__consumer_offsets", Level: "Internal", Partitions: 50, ReplicationFactor: 3},
-		{Name: "__transaction_state", Level: "Internal", Partitions: 50, ReplicationFactor: 3},
-	}
 }

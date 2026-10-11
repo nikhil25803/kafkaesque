@@ -27,7 +27,6 @@
             <div class="title-with-badge">
               <h1>{{.Group.Name}}</h1>
               <span class="status-label {{.Group.StateClass}}"><span class="status-dot {{.Group.StateClass}}" aria-hidden="true"></span>{{.Group.State}}</span>
-              <span class="demo-badge">Demo data</span>
             </div>
             <p>Consumer lag, partition offsets, and member assignments</p>
           </div>
@@ -108,6 +107,10 @@
 
 {{define "partition-lag"}}
 <section class="panel detail-section partition-panel" id="partition-lag" aria-labelledby="partition-lag-title" aria-live="polite">
+  {{if .Empty}}
+  <div class="panel-heading"><div><p class="eyebrow">Selected topic</p><h2 id="partition-lag-title">Partition lag</h2></div></div>
+  <div class="empty-state compact"><h3>No committed topics</h3><p>This consumer group currently has no committed topic offsets.</p></div>
+  {{else}}
   <div class="panel-heading partition-heading">
     <div><p class="eyebrow">Selected topic</p><h2 id="partition-lag-title">Partition lag · {{.Topic}}</h2></div>
     <span class="panel-count">Total lag {{.TotalLag}}</span>
@@ -158,6 +161,7 @@
       </table>
     </div>
   {{end}}
+  {{end}}
 </section>
 {{end}}
 
@@ -182,9 +186,17 @@
           <div><p class="eyebrow">Error {{.Status}}</p><h1>{{.Title}}</h1><p>{{.Message}}</p></div>
         </div>
       </header>
-      <a class="secondary-button inline-button" href="/ui/consumer-groups">Back to Consumer Groups</a>
+      <a class="secondary-button inline-button" href="/ui">Back to Dashboard</a>
     </main>
   </div>
 </body>
 </html>
+{{end}}
+
+{{define "ui-error-fragment"}}
+<section class="panel error-panel" role="alert">
+  <p class="eyebrow">Error {{.Status}}</p>
+  <h2>{{.Title}}</h2>
+  <p>{{.Message}}</p>
+</section>
 {{end}}

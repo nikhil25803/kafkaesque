@@ -33,11 +33,20 @@ type brokersResults struct {
 func renderBrokers(w http.ResponseWriter, r *http.Request) {
 	page, err := positivePage(r.URL.Query().Get("page"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderUIError(w, r, http.StatusBadRequest, "brokers", "Invalid brokers request", err.Error())
 		return
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	results := paginateBrokers(filterBrokers(demoBrokers(), query), query, page)
+	information, err := sourceFrom(r).Brokers(r.Context())
+	if err != nil {
+		renderUpstreamError(w, r, "brokers", err)
+		return
+	}
+	brokers := make([]brokerView, 0, len(information))
+	for _, broker := range information {
+		brokers = append(brokers, brokerView{ID: broker.ID, Address: broker.Address, ConnectAddress: broker.ConnectAddress, Rack: broker.Rack})
+	}
+	results := paginateBrokers(filterBrokers(brokers, query), query, page)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -109,12 +118,4 @@ func brokersURL(query string, page int) string {
 	}
 	values.Set("page", strconv.Itoa(page))
 	return "/ui/brokers?" + values.Encode()
-}
-
-func demoBrokers() []brokerView {
-	return []brokerView{
-		{ID: 1, Address: "broker-1.kafka.local:9092", ConnectAddress: "10.0.0.11:9092", Rack: "rack-a"},
-		{ID: 2, Address: "broker-2.kafka.local:9092", ConnectAddress: "10.0.0.12:9092", Rack: "rack-b"},
-		{ID: 3, Address: "broker-3.kafka.local:9092", ConnectAddress: "broker-3.kafka.local:9092"},
-	}
 }

@@ -1,4 +1,11 @@
 (() => {
+  document.addEventListener('htmx:beforeSwap', (event) => {
+    if ([400, 404, 502, 504].includes(event.detail.xhr.status)) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
+    }
+  });
+
   const sidebar = document.querySelector('#sidebar');
   const openButton = document.querySelector('#menu-button');
   const closeButton = document.querySelector('#drawer-close');

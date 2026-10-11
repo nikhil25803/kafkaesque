@@ -23,7 +23,6 @@
           <div>
             <div class="title-with-badge">
               <h1>Consumer Groups</h1>
-              <span class="demo-badge">Demo data</span>
             </div>
             <p>Inspect group membership, state, and current lag</p>
           </div>
@@ -90,7 +89,7 @@
       <tbody>
         {{range .Groups}}
         <tr>
-          <th scope="row"><a class="group-link" href="/ui/consumer-groups/{{.Name}}">{{.Name}}</a></th>
+          <th scope="row"><a class="group-link" href="{{.URL}}">{{.Name}}</a></th>
           <td class="number">{{.Topics}}</td>
           <td class="number">{{.Members}}</td>
           <td><span class="status-label {{.StateClass}}"><span class="status-dot {{.StateClass}}" aria-hidden="true"></span>{{.State}}</span></td>

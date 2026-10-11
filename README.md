@@ -334,17 +334,18 @@ GET /api/v1/health
 See [API documentation](API.md) for all endpoints, filters, envelopes, and
 status codes.
 
-The first UI preview is available from the same process:
+The web UI is available from the same process:
 
 ```http
 GET /ui
 ```
 
-It currently contains responsive Dashboard, Consumer Groups, Consumer Lag,
-Topics, Brokers, and Cluster Health pages populated with clearly labelled demo
-data. Filtering and pagination use a locally vendored HTMX runtime and continue
-to work as ordinary links and forms without JavaScript. Consumer Lag includes
-topic and partition offsets, lag sorting, member grouping, and assignments.
+It contains responsive Dashboard, Consumer Groups, Consumer Lag, Topics,
+Brokers, and Cluster Health pages backed by live Kafka data collected for each
+request. Filtering and pagination use a locally vendored HTMX runtime and
+continue to work as ordinary links and forms without JavaScript. Consumer Lag
+includes topic and partition offsets, lag sorting, member grouping, and
+assignments.
 
 ## Local Kafka environment
 
