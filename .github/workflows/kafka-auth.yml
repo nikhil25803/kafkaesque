@@ -90,10 +90,35 @@ jobs:
         env:
           AUTH_MODE: ${{ matrix.mode }}
         run: |
+          timeout_server_pid=""
+          cleanup_timeout_server() {
+            if [[ -n "${timeout_server_pid}" ]]; then
+              kill "${timeout_server_pid}" 2>/dev/null || true
+              wait "${timeout_server_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_timeout_server EXIT
+
           case "${AUTH_MODE}" in
             tcp)
-              python3 -c 'import socket,time; s=socket.socket(); s.bind(("127.0.0.1",19093)); s.listen(); c,_=s.accept(); time.sleep(10)' &
-              printf 'kafka:\n  bootstrap_servers: [localhost:19093]\n  connection_timeout: 1s\n' >kafka-env/auth/failure.yaml
+              ready_dir="$(mktemp -d "${RUNNER_TEMP}/kafkaesque-timeout.XXXXXX")"
+              ready_file="${ready_dir}/ready"
+              READY_FILE="${ready_file}" python3 -c 'import os,socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(("127.0.0.1",19093)); s.listen(); open(os.environ["READY_FILE"],"w").close(); c,_=s.accept(); time.sleep(10)' &
+              timeout_server_pid=$!
+              for _ in {1..50}; do
+                [[ -f "${ready_file}" ]] && break
+                if ! kill -0 "${timeout_server_pid}" 2>/dev/null; then
+                  wait "${timeout_server_pid}" || true
+                  echo "TCP timeout server exited before becoming ready" >&2
+                  exit 1
+                fi
+                sleep 0.1
+              done
+              if [[ ! -f "${ready_file}" ]]; then
+                echo "TCP timeout server did not become ready within 5 seconds" >&2
+                exit 1
+              fi
+              printf 'kafka:\n  bootstrap_servers: [127.0.0.1:19093]\n  connection_timeout: 1s\n' >kafka-env/auth/failure.yaml
               expected=3
               ;;
             tls)
@@ -113,8 +138,15 @@ jobs:
           output="$(./bin/kafkaesque --config kafka-env/auth/failure.yaml --check 2>&1)"
           actual=$?
           set -e
-          test "${actual}" -eq "${expected}"
-          grep -q "Exit code: ${expected}" <<<"${output}"
+          printf 'Expected exit code: %s\nActual exit code: %s\n%s\n' "${expected}" "${actual}" "${output}"
+          if [[ "${actual}" -ne "${expected}" ]]; then
+            echo "Unexpected Kafkaesque exit code" >&2
+            exit 1
+          fi
+          if ! grep -q "Exit code: ${expected}" <<<"${output}"; then
+            echo "Kafkaesque output did not contain the expected exit code" >&2
+            exit 1
+          fi
       - name: Show Kafka diagnostics
         if: failure()
         run: docker compose -f kafka-env/compose.auth.yaml logs --no-color broker
