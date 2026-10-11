@@ -248,9 +248,11 @@ icons. Use the text wordmark until a transparent, simplified mark is designed.
 
 - The existing `kafkaesque serve` process serves the read-only UI at `/ui` and
   preserves JSON endpoints under `/api/v1`.
-- Phase one contains only the responsive shell and Dashboard, rendered from
-  typed dummy Go view models and marked with a `Demo data` badge.
-- Consumer Groups, Consumer Group Detail, Topics, Topic Detail, Brokers, and
-  Cluster Health are implemented only after the preceding page is approved.
-- HTMX, live Kafka data, charts, authentication, alerts, settings, and new logo
-  assets remain deferred.
+- The Dashboard and Consumer Groups pages are rendered from typed dummy Go view
+  models and marked with a `Demo data` badge.
+- Consumer Groups uses locally vendored HTMX for filtered and paginated fragment
+  swaps while preserving ordinary GET forms and links.
+- Consumer Group Detail, Topics, Topic Detail, Brokers, and Cluster Health are
+  implemented only after the preceding page is approved.
+- Live Kafka data, charts, authentication, alerts, settings, and new logo assets
+  remain deferred.

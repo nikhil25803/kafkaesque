@@ -1,0 +1,135 @@
+{{define "consumer-groups"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Consumer Groups · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/htmx-4.0.0.min.js" defer></script>
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <header class="page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <div class="title-with-badge">
+              <h1>Consumer Groups</h1>
+              <span class="demo-badge">Demo data</span>
+            </div>
+            <p>Inspect group membership, state, and current lag</p>
+          </div>
+        </div>
+      </header>
+
+      <section class="filter-panel" aria-labelledby="filters-title">
+        <div class="filter-heading">
+          <div>
+            <p class="eyebrow">Find groups</p>
+            <h2 id="filters-title">Filters</h2>
+          </div>
+          <span class="htmx-indicator loading-label" id="consumer-groups-loading" role="status">Loading…</span>
+        </div>
+        <form class="filter-form" action="/ui/consumer-groups" method="get"
+              hx-get="/ui/consumer-groups" hx-target="#consumer-groups-results"
+              hx-swap="outerHTML" hx-push-url="true" hx-indicator="#consumer-groups-loading">
+          <label class="field search-field">
+            <span>Group name</span>
+            <input type="search" name="q" value="{{.Query}}" placeholder="Search consumer groups…" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>State</span>
+            <select name="state">
+              {{range .States}}
+              <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{if .Value}}{{.Value}}{{else}}All states{{end}}</option>
+              {{end}}
+            </select>
+          </label>
+          <button class="primary-button" type="submit">Apply filters</button>
+          {{if .Results.HasFilters}}<a class="secondary-button" href="/ui/consumer-groups">Clear filters</a>{{end}}
+        </form>
+      </section>
+
+      {{template "consumer-groups-results" .Results}}
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "consumer-groups-results"}}
+<section class="panel groups-panel" id="consumer-groups-results" aria-labelledby="groups-title" aria-live="polite">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">Workloads</p>
+      <h2 id="groups-title">Consumer groups</h2>
+    </div>
+    <span class="panel-count">{{.Range}}</span>
+  </div>
+
+  {{if .Groups}}
+  <div class="table-scroll" tabindex="0" aria-label="Consumer groups table, horizontally scrollable">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Group</th>
+          <th scope="col" class="number">Topics</th>
+          <th scope="col" class="number">Members</th>
+          <th scope="col">State</th>
+          <th scope="col" class="number">Total lag</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Groups}}
+        <tr>
+          <th scope="row">{{.Name}}</th>
+          <td class="number">{{.Topics}}</td>
+          <td class="number">{{.Members}}</td>
+          <td><span class="status-label {{.StateClass}}"><span class="status-dot {{.StateClass}}" aria-hidden="true"></span>{{.State}}</span></td>
+          <td class="number lag-cell">
+            <span class="lag-content"><span class="mono">{{.TotalLag}}</span>
+              <span class="status-label {{.HealthClass}}"><span class="status-dot {{.HealthClass}}" aria-hidden="true"></span>{{.Health}}</span>
+            </span>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <h3>No consumer groups found</h3>
+    <p>No groups match the current search and state filter.</p>
+    {{if .HasFilters}}<a class="secondary-button" href="/ui/consumer-groups">Clear filters</a>{{end}}
+  </div>
+  {{end}}
+
+  {{if .Pages}}
+  <nav class="pagination" aria-label="Consumer groups pages">
+    {{if .PreviousURL}}
+    <a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#consumer-groups-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#consumer-groups-loading">Previous</a>
+    {{else}}
+    <span aria-disabled="true">Previous</span>
+    {{end}}
+    <div class="page-links">
+      {{range .Pages}}
+        {{if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#consumer-groups-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#consumer-groups-loading">{{.Number}}</a>{{end}}
+      {{end}}
+    </div>
+    {{if .NextURL}}
+    <a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#consumer-groups-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#consumer-groups-loading">Next</a>
+    {{else}}
+    <span aria-disabled="true">Next</span>
+    {{end}}
+  </nav>
+  {{end}}
+</section>
+{{end}}

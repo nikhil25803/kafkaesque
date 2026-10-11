@@ -340,8 +340,10 @@ The first UI preview is available from the same process:
 GET /ui
 ```
 
-It currently contains a responsive Dashboard populated with clearly labelled
-demo data. Consumer Groups, Topics, Brokers, and Cluster Health pages remain
+It currently contains responsive Dashboard and Consumer Groups pages populated
+with clearly labelled demo data. Consumer-group filtering and pagination use a
+locally vendored HTMX runtime and continue to work as ordinary links and forms
+without JavaScript. Detail pages, Topics, Brokers, and Cluster Health remain
 disabled until they are implemented and reviewed one at a time.
 
 ## Local Kafka environment
