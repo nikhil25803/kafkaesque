@@ -6,11 +6,11 @@ const statusConnected = "CONNECTED"
 
 // MetadataInformation contains the cluster metadata exposed by the CLI.
 type MetadataInformation struct {
-	ClusterID    string
-	ControllerID int
-	BrokerCount  int
-	TopicCount   int
-	Status       string
+	ClusterID    string `json:"cluster_id"`
+	ControllerID int    `json:"controller_id"`
+	BrokerCount  int    `json:"broker_count"`
+	TopicCount   int    `json:"topic_count"`
+	Status       string `json:"status"`
 }
 
 // GetMetadataInformation converts Kafka metadata into CLI metadata information.

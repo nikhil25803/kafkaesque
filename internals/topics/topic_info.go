@@ -4,10 +4,10 @@ import kafka "github.com/segmentio/kafka-go"
 
 // TopicInformation contains the topic data exposed by the CLI.
 type TopicInformation struct {
-	Name              string
-	Level             string
-	PartitionCount    int
-	ReplicationFactor int
+	Name              string `json:"name"`
+	Level             string `json:"level"`
+	PartitionCount    int    `json:"partition_count"`
+	ReplicationFactor int    `json:"replication_factor"`
 }
 
 // GetTopicInformation returns topics from cluster metadata.

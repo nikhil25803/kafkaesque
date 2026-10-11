@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="asset/image/KafkaesqueLogo.png" alt="Kafkaesque logo" width="220">
-</p>
-
 <h1 align="center">Kafkaesque</h1>
 
 <p align="center">
@@ -10,6 +6,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/nikhil25803/kafkaesque/releases/latest"><img src="https://img.shields.io/github/v/release/nikhil25803/kafkaesque.svg" alt="Latest release"></a>
+  <a href="https://github.com/nikhil25803/kafkaesque/releases"><img src="https://img.shields.io/github/downloads/nikhil25803/kafkaesque/total.svg" alt="Release downloads"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/nikhil25803/kafkaesque.svg" alt="Go version"></a>
   <a href="https://github.com/nikhil25803/kafkaesque/actions/workflows/ci.yml"><img src="https://github.com/nikhil25803/kafkaesque/actions/workflows/ci.yml/badge.svg" alt="Build status"></a>
   <a href="https://github.com/nikhil25803/kafkaesque/actions/workflows/tests.yml"><img src="https://github.com/nikhil25803/kafkaesque/actions/workflows/tests.yml/badge.svg" alt="Test status"></a>
   <a href="https://github.com/nikhil25803/kafkaesque/actions/workflows/kafka-integration.yml"><img src="https://github.com/nikhil25803/kafkaesque/actions/workflows/kafka-integration.yml/badge.svg" alt="Kafka integration status"></a>
@@ -115,10 +114,12 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 
 ### General
 
-| Short | Long        | Value | Description                            | Example                |
-| ----- | ----------- | ----- | -------------------------------------- | ---------------------- |
-| `-v`  | `--version` | —     | Show the installed Kafkaesque version. | `kafkaesque --version` |
-| `-h`  | `--help`    | —     | Show command help.                     | `kafkaesque --help`    |
+| Short | Long        | Value            | Description                            | Example                              |
+| ----- | ----------- | ---------------- | -------------------------------------- | ------------------------------------ |
+| `-v`  | `--version` | —                | Show the installed Kafkaesque version. | `kafkaesque --version`               |
+| `-h`  | `--help`    | —                | Show command help.                     | `kafkaesque --help`                  |
+| —     | `--output`  | `text` or `json` | Select information output format.      | `kafkaesque --brokers --output json` |
+| —     | `--watch`   | seconds          | Refresh information in place.          | `kafkaesque --health --watch 5`      |
 
 ### Checks and configuration
 
@@ -129,18 +130,18 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 
 ### Information
 
-| Short | Long           | Value | Description                                              | Example                                                        |
-| ----- | -------------- | ----- | -------------------------------------------------------- | -------------------------------------------------------------- |
-| `-m`  | `--metadata`   | —     | Show cluster metadata and connection status.             | `kafkaesque --metadata`                                        |
+| Short | Long           | Value | Description                                               | Example                                                        |
+| ----- | -------------- | ----- | --------------------------------------------------------- | -------------------------------------------------------------- |
+| `-m`  | `--metadata`   | —     | Show cluster metadata and connection status.              | `kafkaesque --metadata`                                        |
 | —     | `--health`     | —     | Show cluster, partition, and consumer health.             | `kafkaesque --health`                                          |
-| `-b`  | `--brokers`    | —     | List Kafka brokers.                                      | `kafkaesque --brokers`                                         |
-| `-t`  | `--topics`     | —     | List Kafka topics.                                       | `kafkaesque --topics`                                          |
-| `-p`  | `--partitions` | —     | List partitions for the topic selected by `--topic`.     | `kafkaesque --partitions --topic orders`                       |
-| `-c`  | `--consumers`  | —     | List consumer groups.                                    | `kafkaesque --consumers`                                       |
-| —     | `--consumer`   | —     | Inspect the consumer group selected by `--group`.        | `kafkaesque --consumer --group order-processor`                |
+| `-b`  | `--brokers`    | —     | List Kafka brokers.                                       | `kafkaesque --brokers`                                         |
+| `-t`  | `--topics`     | —     | List Kafka topics.                                        | `kafkaesque --topics`                                          |
+| `-p`  | `--partitions` | —     | List partitions for the topic selected by `--topic`.      | `kafkaesque --partitions --topic orders`                       |
+| `-c`  | `--consumers`  | —     | List consumer groups.                                     | `kafkaesque --consumers`                                       |
+| —     | `--consumer`   | —     | Inspect the consumer group selected by `--group`.         | `kafkaesque --consumer --group order-processor`                |
 | —     | `--member`     | —     | Include active member assignments in consumer inspection. | `kafkaesque --consumer --member --group order-processor`       |
-| —     | `--group`      | name  | Select a consumer group.                                 | `kafkaesque --consumer --group order-processor`                |
-| —     | `--topic`      | name  | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
+| —     | `--group`      | name  | Select a consumer group.                                  | `kafkaesque --consumer --group order-processor`                |
+| —     | `--topic`      | name  | Select a topic for partition or consumer lag inspection.  | `kafkaesque --consumer --group order-processor --topic orders` |
 
 See [Command documentation](DOCS.md) for complete examples and representative
 output.
@@ -183,6 +184,10 @@ Consumer list and consumer detail modes are intentionally separate, so
 
 Cluster health is a standalone inspection. `--health` can be combined with
 `--config`, but not with other information flags or selectors.
+
+Information commands default to text output. Use `--output json` for a stable
+snake_case JSON document containing only the requested sections. Use
+`--watch N` to refresh either output format in place every `N` seconds.
 
 </details>
 

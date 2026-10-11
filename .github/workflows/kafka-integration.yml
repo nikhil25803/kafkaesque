@@ -99,6 +99,9 @@ jobs:
           grep -q "Rebalancing:" <<<"${health}"
           grep -q "Dead:" <<<"${health}"
           grep -q "Lagging:" <<<"${health}"
+
+          structured="$(./bin/kafkaesque --config "${config}" --brokers --topics --output json)"
+          python3 -c 'import json,sys; data=json.load(sys.stdin); assert len(data["brokers"]) == 2; assert any(topic["name"] == "orders" for topic in data["topics"])' <<<"${structured}"
       - name: Show Kafka diagnostics
         if: failure()
         run: make kafka-ci-diagnostics
