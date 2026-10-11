@@ -259,6 +259,20 @@ tbody tr:hover { background: var(--elevated); }
 
 .groups-panel { margin-bottom: 24px; }
 .groups-panel table { min-width: 760px; }
+.topics-panel { margin-bottom: 24px; }
+.topics-panel table { min-width: 650px; }
+.topic-name { color: var(--text); }
+.level-label {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
 .lag-content { display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .empty-state { display: grid; min-height: 260px; place-items: center; align-content: center; padding: 32px; text-align: center; }
 .empty-state h3 { margin: 0 0 6px; font-size: 17px; }

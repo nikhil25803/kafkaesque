@@ -134,6 +134,9 @@ jobs:
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/consumer-groups?q=service&state=Stable' >"${RUNNER_TEMP}/consumer-groups-fragment.html"
           curl --fail --silent http://127.0.0.1:18085/ui/consumer-groups/orders-service >"${RUNNER_TEMP}/consumer-lag.html"
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/consumer-groups/orders-service?topic=payments&group_by=member&sort=lag&direction=desc' >"${RUNNER_TEMP}/partition-lag-fragment.html"
+          curl --fail --silent http://127.0.0.1:18085/ui/topics >"${RUNNER_TEMP}/topics.html"
+          curl --fail --silent 'http://127.0.0.1:18085/ui/topics?page=3' >"${RUNNER_TEMP}/topics-page-3.html"
+          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/topics?q=state&level=internal' >"${RUNNER_TEMP}/topics-fragment.html"
           curl --fail --silent http://127.0.0.1:18085/ui/assets/app.css >"${RUNNER_TEMP}/app.css"
           curl --fail --silent http://127.0.0.1:18085/ui/assets/app.js >"${RUNNER_TEMP}/app.js"
           curl --fail --silent http://127.0.0.1:18085/ui/assets/htmx-4.0.0.min.js >"${RUNNER_TEMP}/htmx.min.js"
@@ -149,6 +152,10 @@ jobs:
           grep -q 'Partition lag · payments' "${RUNNER_TEMP}/partition-lag-fragment.html"
           grep -q 'consumer-1 · order-worker' "${RUNNER_TEMP}/partition-lag-fragment.html"
           test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/partition-lag-fragment.html")" -eq 0
+          grep -q "1–10 of 24 topics" "${RUNNER_TEMP}/topics.html"
+          grep -q "21–24 of 24 topics" "${RUNNER_TEMP}/topics-page-3.html"
+          grep -q '__transaction_state' "${RUNNER_TEMP}/topics-fragment.html"
+          test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/topics-fragment.html")" -eq 0
           grep -q -- "--canvas: #050505" "${RUNNER_TEMP}/app.css"
           grep -q "event.key === 'Escape'" "${RUNNER_TEMP}/app.js"
           grep -q "var htmx=" "${RUNNER_TEMP}/htmx.min.js"
