@@ -21,6 +21,7 @@ var Version = "dev"
 // InformationRequest identifies the Kafka information the caller needs.
 type InformationRequest struct {
 	Metadata   bool
+	Health     bool
 	Topics     bool
 	Brokers    bool
 	Partitions bool
@@ -34,7 +35,11 @@ type InformationRequest struct {
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Member || r.Group != "" || r.Topic != ""
+	return r.Metadata || r.Health || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Member || r.Group != "" || r.Topic != ""
+}
+
+func (r InformationRequest) healthIsStandalone() bool {
+	return !r.Metadata && !r.Topics && !r.Brokers && !r.Partitions && !r.Consumers && !r.Consumer && !r.Member && r.Group == "" && r.Topic == ""
 }
 
 func newRootCommand() *cobra.Command {
@@ -71,6 +76,7 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().SortFlags = false
 
 	cmd.Flags().BoolVarP(&request.Metadata, "metadata", "m", false, "Retrieve cluster metadata")
+	cmd.Flags().BoolVar(&request.Health, "health", false, "Show cluster health")
 	cmd.Flags().BoolVarP(&request.Brokers, "brokers", "b", false, "Retrieve broker information")
 	cmd.Flags().BoolVarP(&request.Topics, "topics", "t", false, "Retrieve topic information")
 	cmd.Flags().BoolVarP(&request.Partitions, "partitions", "p", false, "Retrieve partition information for a topic")
@@ -102,6 +108,9 @@ func runRootCommand(
 	}
 	if check != "" && check != "config" && check != "conn" {
 		return fmt.Errorf("invalid --check value %q: must be config or conn", check)
+	}
+	if request.Health && !request.healthIsStandalone() {
+		return fmt.Errorf("--health cannot be combined with other information flags")
 	}
 	if request.Partitions && request.Topic == "" {
 		return fmt.Errorf("please provide a topic name using the --topic flag")
