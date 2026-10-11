@@ -19,6 +19,8 @@ offsets, lag, member counts, and consumer states vary by cluster and over time.
 - [Consumer group lag](#consumer-group-lag)
 - [Consumer topic partition lag](#consumer-topic-partition-lag)
 - [Combined inspection](#combined-inspection)
+- [JSON output](#json-output)
+- [Watch mode](#watch-mode)
 
 ## Configuration checks
 
@@ -354,3 +356,55 @@ ID   ADDRESS          RACK
 
 Consumer list mode (`--consumers`) and single-group detail mode (`--consumer`)
 cannot be combined.
+
+## JSON output
+
+Information commands default to the existing terminal text. Select structured
+output with `--output json`; only requested sections are included.
+
+```sh
+kafkaesque --brokers --topics --output json
+```
+
+```json
+{
+  "brokers": [
+    {
+      "id": 1,
+      "address": "localhost:9090",
+      "connect_address": "localhost:9090",
+      "rack": ""
+    }
+  ],
+  "topics": [
+    {
+      "name": "orders",
+      "level": "External",
+      "partition_count": 6,
+      "replication_factor": 3
+    }
+  ]
+}
+```
+
+`--output` supports `text` and `json` and applies only to information commands;
+connection and configuration checks retain their existing output.
+
+## Watch mode
+
+Refresh an information view in place every positive number of seconds:
+
+```sh
+kafkaesque --health --watch 5
+```
+
+Watch mode renders immediately, reuses the same authenticated Kafka connection,
+and replaces the terminal contents after each successful refresh. It also works
+with JSON:
+
+```sh
+kafkaesque --consumer --group orders-service --output json --watch 10
+```
+
+Press Ctrl+C to stop. A collection failure terminates the command and leaves the
+last successful snapshot visible.

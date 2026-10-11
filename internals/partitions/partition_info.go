@@ -10,12 +10,12 @@ import (
 
 // PartitionTopicInformation contains the partition data exposed by the CLI.
 type PartitionTopicInformation struct {
-	TopicName   string
-	PartitionID int
-	Leader      string
-	Replicas    []int
-	ISR         []int
-	Status      string
+	TopicName   string `json:"topic_name"`
+	PartitionID int    `json:"partition_id"`
+	Leader      string `json:"leader"`
+	Replicas    []int  `json:"replicas"`
+	ISR         []int  `json:"isr"`
+	Status      string `json:"status"`
 }
 
 // GetPartitionInformation returns partitions for a topic.

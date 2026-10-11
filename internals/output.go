@@ -1,6 +1,7 @@
 package internals
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -13,11 +14,12 @@ import (
 	kafkaesque_metadata "github.com/nikhil25803/kafkaesque/internals/metadata"
 	kafkaesque_partition "github.com/nikhil25803/kafkaesque/internals/partitions"
 	kafkaesque_topic "github.com/nikhil25803/kafkaesque/internals/topics"
-	"github.com/spf13/cobra"
 )
 
-func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info *KafkaInformation) error {
-	out := cmd.OutOrStdout()
+func printKafkaInformation(out io.Writer, request InformationRequest, info *KafkaInformation, output string) error {
+	if output == "json" {
+		return printKafkaInformationJSON(out, request, info)
+	}
 
 	if request.Health {
 		printHealthInformation(out, info.Health)
@@ -45,6 +47,71 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 		}
 	}
 	return nil
+}
+
+type kafkaInformationJSON struct {
+	Metadata   *kafkaesque_metadata.MetadataInformation          `json:"metadata,omitempty"`
+	Health     *kafkaesque_health.Information                    `json:"health,omitempty"`
+	Brokers    *[]kafkaesque_broker.BrokerInformation            `json:"brokers,omitempty"`
+	Topics     *[]kafkaesque_topic.TopicInformation              `json:"topics,omitempty"`
+	Partitions *[]kafkaesque_partition.PartitionTopicInformation `json:"partitions,omitempty"`
+	Consumers  *[]kafkaesque_consumers.ConsumerGroups            `json:"consumers,omitempty"`
+	Consumer   any                                               `json:"consumer,omitempty"`
+}
+
+type consumerGroupWithMembersJSON struct {
+	*kafkaesque_consumers.ConsumerGroupInformation
+	Members []kafkaesque_consumers.ConsumerGroupMember `json:"members"`
+}
+
+func printKafkaInformationJSON(out io.Writer, request InformationRequest, info *KafkaInformation) error {
+	result := kafkaInformationJSON{}
+	if request.Metadata {
+		result.Metadata = info.Metadata
+	}
+	if request.Health {
+		result.Health = info.Health
+	}
+	if request.Brokers {
+		brokers := nonNilSlice(info.Brokers)
+		result.Brokers = &brokers
+	}
+	if request.Topics {
+		topics := nonNilSlice(info.Topics)
+		result.Topics = &topics
+	}
+	if request.Partitions {
+		partitions := nonNilSlice(info.Partitions)
+		result.Partitions = &partitions
+	}
+	if request.Consumers {
+		consumers := nonNilSlice(info.Consumers)
+		result.Consumers = &consumers
+	}
+	if request.Consumer {
+		if request.Topic != "" {
+			result.Consumer = info.ConsumerTopic
+		} else if request.Member {
+			result.Consumer = consumerGroupWithMembersJSON{
+				ConsumerGroupInformation: info.Consumer,
+				Members:                  nonNilSlice(info.Consumer.Members),
+			}
+		} else {
+			consumer := *info.Consumer
+			consumer.Members = nil
+			result.Consumer = &consumer
+		}
+	}
+	encoder := json.NewEncoder(out)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(result)
+}
+
+func nonNilSlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 func printHealthInformation(out io.Writer, info *kafkaesque_health.Information) {

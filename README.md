@@ -119,6 +119,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 | ----- | ----------- | ----- | -------------------------------------- | ---------------------- |
 | `-v`  | `--version` | —     | Show the installed Kafkaesque version. | `kafkaesque --version` |
 | `-h`  | `--help`    | —     | Show command help.                     | `kafkaesque --help`    |
+| —     | `--output`  | `text` or `json` | Select information output format. | `kafkaesque --brokers --output json` |
+| —     | `--watch`   | seconds | Refresh information in place.       | `kafkaesque --health --watch 5`      |
 
 ### Checks and configuration
 
@@ -183,6 +185,10 @@ Consumer list and consumer detail modes are intentionally separate, so
 
 Cluster health is a standalone inspection. `--health` can be combined with
 `--config`, but not with other information flags or selectors.
+
+Information commands default to text output. Use `--output json` for a stable
+snake_case JSON document containing only the requested sections. Use
+`--watch N` to refresh either output format in place every `N` seconds.
 
 </details>
 

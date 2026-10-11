@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -292,9 +293,7 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(&output)
-	if err := printKafkaInformation(cmd, request, info); err != nil {
+	if err := printKafkaInformation(&output, request, info, "text"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -323,6 +322,274 @@ func TestPrintKafkaInformationPreservesOutput(t *testing.T) {
 		"0          broker-1             1                1                HEALTHY   \n"
 	if output.String() != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", output.String(), want)
+	}
+}
+
+func TestPrintKafkaInformationJSON(t *testing.T) {
+	request := InformationRequest{Metadata: true, Brokers: true, Topics: true, Partitions: true, Consumers: true, Topic: "orders"}
+	info := &KafkaInformation{
+		Metadata: &kafkaesque_metadata.MetadataInformation{ClusterID: "cluster-1", ControllerID: 1, BrokerCount: 1, TopicCount: 1, Status: "CONNECTED"},
+		Brokers:  []kafkaesque_broker.BrokerInformation{{ID: 1, Address: "broker:9092", ConnectAddress: "localhost:9092", Rack: "rack-a"}},
+		Topics:   []kafkaesque_topic.TopicInformation{{Name: "orders", Level: "External", PartitionCount: 1, ReplicationFactor: 1}},
+		Partitions: []kafkaesque_partition.PartitionTopicInformation{{
+			TopicName: "orders", PartitionID: 0, Leader: "broker-1", Replicas: []int{1}, ISR: []int{1}, Status: "HEALTHY",
+		}},
+		Consumers: []kafkaesque_consumers.ConsumerGroups{{GroupName: "orders-service", Type: "consumer", CoordinatorID: 1, State: "Stable", MembersCount: 1, TopicsCount: 1}},
+	}
+
+	var output bytes.Buffer
+	if err := printKafkaInformation(&output, request, info, "json"); err != nil {
+		t.Fatal(err)
+	}
+	want := `{
+  "metadata": {
+    "cluster_id": "cluster-1",
+    "controller_id": 1,
+    "broker_count": 1,
+    "topic_count": 1,
+    "status": "CONNECTED"
+  },
+  "brokers": [
+    {
+      "id": 1,
+      "address": "broker:9092",
+      "connect_address": "localhost:9092",
+      "rack": "rack-a"
+    }
+  ],
+  "topics": [
+    {
+      "name": "orders",
+      "level": "External",
+      "partition_count": 1,
+      "replication_factor": 1
+    }
+  ],
+  "partitions": [
+    {
+      "topic_name": "orders",
+      "partition_id": 0,
+      "leader": "broker-1",
+      "replicas": [
+        1
+      ],
+      "isr": [
+        1
+      ],
+      "status": "HEALTHY"
+    }
+  ],
+  "consumers": [
+    {
+      "group_name": "orders-service",
+      "type": "consumer",
+      "coordinator_id": 1,
+      "members_count": 1,
+      "state": "Stable",
+      "topics_count": 1
+    }
+  ]
+}
+`
+	if output.String() != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", output.String(), want)
+	}
+}
+
+func TestPrintKafkaInformationJSONSections(t *testing.T) {
+	tests := []struct {
+		name    string
+		request InformationRequest
+		info    *KafkaInformation
+		want    string
+	}{
+		{
+			name: "health", request: InformationRequest{Health: true},
+			info: &KafkaInformation{Health: &kafkaesque_health.Information{Status: "HEALTHY", BrokerCount: 3}},
+			want: `{
+  "health": {
+    "status": "HEALTHY",
+    "broker_count": 3,
+    "topic_count": 0,
+    "partition_count": 0,
+    "consumer_group_count": 0,
+    "offline_partition_count": 0,
+    "under_replicated_count": 0,
+    "rebalancing_group_count": 0,
+    "dead_group_count": 0,
+    "lagging_group_count": 0
+  }
+}
+`,
+		},
+		{
+			name: "consumer with members", request: InformationRequest{Consumer: true, Member: true},
+			info: &KafkaInformation{Consumer: &kafkaesque_consumers.ConsumerGroupInformation{
+				GroupName: "orders-service", State: "Stable", MembersCount: 1,
+				Members: []kafkaesque_consumers.ConsumerGroupMember{{MemberID: "member-1", ClientID: "worker", Host: "127.0.0.1"}},
+				Topics:  []kafkaesque_consumers.ConsumerGroupTopicLag{},
+			}},
+			want: `{
+  "consumer": {
+    "group_name": "orders-service",
+    "state": "Stable",
+    "members_count": 1,
+    "topics_count": 0,
+    "total_lag": 0,
+    "lag_summary": {
+      "total_lag": 0,
+      "maximum_partition_lag": 0,
+      "average_partition_lag": 0,
+      "healthy_partitions": 0,
+      "warning_partitions": 0,
+      "unhealthy_partitions": 0
+    },
+    "topics": [],
+    "members": [
+      {
+        "member_id": "member-1",
+        "client_id": "worker",
+        "host": "127.0.0.1",
+        "assignments": null
+      }
+    ]
+  }
+}
+`,
+		},
+		{
+			name: "consumer without member selection", request: InformationRequest{Consumer: true},
+			info: &KafkaInformation{Consumer: &kafkaesque_consumers.ConsumerGroupInformation{
+				GroupName: "orders-service", State: "Empty",
+				Members: []kafkaesque_consumers.ConsumerGroupMember{{MemberID: "must-not-be-rendered"}},
+				Topics:  []kafkaesque_consumers.ConsumerGroupTopicLag{},
+			}},
+			want: `{
+  "consumer": {
+    "group_name": "orders-service",
+    "state": "Empty",
+    "members_count": 0,
+    "topics_count": 0,
+    "total_lag": 0,
+    "lag_summary": {
+      "total_lag": 0,
+      "maximum_partition_lag": 0,
+      "average_partition_lag": 0,
+      "healthy_partitions": 0,
+      "warning_partitions": 0,
+      "unhealthy_partitions": 0
+    },
+    "topics": []
+  }
+}
+`,
+		},
+		{
+			name: "consumer topic", request: InformationRequest{Consumer: true, Topic: "orders"},
+			info: &KafkaInformation{ConsumerTopic: &kafkaesque_consumers.ConsumerGroupTopicInformation{
+				GroupName: "orders-service", Topic: "orders",
+				Partitions: []kafkaesque_consumers.ConsumerGroupPartitionLag{{Partition: 0, CommittedOffset: 10, LogEndOffset: 12, Lag: 2}}, TotalLag: 2,
+			}},
+			want: `{
+  "consumer": {
+    "group_name": "orders-service",
+    "topic": "orders",
+    "partitions": [
+      {
+        "partition": 0,
+        "committed_offset": 10,
+        "log_end_offset": 12,
+        "lag": 2
+      }
+    ],
+    "total_lag": 2
+  }
+}
+`,
+		},
+		{
+			name: "empty collections", request: InformationRequest{Brokers: true, Topics: true, Consumers: true},
+			info: &KafkaInformation{},
+			want: "{\n  \"brokers\": [],\n  \"topics\": [],\n  \"consumers\": []\n}\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := printKafkaInformation(&output, test.request, test.info, "json"); err != nil {
+				t.Fatal(err)
+			}
+			if output.String() != test.want {
+				t.Fatalf("output:\n%s\nwant:\n%s", output.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestRefreshInformationReplacesSnapshots(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	ticks := make(chan time.Time, 1)
+	ticks <- time.Now()
+	calls := 0
+	var output bytes.Buffer
+	err := refreshInformation(ctx, &output, ticks, func(out io.Writer) error {
+		calls++
+		fmt.Fprintf(out, "snapshot-%d\n", calls)
+		if calls == 2 {
+			cancel()
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "snapshot-1\n" + clearScreen + "snapshot-2\n"
+	if output.String() != want || calls != 2 {
+		t.Fatalf("output = %q, calls = %d", output.String(), calls)
+	}
+}
+
+func TestRefreshInformationKeepsPreviousSnapshotOnError(t *testing.T) {
+	ticks := make(chan time.Time, 1)
+	ticks <- time.Now()
+	calls := 0
+	var output bytes.Buffer
+	err := refreshInformation(context.Background(), &output, ticks, func(out io.Writer) error {
+		calls++
+		if calls == 2 {
+			return errors.New("refresh failed")
+		}
+		_, _ = io.WriteString(out, "snapshot-1\n")
+		return nil
+	})
+	if err == nil || err.Error() != "refresh failed" {
+		t.Fatalf("error = %v", err)
+	}
+	if output.String() != "snapshot-1\n" || strings.Contains(output.String(), clearScreen) {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestRefreshInformationSupportsJSON(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	ticks := make(chan time.Time, 1)
+	ticks <- time.Now()
+	calls := 0
+	var output bytes.Buffer
+	err := refreshInformation(ctx, &output, ticks, func(out io.Writer) error {
+		calls++
+		info := &KafkaInformation{Brokers: []kafkaesque_broker.BrokerInformation{{ID: calls}}}
+		if calls == 2 {
+			cancel()
+		}
+		return printKafkaInformation(out, InformationRequest{Brokers: true}, info, "json")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(output.String(), `"brokers"`) != 2 || !strings.Contains(output.String(), clearScreen) || !strings.Contains(output.String(), `"id": 2`) {
+		t.Fatalf("output = %q", output.String())
 	}
 }
 
@@ -359,9 +626,7 @@ func TestPrintHealthInformation(t *testing.T) {
 		UnderReplicatedCount: 3, RebalancingGroupCount: 1, DeadGroupCount: 0, LaggingGroupCount: 2,
 	}
 	var output bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(&output)
-	if err := printKafkaInformation(cmd, InformationRequest{Health: true}, &KafkaInformation{Health: info}); err != nil {
+	if err := printKafkaInformation(&output, InformationRequest{Health: true}, &KafkaInformation{Health: info}, "text"); err != nil {
 		t.Fatal(err)
 	}
 	want := "Kafka Cluster Health\n" + strings.Repeat("=", 80) + "\n" +
@@ -727,6 +992,9 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	if !strings.Contains(output.String(), "--health") {
 		t.Fatalf("health flag is missing from help:\n%s", output.String())
 	}
+	if !strings.Contains(output.String(), "--output") || !strings.Contains(output.String(), "--watch") {
+		t.Fatalf("presentation flags are missing from help:\n%s", output.String())
+	}
 	if !strings.Contains(output.String(), "--consumer") || !strings.Contains(output.String(), "--member") || !strings.Contains(output.String(), "--group") {
 		t.Fatalf("consumer detail flags are missing from help:\n%s", output.String())
 	}
@@ -735,6 +1003,33 @@ func TestRootCommandExposesConsumers(t *testing.T) {
 	groupIndex := strings.Index(output.String(), "      --group string")
 	if consumerIndex == -1 || memberIndex == -1 || groupIndex == -1 || consumerIndex > memberIndex || memberIndex > groupIndex {
 		t.Fatalf("--member and --group should follow --consumer in help:\n%s", output.String())
+	}
+}
+
+func TestRootCommandValidatesPresentationFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "invalid output", args: []string{"--metadata", "--output", "yaml"}, want: `invalid --output value "yaml": must be text or json`},
+		{name: "output without information", args: []string{"--output", "json"}, want: "--output requires an information flag"},
+		{name: "watch without information", args: []string{"--watch", "1"}, want: "--watch requires an information flag"},
+		{name: "zero watch", args: []string{"--metadata", "--watch", "0"}, want: "--watch must be at least 1 second"},
+		{name: "negative watch", args: []string{"--metadata", "--watch", "-1"}, want: "--watch must be at least 1 second"},
+		{name: "output with check", args: []string{"--check", "config", "--output", "json"}, want: "--check cannot be combined with presentation flags"},
+		{name: "watch with check", args: []string{"--check", "config", "--watch", "1"}, want: "--check cannot be combined with presentation flags"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := newRootCommand()
+			cmd.SetArgs(test.args)
+			err := cmd.Execute()
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

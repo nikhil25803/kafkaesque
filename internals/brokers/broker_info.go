@@ -9,10 +9,10 @@ import (
 
 // BrokerInformation contains the broker data exposed by the CLI.
 type BrokerInformation struct {
-	ID             int
-	Address        string
-	ConnectAddress string
-	Rack           string
+	ID             int    `json:"id"`
+	Address        string `json:"address"`
+	ConnectAddress string `json:"connect_address"`
+	Rack           string `json:"rack"`
 }
 
 // GetBrokerInformation returns brokers from cluster metadata.

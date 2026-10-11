@@ -19,14 +19,14 @@ func (r InformationRequest) needsMetadata() bool {
 
 // KafkaInformation contains the requested Kafka data.
 type KafkaInformation struct {
-	Metadata      *kafkaesque_metadata.MetadataInformation
-	Health        *kafkaesque_health.Information
-	Topics        []kafkaesque_topic.TopicInformation
-	Brokers       []kafkaesque_broker.BrokerInformation
-	Partitions    []kafkaesque_partition.PartitionTopicInformation
-	Consumers     []kafkaesque_consumers.ConsumerGroups
-	Consumer      *kafkaesque_consumers.ConsumerGroupInformation
-	ConsumerTopic *kafkaesque_consumers.ConsumerGroupTopicInformation
+	Metadata      *kafkaesque_metadata.MetadataInformation            `json:"metadata,omitempty"`
+	Health        *kafkaesque_health.Information                      `json:"health,omitempty"`
+	Topics        []kafkaesque_topic.TopicInformation                 `json:"topics,omitempty"`
+	Brokers       []kafkaesque_broker.BrokerInformation               `json:"brokers,omitempty"`
+	Partitions    []kafkaesque_partition.PartitionTopicInformation    `json:"partitions,omitempty"`
+	Consumers     []kafkaesque_consumers.ConsumerGroups               `json:"consumers,omitempty"`
+	Consumer      *kafkaesque_consumers.ConsumerGroupInformation      `json:"consumer,omitempty"`
+	ConsumerTopic *kafkaesque_consumers.ConsumerGroupTopicInformation `json:"consumer_topic,omitempty"`
 }
 
 // GetKafkaInformation fetches the requested Kafka data.

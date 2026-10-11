@@ -1,12 +1,17 @@
 package internals
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
@@ -34,6 +39,13 @@ type InformationRequest struct {
 	lagThresholds kafkaesque_consumers.LagThresholds
 }
 
+type presentationOptions struct {
+	output        string
+	watchSeconds  int
+	outputChanged bool
+	watchChanged  bool
+}
+
 func (r InformationRequest) any() bool {
 	return r.Metadata || r.Health || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Member || r.Group != "" || r.Topic != ""
 }
@@ -52,6 +64,8 @@ func newRootCommandWithConnectionCheck(checkConnection connectionChecker) *cobra
 	var request InformationRequest
 	var configPath string
 	var check string
+	var output string
+	var watchSeconds int
 
 	cmd := &cobra.Command{
 		Use:     "kafkaesque",
@@ -69,7 +83,11 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runRootCommand(cmd, request, configPath, check, checkConnection)
+			return runRootCommand(cmd, request, configPath, check, presentationOptions{
+				output: output, watchSeconds: watchSeconds,
+				outputChanged: cmd.Flags().Changed("output"),
+				watchChanged:  cmd.Flags().Changed("watch"),
+			}, checkConnection)
 		},
 	}
 
@@ -88,6 +106,8 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
 	cmd.Flags().Lookup("check").NoOptDefVal = "conn"
+	cmd.Flags().StringVar(&output, "output", "text", "Output format (text|json)")
+	cmd.Flags().IntVar(&watchSeconds, "watch", 0, "Refresh information every N seconds")
 	cmd.Flags().BoolP("version", "v", false, "Show Kafkaesque version")
 
 	return cmd
@@ -98,16 +118,32 @@ func runRootCommand(
 	request InformationRequest,
 	configPath string,
 	check string,
+	presentation presentationOptions,
 	checkConnection connectionChecker,
 ) error {
-	if check == "" && !request.any() {
-		return cmd.Help()
+	if presentation.output != "text" && presentation.output != "json" {
+		return fmt.Errorf("invalid --output value %q: must be text or json", presentation.output)
+	}
+	if presentation.watchChanged && presentation.watchSeconds < 1 {
+		return fmt.Errorf("--watch must be at least 1 second")
 	}
 	if check != "" && request.any() {
 		return fmt.Errorf("--check cannot be combined with information flags")
 	}
+	if check != "" && (presentation.outputChanged || presentation.watchChanged) {
+		return fmt.Errorf("--check cannot be combined with presentation flags")
+	}
 	if check != "" && check != "config" && check != "conn" {
 		return fmt.Errorf("invalid --check value %q: must be config or conn", check)
+	}
+	if check == "" && !request.any() {
+		if presentation.outputChanged {
+			return fmt.Errorf("--output requires an information flag")
+		}
+		if presentation.watchChanged {
+			return fmt.Errorf("--watch requires an information flag")
+		}
+		return cmd.Help()
 	}
 	if request.Health && !request.healthIsStandalone() {
 		return fmt.Errorf("--health cannot be combined with other information flags")
@@ -165,12 +201,50 @@ func runRootCommand(
 	}
 	defer conn.Close()
 
-	info, err := GetKafkaInformation(ctx, conn, request)
-	if err != nil {
-		return fmt.Errorf("failed to get Kafka information: %w", err)
+	render := func(out io.Writer) error {
+		info, err := GetKafkaInformation(ctx, conn, request)
+		if err != nil {
+			return fmt.Errorf("failed to get Kafka information: %w", err)
+		}
+		return printKafkaInformation(out, request, info, presentation.output)
 	}
 
-	return printKafkaInformation(cmd, request, info)
+	if !presentation.watchChanged {
+		return render(cmd.OutOrStdout())
+	}
+	ticker := time.NewTicker(time.Duration(presentation.watchSeconds) * time.Second)
+	defer ticker.Stop()
+	return refreshInformation(ctx, cmd.OutOrStdout(), ticker.C, render)
+}
+
+const clearScreen = "\x1b[2J\x1b[H"
+
+func refreshInformation(ctx context.Context, out io.Writer, ticks <-chan time.Time, render func(io.Writer) error) error {
+	refresh := false
+	for {
+		var snapshot bytes.Buffer
+		if err := render(&snapshot); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		if refresh {
+			if _, err := io.WriteString(out, clearScreen); err != nil {
+				return err
+			}
+		}
+		if _, err := snapshot.WriteTo(out); err != nil {
+			return err
+		}
+		refresh = true
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticks:
+		}
+	}
 }
 
 func checkKafkaConnection(ctx context.Context, cfg kafkaesque_config.KafkaConfig) (*kafkaesque.CheckResult, error) {
@@ -300,5 +374,7 @@ var rootCmd = newRootCommand()
 
 // Execute runs the kafkaesque CLI and returns command errors to the caller.
 func Execute() error {
-	return rootCmd.Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return rootCmd.ExecuteContext(ctx)
 }

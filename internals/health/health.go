@@ -20,16 +20,16 @@ const (
 
 // Information contains the cluster-wide health summary exposed by the CLI.
 type Information struct {
-	Status                string
-	BrokerCount           int
-	TopicCount            int
-	PartitionCount        int
-	ConsumerGroupCount    int
-	OfflinePartitionCount int
-	UnderReplicatedCount  int
-	RebalancingGroupCount int
-	DeadGroupCount        int
-	LaggingGroupCount     int
+	Status                string `json:"status"`
+	BrokerCount           int    `json:"broker_count"`
+	TopicCount            int    `json:"topic_count"`
+	PartitionCount        int    `json:"partition_count"`
+	ConsumerGroupCount    int    `json:"consumer_group_count"`
+	OfflinePartitionCount int    `json:"offline_partition_count"`
+	UnderReplicatedCount  int    `json:"under_replicated_count"`
+	RebalancingGroupCount int    `json:"rebalancing_group_count"`
+	DeadGroupCount        int    `json:"dead_group_count"`
+	LaggingGroupCount     int    `json:"lagging_group_count"`
 }
 
 // GetInformation builds cluster health from metadata, group state, and group lag.
