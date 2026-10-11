@@ -72,5 +72,6 @@ Run Kafkaesque against the environment with the included configuration:
 ./bin/kafkaesque --config kafka-env/kafkaesque.yaml -p --topic orders
 ```
 
-The environment intentionally has no authentication, TLS, or persistent
-volume. Those modes belong in separate future Compose files.
+The main development environment intentionally has no authentication, TLS, or
+persistent volume. `compose.auth.yaml` provides isolated TCP, TLS/mTLS, and
+SASL fixtures for the Kafka authentication CI matrix.

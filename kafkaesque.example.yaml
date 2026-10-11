@@ -1,8 +1,25 @@
 kafka:
-  bootstrap_server: localhost:9092
+  bootstrap_servers:
+    - localhost:9092
+  connection_timeout: 10s
   # Map an advertised broker address to its reachable listener when required.
   # broker_address_overrides:
   #   "broker-0.kafka.svc.cluster.local:9092": "broker-0.example.com:9094"
+
+  # TLS is optional. Omit ca_file to use the system certificate pool.
+  # security:
+  #   tls:
+  #     enabled: true
+  #     ca_file: certificates/ca.pem
+  #     # Providing both files enables mutual TLS authentication.
+  #     client_cert_file: certificates/client.pem
+  #     client_key_file: certificates/client-key.pem
+  #     server_name: kafka.example.com
+  #   sasl:
+  #     # Supported: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512.
+  #     mechanism: SCRAM-SHA-256
+  #     username: kafkaesque
+  #     password: secret
 
 lag:
   warning_threshold: 100

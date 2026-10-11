@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
@@ -659,24 +661,32 @@ func TestRootCommandChecksConfiguration(t *testing.T) {
 
 func TestRootCommandChecksKafkaConnection(t *testing.T) {
 	var output bytes.Buffer
-	var checkedAddress string
-	cmd := newRootCommandWithConnectionCheck(func(_ context.Context, address string) error {
-		checkedAddress = address
-		return nil
+	var checkedAddresses []string
+	cmd := newRootCommandWithConnectionCheck(func(_ context.Context, cfg kafkaesque_config.KafkaConfig) (*kafkaesque.CheckResult, error) {
+		checkedAddresses = cfg.BootstrapServers
+		return &kafkaesque.CheckResult{
+			BrokerCount: 3, ControllerID: 2, TopicCount: 24, PartitionCount: 186, Latency: 42 * time.Millisecond,
+		}, nil
 	})
 	cmd.SetOut(&output)
 	address := "broker.example.com:9092"
 	t.Setenv(kafkaesque_config.BootstrapServerEnv, address)
-	cmd.SetArgs([]string{"--check", "conn", "--config", writeRootConfig(t, address)})
+	cmd.SetArgs([]string{"--check", "--config", writeRootConfig(t, address)})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != "Kafka connection successful: "+address+"\n" {
+	want := "Kafka Connection\n" + strings.Repeat("=", 80) + "\n" +
+		"Bootstrap Servers\n  " + address + "\n" +
+		"Security\n  Protocol: PLAINTEXT\n" +
+		"Status: CONNECTED\nCluster\n" +
+		"  Brokers: 3\n  Controller: broker-2\n  Topics: 24\n  Partitions: 186\n" +
+		"Connection latency: 42ms\n"
+	if output.String() != want {
 		t.Fatalf("output = %q", output.String())
 	}
-	if checkedAddress != address {
-		t.Fatalf("checked address = %q, want %q", checkedAddress, address)
+	if !reflect.DeepEqual(checkedAddresses, []string{address}) {
+		t.Fatalf("checked addresses = %q, want %q", checkedAddresses, address)
 	}
 }
 
@@ -705,14 +715,100 @@ func TestRootCommandRejectsInvalidChecks(t *testing.T) {
 func TestRootCommandReturnsConnectionCheckErrors(t *testing.T) {
 	address := "broker.example.com:9092"
 	t.Setenv(kafkaesque_config.BootstrapServerEnv, address)
-	cmd := newRootCommandWithConnectionCheck(func(context.Context, string) error {
-		return errors.New("connection refused")
+	var output bytes.Buffer
+	cmd := newRootCommandWithConnectionCheck(func(context.Context, kafkaesque_config.KafkaConfig) (*kafkaesque.CheckResult, error) {
+		return nil, errors.New("connection refused")
 	})
+	cmd.SetOut(&output)
 	cmd.SetArgs([]string{"--check", "conn", "--config", writeRootConfig(t, address)})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "failed to connect to Kafka at "+address) {
+	if err == nil || ExitCode(err) != 1 || !ErrorWasReported(err) {
 		t.Fatalf("error = %v", err)
+	}
+	if !strings.Contains(output.String(), "Status: FAILED") || !strings.Contains(output.String(), "Reason:\n  connection failed") || !strings.Contains(output.String(), "Exit code: 1") {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestRootCommandAcceptsConnectionCheckSyntaxes(t *testing.T) {
+	for _, args := range [][]string{
+		{"--check"},
+		{"--check", "conn"},
+		{"--check=conn"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cmd := newRootCommandWithConnectionCheck(func(context.Context, kafkaesque_config.KafkaConfig) (*kafkaesque.CheckResult, error) {
+				return &kafkaesque.CheckResult{}, nil
+			})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs(append(args, "--config", writeRootConfig(t, "localhost:9092")))
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestConnectionCheckErrorClassification(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantCode   int
+		wantReason string
+	}{
+		{name: "timeout", err: context.DeadlineExceeded, wantCode: 3, wantReason: "connection timeout"},
+		{name: "SASL", err: fmt.Errorf("authenticate: %w", kafka.SASLAuthenticationFailed), wantCode: 2, wantReason: "SASL authentication failed"},
+		{name: "authorization", err: fmt.Errorf("metadata: %w", kafka.TopicAuthorizationFailed), wantCode: 2, wantReason: "Kafka authorization failed"},
+		{name: "TLS", err: errors.New("tls: failed to verify certificate"), wantCode: 2, wantReason: "TLS authentication failed"},
+		{name: "network", err: errors.New("connection refused"), wantCode: 1, wantReason: "connection failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, reason := classifyConnectionCheckError(test.err)
+			if code != test.wantCode || reason != test.wantReason {
+				t.Fatalf("classification = %d/%q, want %d/%q", code, reason, test.wantCode, test.wantReason)
+			}
+		})
+	}
+}
+
+func TestConnectionCheckFailureRedactsPassword(t *testing.T) {
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	cfg := kafkaesque_config.KafkaConfig{
+		BootstrapServers:  []string{"localhost:9092"},
+		ConnectionTimeout: 5 * time.Second,
+		Security: kafkaesque_config.SecurityConfig{SASL: kafkaesque_config.SASLConfig{
+			Mechanism: "PLAIN",
+			Username:  "user",
+			Password:  "top-secret",
+		}},
+	}
+	printConnectionCheckFailure(cmd, cfg, "SASL authentication failed", errors.New("rejected top-secret"), 2)
+	if strings.Contains(output.String(), "top-secret") || !strings.Contains(output.String(), "[REDACTED]") {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestSecurityProtocol(t *testing.T) {
+	tests := []struct {
+		name     string
+		security kafkaesque_config.SecurityConfig
+		want     string
+	}{
+		{name: "plaintext", want: "PLAINTEXT"},
+		{name: "TLS", security: kafkaesque_config.SecurityConfig{TLS: kafkaesque_config.TLSConfig{Enabled: true}}, want: "SSL"},
+		{name: "SASL", security: kafkaesque_config.SecurityConfig{SASL: kafkaesque_config.SASLConfig{Mechanism: "PLAIN"}}, want: "SASL_PLAINTEXT"},
+		{name: "SASL TLS", security: kafkaesque_config.SecurityConfig{TLS: kafkaesque_config.TLSConfig{Enabled: true}, SASL: kafkaesque_config.SASLConfig{Mechanism: "PLAIN"}}, want: "SASL_SSL"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := securityProtocol(kafkaesque_config.KafkaConfig{Security: test.security}); got != test.want {
+				t.Fatalf("protocol = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

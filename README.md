@@ -124,7 +124,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 | —     | `--group`      | name               | Select a consumer group.                                 | `kafkaesque --consumer --group order-processor`                |
 | —     | `--topic`      | name               | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
 | —     | `--config`     | path               | Load an explicit YAML configuration file.                | `kafkaesque --config /path/to/config.yaml --metadata`          |
-| —     | `--check`      | `config` or `conn` | Validate configuration or test the Kafka connection.     | `kafkaesque --check conn`                                      |
+| —     | `--check`      | optional `config` or `conn` | Validate configuration or test the Kafka connection. | `kafkaesque --check`                                           |
 | `-v`  | `--version`    | —                  | Show the installed Kafkaesque version.                   | `kafkaesque --version`                                         |
 | `-h`  | `--help`       | —                  | Show command help.                                       | `kafkaesque --help`                                            |
 
@@ -196,7 +196,9 @@ Configuration precedence is:
 
 ```yaml
 kafka:
-  bootstrap_server: localhost:9092
+  bootstrap_servers:
+    - localhost:9092
+  connection_timeout: 10s
 
 lag:
   warning_threshold: 100
@@ -215,6 +217,45 @@ be lower than the unhealthy threshold.
 
 See [`kafkaesque.example.yaml`](kafkaesque.example.yaml) for a ready-to-copy
 configuration. Kafkaesque never creates configuration files automatically.
+
+`bootstrap_server` remains supported for existing configurations. New
+configurations can use `bootstrap_servers` for multiple seed brokers; setting
+both forms is invalid. `connection_timeout` controls TCP, TLS, and SASL setup
+and defaults to `10s`.
+
+### TLS and SASL authentication
+
+Kafkaesque supports TLS server verification, mutual TLS, SASL PLAIN,
+SCRAM-SHA-256, and SCRAM-SHA-512. TLS uses the system certificate pool when
+`ca_file` is omitted. Relative certificate paths are resolved from the
+configuration file directory.
+
+```yaml
+kafka:
+  bootstrap_servers:
+    - kafka-1.example.com:9093
+    - kafka-2.example.com:9093
+  security:
+    tls:
+      enabled: true
+      ca_file: certificates/ca.pem
+      # Include both fields when the broker requires mutual TLS.
+      client_cert_file: certificates/client.pem
+      client_key_file: certificates/client-key.pem
+      server_name: kafka.example.com
+    sasl:
+      mechanism: SCRAM-SHA-256
+      username: kafkaesque
+      password: secret
+```
+
+A SASL mechanism enables authentication automatically. Combining it with
+`tls.enabled: true` selects `SASL_SSL`; without TLS it selects
+`SASL_PLAINTEXT`. Do not use PLAIN without TLS on an untrusted network because
+PLAIN credentials are not encrypted.
+
+OAuth/OIDC, Kerberos/GSSAPI, AWS MSK IAM, and other provider-specific
+mechanisms are not currently supported.
 
 ### Broker address overrides
 

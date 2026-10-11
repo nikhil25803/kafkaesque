@@ -32,3 +32,6 @@ go.work.sum
 # .vscode/
 bin/
 dist/
+kafka-env/auth/certificates/
+kafka-env/auth/success.yaml
+kafka-env/auth/failure.yaml

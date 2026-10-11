@@ -1,0 +1,123 @@
+name: Kafka Auth
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  auth:
+    name: Kafka Auth / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: TCP
+            mode: tcp
+            protocol: PLAINTEXT
+            mechanism: PLAIN
+            client_auth: none
+          - name: TLS
+            mode: tls
+            protocol: SSL
+            mechanism: PLAIN
+            client_auth: none
+          - name: mTLS
+            mode: mtls
+            protocol: SSL
+            mechanism: PLAIN
+            client_auth: required
+          - name: SASL PLAIN
+            mode: plain
+            protocol: SASL_PLAINTEXT
+            mechanism: PLAIN
+            client_auth: none
+          - name: SASL SSL PLAIN
+            mode: sasl_ssl_plain
+            protocol: SASL_SSL
+            mechanism: PLAIN
+            client_auth: none
+          - name: SCRAM SHA-256
+            mode: scram_256
+            protocol: SASL_SSL
+            mechanism: SCRAM-SHA-256
+            client_auth: none
+          - name: SCRAM SHA-512
+            mode: scram_512
+            protocol: SASL_SSL
+            mechanism: SCRAM-SHA-512
+            client_auth: none
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Generate test certificates
+        run: bash kafka-env/auth/generate-certificates.sh kafka-env/auth/certificates
+      - name: Start isolated Kafka fixture
+        env:
+          AUTH_PROTOCOL: ${{ matrix.protocol }}
+          SASL_MECHANISM: ${{ matrix.mechanism }}
+          SSL_CLIENT_AUTH: ${{ matrix.client_auth }}
+        run: docker compose -f kafka-env/compose.auth.yaml up -d --wait broker
+      - name: Provision SCRAM credentials
+        if: startsWith(matrix.mode, 'scram_')
+        env:
+          SCRAM_MECHANISM: ${{ matrix.mechanism }}
+        run: >-
+          docker compose -f kafka-env/compose.auth.yaml exec -T broker
+          /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:19092 --alter
+          --add-config "${SCRAM_MECHANISM}=[iterations=4096,password=secret]"
+          --entity-type users --entity-name kafkaesque
+      - name: Build Kafkaesque
+        run: make build
+      - name: Check successful authentication
+        env:
+          AUTH_MODE: ${{ matrix.mode }}
+        run: |
+          bash kafka-env/auth/write-config.sh "${AUTH_MODE}" secret certificates/ca.pem kafka-env/auth/success.yaml
+          output="$(./bin/kafkaesque --config kafka-env/auth/success.yaml --check)"
+          grep -q "Status: CONNECTED" <<<"${output}"
+          grep -q "Protocol: ${{ matrix.protocol }}" <<<"${output}"
+      - name: Check authentication failure exit code
+        env:
+          AUTH_MODE: ${{ matrix.mode }}
+        run: |
+          case "${AUTH_MODE}" in
+            tcp)
+              python3 -c 'import socket,time; s=socket.socket(); s.bind(("127.0.0.1",19093)); s.listen(); c,_=s.accept(); time.sleep(10)' &
+              printf 'kafka:\n  bootstrap_servers: [localhost:19093]\n  connection_timeout: 1s\n' >kafka-env/auth/failure.yaml
+              expected=3
+              ;;
+            tls)
+              bash kafka-env/auth/write-config.sh tls secret certificates/invalid-ca.pem kafka-env/auth/failure.yaml
+              expected=2
+              ;;
+            mtls)
+              bash kafka-env/auth/write-config.sh tls secret certificates/ca.pem kafka-env/auth/failure.yaml
+              expected=2
+              ;;
+            *)
+              bash kafka-env/auth/write-config.sh "${AUTH_MODE}" invalid certificates/ca.pem kafka-env/auth/failure.yaml
+              expected=2
+              ;;
+          esac
+          set +e
+          output="$(./bin/kafkaesque --config kafka-env/auth/failure.yaml --check 2>&1)"
+          actual=$?
+          set -e
+          test "${actual}" -eq "${expected}"
+          grep -q "Exit code: ${expected}" <<<"${output}"
+      - name: Show Kafka diagnostics
+        if: failure()
+        run: docker compose -f kafka-env/compose.auth.yaml logs --no-color broker
+      - name: Stop Kafka fixture
+        if: always()
+        run: docker compose -f kafka-env/compose.auth.yaml down --volumes --remove-orphans

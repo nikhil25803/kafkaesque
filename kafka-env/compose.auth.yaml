@@ -1,0 +1,42 @@
+services:
+  broker:
+    image: apache/kafka:4.3.0
+    hostname: broker
+    ports:
+      - "127.0.0.1:9092:9092"
+    volumes:
+      - ./auth/certificates:/certificates:ro
+      - ./auth/kafka_server_jaas.conf:/etc/kafka/secrets/kafka_server_jaas.conf:ro
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: CONTROLLER://:29093,INTERNAL://:19092,AUTH://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker:19092,AUTH://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,AUTH:${AUTH_PROTOCOL:-PLAINTEXT}
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_SASL_ENABLED_MECHANISMS: ${SASL_MECHANISM:-PLAIN}
+      KAFKA_LISTENER_NAME_AUTH_SASL_ENABLED_MECHANISMS: ${SASL_MECHANISM:-PLAIN}
+      KAFKA_LISTENER_NAME_AUTH_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required user_kafkaesque="secret";
+      KAFKA_LISTENER_NAME_AUTH_SCRAM___SHA___256_SASL_JAAS_CONFIG: org.apache.kafka.common.security.scram.ScramLoginModule required;
+      KAFKA_LISTENER_NAME_AUTH_SCRAM___SHA___512_SASL_JAAS_CONFIG: org.apache.kafka.common.security.scram.ScramLoginModule required;
+      KAFKA_LISTENER_NAME_AUTH_SSL_KEYSTORE_TYPE: PKCS12
+      KAFKA_LISTENER_NAME_AUTH_SSL_KEYSTORE_LOCATION: /certificates/server.p12
+      KAFKA_LISTENER_NAME_AUTH_SSL_KEYSTORE_PASSWORD: changeit
+      KAFKA_LISTENER_NAME_AUTH_SSL_KEY_PASSWORD: changeit
+      KAFKA_LISTENER_NAME_AUTH_SSL_TRUSTSTORE_TYPE: PKCS12
+      KAFKA_LISTENER_NAME_AUTH_SSL_TRUSTSTORE_LOCATION: /certificates/truststore.p12
+      KAFKA_LISTENER_NAME_AUTH_SSL_TRUSTSTORE_PASSWORD: changeit
+      KAFKA_LISTENER_NAME_AUTH_SSL_CLIENT_AUTH: ${SSL_CLIENT_AUTH:-none}
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s

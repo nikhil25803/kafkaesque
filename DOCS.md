@@ -31,15 +31,32 @@ kafkaesque --check config
 Configuration is valid
 ```
 
-Validate configuration and connectivity:
+Validate configuration and connectivity (`--check`, `--check conn`, and
+`--check=conn` are equivalent):
 
 ```sh
-kafkaesque --check conn
+kafkaesque --check
 ```
 
 ```text
-Kafka connection successful: broker.example.com:9092
+Kafka Connection
+================================================================================
+Bootstrap Servers
+  broker.example.com:9092
+Security
+  Protocol: SASL_SSL
+  Mechanism: SCRAM-SHA-256
+Status: CONNECTED
+Cluster
+  Brokers: 3
+  Controller: broker-2
+  Topics: 24
+  Partitions: 186
+Connection latency: 42ms
 ```
+
+Connection checks return exit code `2` for authentication, TLS security, or
+authorization failures and `3` for timeouts. Other failures return `1`.
 
 If Kafka advertises internal broker addresses that are unreachable from your
 network, map each advertised address to its corresponding reachable listener:

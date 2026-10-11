@@ -6,6 +6,9 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
+
+	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 )
 
 func TestResolveBrokerAddress(t *testing.T) {
@@ -26,6 +29,68 @@ func TestResolveBrokerAddress(t *testing.T) {
 		if got := conn.ResolveBrokerAddress(test.advertised); got != test.want {
 			t.Fatalf("ResolveBrokerAddress(%q) = %q, want %q", test.advertised, got, test.want)
 		}
+	}
+}
+
+func TestConnectBuildsSharedSecurityTransport(t *testing.T) {
+	tests := []struct {
+		name     string
+		security kafkaesque_config.SecurityConfig
+		wantTLS  bool
+		wantSASL string
+	}{
+		{name: "plaintext"},
+		{name: "TLS", security: kafkaesque_config.SecurityConfig{TLS: kafkaesque_config.TLSConfig{Enabled: true}}, wantTLS: true},
+		{name: "PLAIN", security: kafkaesque_config.SecurityConfig{SASL: kafkaesque_config.SASLConfig{Mechanism: "PLAIN", Username: "user", Password: "pass"}}, wantSASL: "PLAIN"},
+		{name: "SCRAM SHA-256", security: kafkaesque_config.SecurityConfig{SASL: kafkaesque_config.SASLConfig{Mechanism: "SCRAM-SHA-256", Username: "user", Password: "pass"}}, wantSASL: "SCRAM-SHA-256"},
+		{name: "SCRAM SHA-512", security: kafkaesque_config.SecurityConfig{SASL: kafkaesque_config.SASLConfig{Mechanism: "SCRAM-SHA-512", Username: "user", Password: "pass"}}, wantSASL: "SCRAM-SHA-512"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := kafkaesque_config.KafkaConfig{
+				BootstrapServers:  []string{"kafka-1:9092", "kafka-2:9092"},
+				ConnectionTimeout: 7 * time.Second,
+				Security:          test.security,
+			}
+			conn, err := Connect(context.Background(), cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if (conn.transport.TLS != nil) != test.wantTLS {
+				t.Fatalf("TLS configured = %t, want %t", conn.transport.TLS != nil, test.wantTLS)
+			}
+			if conn.transport.DialTimeout != 7*time.Second {
+				t.Fatalf("dial timeout = %s", conn.transport.DialTimeout)
+			}
+			if conn.Client.Timeout != 7*time.Second {
+				t.Fatalf("client timeout = %s", conn.Client.Timeout)
+			}
+			if test.wantSASL == "" && conn.transport.SASL != nil {
+				t.Fatalf("unexpected SASL mechanism %s", conn.transport.SASL.Name())
+			}
+			if test.wantSASL != "" && (conn.transport.SASL == nil || conn.transport.SASL.Name() != test.wantSASL) {
+				t.Fatalf("SASL mechanism = %v, want %s", conn.transport.SASL, test.wantSASL)
+			}
+			if got := conn.Client.Addr.String(); !strings.Contains(got, "kafka-1:9092") || !strings.Contains(got, "kafka-2:9092") {
+				t.Fatalf("client address = %q", got)
+			}
+		})
+	}
+}
+
+func TestConnectReportsTLSFileErrors(t *testing.T) {
+	_, err := Connect(context.Background(), kafkaesque_config.KafkaConfig{
+		BootstrapServers:  []string{"localhost:9092"},
+		ConnectionTimeout: time.Second,
+		Security: kafkaesque_config.SecurityConfig{TLS: kafkaesque_config.TLSConfig{
+			Enabled: true,
+			CAFile:  "missing-ca.pem",
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "read Kafka TLS CA file") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
 	DefaultBootstrapServer       = "localhost:9092"
+	DefaultConnectionTimeout     = 10 * time.Second
 	DefaultLagWarningThreshold   = int64(100)
 	DefaultLagUnhealthyThreshold = int64(500)
 	BootstrapServerEnv           = "KAFKAESQUE_BOOTSTRAP_SERVER"
@@ -30,7 +32,32 @@ type Config struct {
 // KafkaConfig contains Kafka connection settings.
 type KafkaConfig struct {
 	BootstrapServer        string            `yaml:"bootstrap_server"`
+	BootstrapServers       []string          `yaml:"bootstrap_servers"`
+	ConnectionTimeout      time.Duration     `yaml:"connection_timeout"`
 	BrokerAddressOverrides map[string]string `yaml:"broker_address_overrides"`
+	Security               SecurityConfig    `yaml:"security"`
+}
+
+// SecurityConfig contains Kafka transport security settings.
+type SecurityConfig struct {
+	TLS  TLSConfig  `yaml:"tls"`
+	SASL SASLConfig `yaml:"sasl"`
+}
+
+// TLSConfig contains TLS and optional mutual-TLS settings.
+type TLSConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	CAFile         string `yaml:"ca_file"`
+	ClientCertFile string `yaml:"client_cert_file"`
+	ClientKeyFile  string `yaml:"client_key_file"`
+	ServerName     string `yaml:"server_name"`
+}
+
+// SASLConfig contains SASL credentials. A mechanism enables SASL.
+type SASLConfig struct {
+	Mechanism string `yaml:"mechanism"`
+	Username  string `yaml:"username"`
+	Password  string `yaml:"password"`
 }
 
 // LagConfig contains consumer lag health thresholds.
@@ -65,7 +92,7 @@ func Load(path string) (*Config, error) {
 func load(path string, explicit bool) (*Config, error) {
 	cfg := &Config{
 		Kafka: KafkaConfig{
-			BootstrapServer:        DefaultBootstrapServer,
+			ConnectionTimeout:      DefaultConnectionTimeout,
 			BrokerAddressOverrides: map[string]string{},
 		},
 		Lag: LagConfig{
@@ -94,10 +121,23 @@ func load(path string, explicit bool) (*Config, error) {
 		}
 	}
 
-	if value, ok := os.LookupEnv(BootstrapServerEnv); ok {
-		cfg.Kafka.BootstrapServer = value
+	if cfg.Kafka.BootstrapServer != "" && len(cfg.Kafka.BootstrapServers) > 0 {
+		return nil, fmt.Errorf("kafka bootstrap_server and bootstrap_servers cannot both be set")
 	}
-	cfg.Kafka.BootstrapServer = strings.TrimSpace(cfg.Kafka.BootstrapServer)
+	if value, ok := os.LookupEnv(BootstrapServerEnv); ok {
+		cfg.Kafka.BootstrapServers = []string{value}
+	} else if len(cfg.Kafka.BootstrapServers) == 0 {
+		if cfg.Kafka.BootstrapServer == "" {
+			cfg.Kafka.BootstrapServers = []string{DefaultBootstrapServer}
+		} else {
+			cfg.Kafka.BootstrapServers = []string{cfg.Kafka.BootstrapServer}
+		}
+	}
+	cfg.Kafka.BootstrapServer = ""
+	for i := range cfg.Kafka.BootstrapServers {
+		cfg.Kafka.BootstrapServers[i] = strings.TrimSpace(cfg.Kafka.BootstrapServers[i])
+	}
+	normalizeSecurity(&cfg.Kafka.Security, filepath.Dir(path))
 	overrides, err := normalizeBrokerAddressOverrides(cfg.Kafka.BrokerAddressOverrides)
 	if err != nil {
 		return nil, err
@@ -123,12 +163,24 @@ func rejectAdditionalDocuments(decoder *yaml.Decoder, path string) error {
 
 // Validate checks the effective configuration.
 func (c *Config) Validate() error {
-	address := c.Kafka.BootstrapServer
-	if address == "" {
-		return fmt.Errorf("kafka bootstrap server cannot be empty")
+	if len(c.Kafka.BootstrapServers) == 0 {
+		return fmt.Errorf("kafka bootstrap servers cannot be empty")
 	}
-	if err := validateKafkaAddress(address, "bootstrap server"); err != nil {
-		return err
+	seen := make(map[string]struct{}, len(c.Kafka.BootstrapServers))
+	for _, address := range c.Kafka.BootstrapServers {
+		if address == "" {
+			return fmt.Errorf("kafka bootstrap server cannot be empty")
+		}
+		if err := validateKafkaAddress(address, "bootstrap server"); err != nil {
+			return err
+		}
+		if _, exists := seen[address]; exists {
+			return fmt.Errorf("duplicate Kafka bootstrap server %q", address)
+		}
+		seen[address] = struct{}{}
+	}
+	if c.Kafka.ConnectionTimeout <= 0 {
+		return fmt.Errorf("kafka connection timeout must be positive")
 	}
 	for advertised, connect := range c.Kafka.BrokerAddressOverrides {
 		if err := validateKafkaAddress(advertised, "broker address override source"); err != nil {
@@ -146,6 +198,52 @@ func (c *Config) Validate() error {
 	}
 	if c.Lag.WarningThreshold >= c.Lag.UnhealthyThreshold {
 		return fmt.Errorf("lag warning threshold must be lower than unhealthy threshold")
+	}
+	if err := validateSecurity(c.Kafka.Security); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normalizeSecurity(security *SecurityConfig, configDir string) {
+	security.SASL.Mechanism = strings.ToUpper(strings.TrimSpace(security.SASL.Mechanism))
+	security.SASL.Username = strings.TrimSpace(security.SASL.Username)
+	security.TLS.CAFile = resolveConfigPath(configDir, strings.TrimSpace(security.TLS.CAFile))
+	security.TLS.ClientCertFile = resolveConfigPath(configDir, strings.TrimSpace(security.TLS.ClientCertFile))
+	security.TLS.ClientKeyFile = resolveConfigPath(configDir, strings.TrimSpace(security.TLS.ClientKeyFile))
+	security.TLS.ServerName = strings.TrimSpace(security.TLS.ServerName)
+}
+
+func resolveConfigPath(configDir, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Clean(filepath.Join(configDir, path))
+}
+
+func validateSecurity(security SecurityConfig) error {
+	tlsConfigured := security.TLS.CAFile != "" || security.TLS.ClientCertFile != "" || security.TLS.ClientKeyFile != "" || security.TLS.ServerName != ""
+	if tlsConfigured && !security.TLS.Enabled {
+		return fmt.Errorf("kafka TLS settings require tls.enabled")
+	}
+	if (security.TLS.ClientCertFile == "") != (security.TLS.ClientKeyFile == "") {
+		return fmt.Errorf("kafka TLS client certificate and key must be provided together")
+	}
+
+	sasl := security.SASL
+	if sasl.Mechanism == "" {
+		if sasl.Username != "" || sasl.Password != "" {
+			return fmt.Errorf("kafka SASL credentials require a mechanism")
+		}
+		return nil
+	}
+	switch sasl.Mechanism {
+	case "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512":
+	default:
+		return fmt.Errorf("unsupported Kafka SASL mechanism %q", sasl.Mechanism)
+	}
+	if sasl.Username == "" || sasl.Password == "" {
+		return fmt.Errorf("kafka SASL username and password are required")
 	}
 	return nil
 }
