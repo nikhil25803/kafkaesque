@@ -134,7 +134,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:18085/ui/consumer-groups/order-processor >"${RUNNER_TEMP}/consumer-lag.html"
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/consumer-groups/order-processor?topic=orders&group_by=member&sort=lag&direction=desc' >"${RUNNER_TEMP}/partition-lag-fragment.html"
           curl --fail --silent http://127.0.0.1:18085/ui/topics >"${RUNNER_TEMP}/topics.html"
-          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/topics?q=state&level=internal' >"${RUNNER_TEMP}/topics-fragment.html"
+          curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/topics?q=consumer&level=internal' >"${RUNNER_TEMP}/topics-fragment.html"
           curl --fail --silent http://127.0.0.1:18085/ui/brokers >"${RUNNER_TEMP}/ui-brokers.html"
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/brokers?q=broker-2' >"${RUNNER_TEMP}/brokers-fragment.html"
           curl --fail --silent http://127.0.0.1:18085/ui/cluster-health >"${RUNNER_TEMP}/cluster-health.html"
@@ -153,7 +153,7 @@ jobs:
           grep -q 'Assigned Member' "${RUNNER_TEMP}/partition-lag-fragment.html"
           test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/partition-lag-fragment.html")" -eq 0
           grep -q "1–6 of 6 topics" "${RUNNER_TEMP}/topics.html"
-          grep -q '__transaction_state' "${RUNNER_TEMP}/topics-fragment.html"
+          grep -q '__consumer_offsets' "${RUNNER_TEMP}/topics-fragment.html"
           test "$(grep -c '<!doctype html>' "${RUNNER_TEMP}/topics-fragment.html")" -eq 0
           grep -q "1–2 of 2 brokers" "${RUNNER_TEMP}/ui-brokers.html"
           grep -q 'broker-2' "${RUNNER_TEMP}/brokers-fragment.html"
