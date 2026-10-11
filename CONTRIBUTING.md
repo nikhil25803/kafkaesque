@@ -86,6 +86,7 @@ flowchart TD
     C --> D[Validate flags]
     D --> E[config.Load]
     E --> F[kafka.Connect]
+    F --> S[serve: APIs]
     F --> G[GetKafkaInformation]
     G --> H[printKafkaInformation]
     H --> I[Cobra configured writer]
@@ -122,6 +123,7 @@ partition leader.
 | Path                                                       | Responsibility                                           |
 | ---------------------------------------------------------- | -------------------------------------------------------- |
 | `cmd/kafkaesque`                                           | Process entry point.                                     |
+| `apis`                                                     | Read-only HTTP routes, envelopes, and pagination.        |
 | `internals/root.go`                                        | CLI flags, validation, config, and connection lifecycle. |
 | `internals/information.go`                                 | Shared collection and request coordination.              |
 | `internals/output.go`                                      | Writer-based terminal rendering.                         |

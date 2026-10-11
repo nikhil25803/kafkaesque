@@ -25,8 +25,10 @@
 - [Combining flags](#combining-flags)
 - [Build from source](#build-from-source)
 - [Configuration](#configuration)
+- [Read-only HTTP API](#read-only-http-api)
 - [Local Kafka environment](#local-kafka-environment)
 - [Command documentation](DOCS.md)
+- [API documentation](API.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](#license)
 
@@ -225,6 +227,10 @@ kafka:
 lag:
   warning_threshold: 100
   unhealthy_threshold: 500
+
+api:
+  host: 0.0.0.0
+  port: 8085
 ```
 
 | Platform | Default path                                                                    |
@@ -307,6 +313,27 @@ the broker configuration is not practical.
 
 </details>
 
+## Read-only HTTP API
+
+Start the API with the same Kafka configuration used by the CLI:
+
+```sh
+kafkaesque serve --config kafkaesque.yaml --port 8085
+```
+
+The API defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` values
+override the YAML `api` section. It serves live, read-only Kafka snapshots and
+keeps one authenticated Kafka connection for the server lifetime. Because API
+authentication is not included yet, restrict `api.host` or `--host` when the
+machine is connected to an untrusted network.
+
+```http
+GET /api/v1/health
+```
+
+See [API documentation](API.md) for all endpoints, filters, envelopes, and
+status codes.
+
 ## Local Kafka environment
 
 <details>
@@ -343,6 +370,7 @@ logs, and direct Docker Compose commands.
 ## Documentation
 
 - [Command reference and sample output](DOCS.md)
+- [HTTP API reference](API.md)
 - [Contributor guide and architecture](CONTRIBUTING.md)
 
 ## License

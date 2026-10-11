@@ -92,6 +92,7 @@ func describeConsumerGroup(
 		coordinator.Coordinator.Host,
 		strconv.Itoa(coordinator.Coordinator.Port),
 	)
+	brokerAddress = c.ResolveBrokerAddress(brokerAddress)
 	described, err := GetConsumerGroupDescription(c, ctx, ConsumerGroupDescriptionRequest{
 		Group: ConsumerGroups{
 			GroupName:     groupName,
