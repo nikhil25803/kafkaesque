@@ -1,6 +1,6 @@
 kafka:
   bootstrap_servers:
-    - localhost:9092
+    - localhost:9090
   connection_timeout: 10s
   # Map an advertised broker address to its reachable listener when required.
   # broker_address_overrides:
@@ -24,3 +24,8 @@ kafka:
 lag:
   warning_threshold: 100
   unhealthy_threshold: 500
+
+# The HTTP API is unauthenticated; restrict this host on untrusted networks.
+api:
+  host: 0.0.0.0
+  port: 8085

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
-	kafkago "github.com/segmentio/kafka-go"
 	"github.com/spf13/cobra"
 )
 
@@ -109,6 +107,7 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().StringVar(&output, "output", "text", "Output format (text|json)")
 	cmd.Flags().IntVar(&watchSeconds, "watch", 0, "Refresh information every N seconds")
 	cmd.Flags().BoolP("version", "v", false, "Show Kafkaesque version")
+	cmd.AddCommand(newServeCommand(serveAPI))
 
 	return cmd
 }
@@ -277,36 +276,7 @@ func ErrorWasReported(err error) bool {
 }
 
 func classifyConnectionCheckError(err error) (int, string) {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return 3, "connection timeout"
-	}
-	var networkError net.Error
-	if errors.As(err, &networkError) && networkError.Timeout() {
-		return 3, "connection timeout"
-	}
-
-	securityErrors := []error{
-		kafkago.SASLAuthenticationFailed,
-		kafkago.UnsupportedSASLMechanism,
-		kafkago.IllegalSASLState,
-		kafkago.TopicAuthorizationFailed,
-		kafkago.GroupAuthorizationFailed,
-		kafkago.ClusterAuthorizationFailed,
-		kafkago.BrokerAuthorizationFailed,
-	}
-	for _, securityError := range securityErrors {
-		if errors.Is(err, securityError) {
-			if errors.Is(err, kafkago.SASLAuthenticationFailed) || errors.Is(err, kafkago.UnsupportedSASLMechanism) || errors.Is(err, kafkago.IllegalSASLState) {
-				return 2, "SASL authentication failed"
-			}
-			return 2, "Kafka authorization failed"
-		}
-	}
-	lower := strings.ToLower(err.Error())
-	if strings.Contains(lower, "tls") || strings.Contains(lower, "x509") || strings.Contains(lower, "certificate") {
-		return 2, "TLS authentication failed"
-	}
-	return 1, "connection failed"
+	return kafkaesque.ClassifyConnectionError(err)
 }
 
 func printConnectionCheckSuccess(cmd *cobra.Command, cfg kafkaesque_config.KafkaConfig, result *kafkaesque.CheckResult) {
@@ -358,16 +328,7 @@ func printConnectionCheckHeader(out io.Writer, cfg kafkaesque_config.KafkaConfig
 }
 
 func securityProtocol(cfg kafkaesque_config.KafkaConfig) string {
-	if cfg.Security.SASL.Mechanism != "" {
-		if cfg.Security.TLS.Enabled {
-			return "SASL_SSL"
-		}
-		return "SASL_PLAINTEXT"
-	}
-	if cfg.Security.TLS.Enabled {
-		return "SSL"
-	}
-	return "PLAINTEXT"
+	return kafkaesque.SecurityProtocol(cfg)
 }
 
 var rootCmd = newRootCommand()

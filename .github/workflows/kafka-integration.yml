@@ -31,6 +31,15 @@ jobs:
         run: |
           set -euo pipefail
           config="kafka-env/kafkaesque.yaml"
+          api_log="${RUNNER_TEMP}/kafkaesque-api.log"
+          api_pid=""
+          cleanup_api() {
+            if [[ -n "${api_pid}" ]]; then
+              kill "${api_pid}" 2>/dev/null || true
+              wait "${api_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_api EXIT
 
           test "$(./bin/kafkaesque --config "${config}" --check config)" = "Configuration is valid"
           connection="$(./bin/kafkaesque --config "${config}" --check conn)"
@@ -102,6 +111,29 @@ jobs:
 
           structured="$(./bin/kafkaesque --config "${config}" --brokers --topics --output json)"
           python3 -c 'import json,sys; data=json.load(sys.stdin); assert len(data["brokers"]) == 2; assert any(topic["name"] == "orders" for topic in data["topics"])' <<<"${structured}"
+
+          ./bin/kafkaesque serve --config "${config}" --port 18085 >"${api_log}" 2>&1 &
+          api_pid=$!
+          api_ready=false
+          for _ in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18085/api/v1/health >"${RUNNER_TEMP}/uptime.json"; then
+              api_ready=true
+              break
+            fi
+            if ! kill -0 "${api_pid}" 2>/dev/null; then
+              cat "${api_log}"
+              exit 1
+            fi
+            sleep 1
+          done
+          test "${api_ready}" = true
+          curl --fail --silent http://127.0.0.1:18085/api/v1/metadata/connection >"${RUNNER_TEMP}/connection.json"
+          curl --fail --silent http://127.0.0.1:18085/api/v1/metadata/cluster >"${RUNNER_TEMP}/cluster.json"
+          curl --fail --silent http://127.0.0.1:18085/api/v1/health/cluster >"${RUNNER_TEMP}/health.json"
+          curl --fail --silent http://127.0.0.1:18085/api/v1/consumers/groups >"${RUNNER_TEMP}/groups.json"
+          curl --fail --silent http://127.0.0.1:18085/api/v1/topics/orders/partitions >"${RUNNER_TEMP}/partitions.json"
+          curl --fail --silent http://127.0.0.1:18085/api/v1/brokers >"${RUNNER_TEMP}/brokers.json"
+          python3 -c 'import json,os; root=os.environ["RUNNER_TEMP"]; load=lambda name: json.load(open(os.path.join(root,name),encoding="utf-8")); docs=[load(name) for name in ("uptime.json","connection.json","cluster.json","health.json","groups.json","partitions.json","brokers.json")]; assert all(doc["success"] is True and doc["status"] == 200 and "data" in doc for doc in docs); uptime,connection,cluster,health,groups,partitions,brokers=docs; assert uptime["data"]["status"] == "UP"; assert connection["data"]["status"] == "CONNECTED"; assert cluster["data"]["broker_count"] == 2; assert health["data"]["status"] in ("HEALTHY", "DEGRADED"); assert groups["meta"]["total_items"] >= 1; assert len(partitions["data"]) == 6; assert len(brokers["data"]) == 2'
       - name: Show Kafka diagnostics
         if: failure()
         run: make kafka-ci-diagnostics

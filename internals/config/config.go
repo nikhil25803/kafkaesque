@@ -20,6 +20,8 @@ const (
 	DefaultConnectionTimeout     = 10 * time.Second
 	DefaultLagWarningThreshold   = int64(100)
 	DefaultLagUnhealthyThreshold = int64(500)
+	DefaultAPIHost               = "0.0.0.0"
+	DefaultAPIPort               = 8085
 	BootstrapServerEnv           = "KAFKAESQUE_BOOTSTRAP_SERVER"
 )
 
@@ -27,6 +29,13 @@ const (
 type Config struct {
 	Kafka KafkaConfig `yaml:"kafka"`
 	Lag   LagConfig   `yaml:"lag"`
+	API   APIConfig   `yaml:"api"`
+}
+
+// APIConfig contains HTTP API listener settings.
+type APIConfig struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
 }
 
 // KafkaConfig contains Kafka connection settings.
@@ -99,6 +108,7 @@ func load(path string, explicit bool) (*Config, error) {
 			WarningThreshold:   DefaultLagWarningThreshold,
 			UnhealthyThreshold: DefaultLagUnhealthyThreshold,
 		},
+		API: APIConfig{Host: DefaultAPIHost, Port: DefaultAPIPort},
 	}
 
 	data, err := os.ReadFile(path)
@@ -198,6 +208,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Lag.WarningThreshold >= c.Lag.UnhealthyThreshold {
 		return fmt.Errorf("lag warning threshold must be lower than unhealthy threshold")
+	}
+	if strings.TrimSpace(c.API.Host) == "" {
+		return fmt.Errorf("api host cannot be empty")
+	}
+	if c.API.Port < 1 || c.API.Port > 65535 {
+		return fmt.Errorf("api port must be between 1 and 65535")
 	}
 	if err := validateSecurity(c.Kafka.Security); err != nil {
 		return err

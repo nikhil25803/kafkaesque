@@ -28,6 +28,21 @@ func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
 	if cfg.Lag.WarningThreshold != DefaultLagWarningThreshold || cfg.Lag.UnhealthyThreshold != DefaultLagUnhealthyThreshold {
 		t.Fatalf("lag thresholds = %+v, want %d/%d", cfg.Lag, DefaultLagWarningThreshold, DefaultLagUnhealthyThreshold)
 	}
+	if cfg.API.Host != "0.0.0.0" || cfg.API.Port != DefaultAPIPort {
+		t.Fatalf("API config = %+v, want 0.0.0.0:%d", cfg.API, DefaultAPIPort)
+	}
+}
+
+func TestLoadReadsAPIConfiguration(t *testing.T) {
+	unsetEnvironment(t, BootstrapServerEnv)
+	path := writeConfig(t, "api:\n  host: 0.0.0.0\n  port: 9000\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.API.Host != "0.0.0.0" || cfg.API.Port != 9000 {
+		t.Fatalf("API config = %+v", cfg.API)
+	}
 }
 
 func TestLoadReadsLagThresholds(t *testing.T) {
@@ -151,6 +166,8 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{name: "override destination missing port", content: "kafka:\n  broker_address_overrides:\n    'broker:9092': external\n", want: "override destination"},
 		{name: "override destination invalid port", content: "kafka:\n  broker_address_overrides:\n    'broker:9092': external:70000\n", want: "port must be between"},
 		{name: "multiple documents", content: "kafka: {}\n---\nkafka: {}\n", want: "multiple YAML documents"},
+		{name: "empty API host", content: "api:\n  host: ''\n", want: "api host cannot be empty"},
+		{name: "invalid API port", content: "api:\n  port: 65536\n", want: "api port must be between"},
 		{name: "negative warning threshold", content: "lag:\n  warning_threshold: -1\n", want: "warning threshold cannot be negative"},
 		{name: "negative unhealthy threshold", content: "lag:\n  unhealthy_threshold: -1\n", want: "unhealthy threshold cannot be negative"},
 		{name: "equal lag thresholds", content: "lag:\n  warning_threshold: 500\n", want: "warning threshold must be lower"},
