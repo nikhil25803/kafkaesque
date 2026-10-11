@@ -31,7 +31,9 @@ jobs:
           config="kafka-env/kafkaesque.yaml"
 
           test "$(./bin/kafkaesque --config "${config}" --check config)" = "Configuration is valid"
-          test "$(./bin/kafkaesque --config "${config}" --check conn)" = "Kafka connection successful: localhost:9090"
+          connection="$(./bin/kafkaesque --config "${config}" --check conn)"
+          grep -q "Status: CONNECTED" <<<"${connection}"
+          grep -q "Protocol: PLAINTEXT" <<<"${connection}"
 
           metadata="$(./bin/kafkaesque --config "${config}" --metadata)"
           grep -q "STATUS: CONNECTED" <<<"${metadata}"

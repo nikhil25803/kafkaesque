@@ -1,13 +1,17 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"os"
 
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals"
 )
 
 func main() {
 	if err := kafkaesque.Execute(); err != nil {
-		log.Fatalf("Error executing command: %v", err)
+		if !kafkaesque.ErrorWasReported(err) {
+			fmt.Fprintf(os.Stderr, "Error executing command: %v\n", err)
+		}
+		os.Exit(kafkaesque.ExitCode(err))
 	}
 }
