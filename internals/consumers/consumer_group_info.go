@@ -17,6 +17,8 @@ type ConsumerGroupInformation struct {
 	MembersCount int                     `json:"members_count"`
 	TopicsCount  int                     `json:"topics_count"`
 	TotalLag     int64                   `json:"total_lag"`
+	LagSummary   ConsumerGroupLagSummary `json:"lag_summary"`
+	Members      []ConsumerGroupMember   `json:"members,omitempty"`
 	Topics       []ConsumerGroupTopicLag `json:"topics"`
 }
 
@@ -27,13 +29,14 @@ func GetConsumerGroupInformation(
 	metadata *kafka.MetadataResponse,
 	groupName string,
 	thresholds LagThresholds,
+	includeMembers bool,
 ) (*ConsumerGroupInformation, error) {
-	described, brokerAddress, err := describeConsumerGroup(c, ctx, groupName)
+	described, brokerAddress, err := describeConsumerGroup(c, ctx, groupName, includeMembers)
 	if err != nil {
 		return nil, err
 	}
 
-	topics, totalLag, err := GetConsumerGroupLag(c, ctx, metadata, brokerAddress, groupName, thresholds)
+	topics, summary, err := GetConsumerGroupLag(c, ctx, metadata, brokerAddress, groupName, thresholds)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +46,9 @@ func GetConsumerGroupInformation(
 		State:        described.State,
 		MembersCount: described.MembersCount,
 		TopicsCount:  len(topics),
-		TotalLag:     totalLag,
+		TotalLag:     summary.TotalLag,
+		LagSummary:   summary,
+		Members:      described.Members,
 		Topics:       topics,
 	}, nil
 }
@@ -56,7 +61,7 @@ func GetConsumerGroupTopicInformation(
 	groupName string,
 	topicName string,
 ) (*ConsumerGroupTopicInformation, error) {
-	_, brokerAddress, err := describeConsumerGroup(c, ctx, groupName)
+	_, brokerAddress, err := describeConsumerGroup(c, ctx, groupName, false)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +72,7 @@ func describeConsumerGroup(
 	c *kafkaesque.KafkaesqueConn,
 	ctx context.Context,
 	groupName string,
+	includeMembers bool,
 ) (ConsumerGroups, string, error) {
 	coordinator, err := c.Client.FindCoordinator(ctx, &kafka.FindCoordinatorRequest{
 		Key:     groupName,
@@ -92,7 +98,8 @@ func describeConsumerGroup(
 			Type:          "consumer",
 			CoordinatorID: coordinator.Coordinator.NodeID,
 		},
-		BrokerAddress: brokerAddress,
+		BrokerAddress:  brokerAddress,
+		IncludeMembers: includeMembers,
 	})
 	if err != nil {
 		return ConsumerGroups{}, "", err

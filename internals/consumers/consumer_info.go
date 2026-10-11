@@ -9,12 +9,27 @@ import (
 )
 
 type ConsumerGroups struct {
-	GroupName     string `json:"group_name"`
-	Type          string `json:"type"`
-	CoordinatorID int    `json:"coordinator_id"`
-	MembersCount  int    `json:"members_count"`
-	State         string `json:"state"`
-	TopicsCount   int    `json:"topics_count"`
+	GroupName     string                `json:"group_name"`
+	Type          string                `json:"type"`
+	CoordinatorID int                   `json:"coordinator_id"`
+	MembersCount  int                   `json:"members_count"`
+	State         string                `json:"state"`
+	TopicsCount   int                   `json:"topics_count"`
+	Members       []ConsumerGroupMember `json:"members,omitempty"`
+}
+
+// ConsumerGroupMember contains one active member and its partition assignments.
+type ConsumerGroupMember struct {
+	MemberID    string                          `json:"member_id"`
+	ClientID    string                          `json:"client_id"`
+	Host        string                          `json:"host"`
+	Assignments []ConsumerGroupMemberAssignment `json:"assignments"`
+}
+
+// ConsumerGroupMemberAssignment contains one topic's assigned partitions.
+type ConsumerGroupMemberAssignment struct {
+	Topic      string `json:"topic"`
+	Partitions []int  `json:"partitions"`
 }
 
 // GetConsumerInformation returns a simple list of basic consumer groups.

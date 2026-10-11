@@ -3,7 +3,9 @@ package internals
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	kafkaesque_broker "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
@@ -35,7 +37,7 @@ func printKafkaInformation(cmd *cobra.Command, request InformationRequest, info 
 		if request.Topic != "" {
 			printConsumerGroupTopicInformation(out, info.ConsumerTopic)
 		} else {
-			printConsumerGroupInformation(out, info.Consumer)
+			printConsumerGroupInformation(out, info.Consumer, request.Member)
 		}
 	}
 	return nil
@@ -57,13 +59,21 @@ func printConsumerGroupTopicInformation(out io.Writer, topic *kafkaesque_consume
 	fmt.Fprintf(out, "TOTAL %d\n", topic.TotalLag)
 }
 
-func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers.ConsumerGroupInformation) {
+func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers.ConsumerGroupInformation, showMembers bool) {
 	fmt.Fprintf(out, "\nConsumer Group: %s\n", consumer.GroupName)
+	fmt.Fprintf(out, "State: %s\n", strings.ToUpper(consumer.State))
+	if showMembers {
+		printConsumerGroupMembers(out, consumer.Members)
+	}
+
+	fmt.Fprintln(out, "\nLag Summary")
 	fmt.Fprintln(out, strings.Repeat("=", 80))
-	fmt.Fprintf(out, "STATE: %s\n", strings.ToUpper(consumer.State))
-	fmt.Fprintf(out, "MEMBERS: %d\n", consumer.MembersCount)
-	fmt.Fprintf(out, "TOPICS: %d\n", consumer.TopicsCount)
-	fmt.Fprintf(out, "TOTAL LAG: %d\n", consumer.TotalLag)
+	fmt.Fprintf(out, "Total Lag: %d\n", consumer.LagSummary.TotalLag)
+	fmt.Fprintf(out, "Maximum Partition Lag: %d\n", consumer.LagSummary.MaximumPartitionLag)
+	fmt.Fprintf(out, "Average Partition Lag: %.1f\n", consumer.LagSummary.AveragePartitionLag)
+	fmt.Fprintf(out, "Healthy Partitions: %d\n", consumer.LagSummary.HealthyPartitions)
+	fmt.Fprintf(out, "Warning Partitions: %d\n", consumer.LagSummary.WarningPartitions)
+	fmt.Fprintf(out, "Unhealthy Partitions: %d\n", consumer.LagSummary.UnhealthyPartitions)
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "TOPICS")
 	fmt.Fprintln(out, strings.Repeat("=", 80))
@@ -72,6 +82,56 @@ func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers
 	for _, topic := range consumer.Topics {
 		fmt.Fprintf(out, "%-32s %-12d %-10d %-10s\n", topic.Topic, topic.Partitions, topic.Lag, topic.Status)
 	}
+}
+
+func printConsumerGroupMembers(out io.Writer, members []kafkaesque_consumers.ConsumerGroupMember) {
+	fmt.Fprintln(out, strings.Repeat("=", 80))
+	table := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "MEMBER\tCLIENT ID\tHOST\tPARTITIONS")
+	assignedPartitions := 0
+	qualifyTopics := membersUseMultipleTopics(members)
+	for _, member := range members {
+		assignments, count := formatMemberAssignments(member.Assignments, qualifyTopics)
+		assignedPartitions += count
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\n", member.MemberID, member.ClientID, member.Host, assignments)
+	}
+	_ = table.Flush()
+	fmt.Fprintf(out, "\n%d %s · %d assigned %s\n",
+		len(members), plural(len(members), "member", "members"),
+		assignedPartitions, plural(assignedPartitions, "partition", "partitions"),
+	)
+}
+
+func formatMemberAssignments(assignments []kafkaesque_consumers.ConsumerGroupMemberAssignment, qualifyTopics bool) (string, int) {
+	if len(assignments) == 0 {
+		return "-", 0
+	}
+
+	formatted := make([]string, 0, len(assignments))
+	total := 0
+	for _, assignment := range assignments {
+		partitions := formatInts(assignment.Partitions)
+		if qualifyTopics {
+			formatted = append(formatted, assignment.Topic+":"+partitions)
+		} else {
+			formatted = append(formatted, partitions)
+		}
+		total += len(assignment.Partitions)
+	}
+	return strings.Join(formatted, "; "), total
+}
+
+func membersUseMultipleTopics(members []kafkaesque_consumers.ConsumerGroupMember) bool {
+	topics := make(map[string]struct{})
+	for _, member := range members {
+		for _, assignment := range member.Assignments {
+			topics[assignment.Topic] = struct{}{}
+			if len(topics) > 1 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func printMetadataInformation(out io.Writer, info *kafkaesque_metadata.MetadataInformation) {
@@ -151,16 +211,35 @@ func printPartitionsInformation(out io.Writer, topic string, partitions []kafkae
 	fmt.Fprintln(out, "\nTopic: "+topic)
 	fmt.Fprintln(out, strings.Repeat("=", 80))
 
-	fmt.Fprintf(out, "%-10s %-32s %-12s %-16s\n", "PARTITION", "LEADER", "REPLICAS", "ISR")
+	fmt.Fprintf(out, "%-10s %-20s %-16s %-16s %-10s\n", "PARTITION", "LEADER", "REPLICAS", "ISR", "STATUS")
 
 	for _, partition := range partitions {
-		fmt.Fprintf(out, "%-10d %-32s %-12d %-16d\n",
+		fmt.Fprintf(out, "%-10d %-20s %-16s %-16s %-10s\n",
 			partition.PartitionID,
 			partition.Leader,
-			partition.Replicas,
-			partition.Isr,
+			formatInts(partition.Replicas),
+			formatInts(partition.ISR),
+			partition.Status,
 		)
 	}
+}
+
+func formatInts(values []int) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	formatted := make([]string, len(values))
+	for i, value := range values {
+		formatted[i] = strconv.Itoa(value)
+	}
+	return strings.Join(formatted, ",")
+}
+
+func plural(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
 }
 
 func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.ConsumerGroups) {

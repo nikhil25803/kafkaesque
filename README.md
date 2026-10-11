@@ -137,6 +137,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 | `-p`  | `--partitions` | —     | List partitions for the topic selected by `--topic`.     | `kafkaesque --partitions --topic orders`                       |
 | `-c`  | `--consumers`  | —     | List consumer groups.                                    | `kafkaesque --consumers`                                       |
 | —     | `--consumer`   | —     | Inspect the consumer group selected by `--group`.        | `kafkaesque --consumer --group order-processor`                |
+| —     | `--member`     | —     | Include active member assignments in consumer inspection. | `kafkaesque --consumer --member --group order-processor`       |
 | —     | `--group`      | name  | Select a consumer group.                                 | `kafkaesque --consumer --group order-processor`                |
 | —     | `--topic`      | name  | Select a topic for partition or consumer lag inspection. | `kafkaesque --consumer --group order-processor --topic orders` |
 

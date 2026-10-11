@@ -152,13 +152,11 @@ kafkaesque --partitions --topic orders
 ```text
 Topic: orders
 ================================================================================
-PARTITION  LEADER                           REPLICAS     ISR
-0          broker-1                         3            3
-1          broker-2                         3            3
-2          broker-3                         3            3
-3          broker-4                         3            3
-4          broker-5                         3            3
-5          broker-4                         3            3
+PARTITION  LEADER               REPLICAS         ISR              STATUS
+0          broker-1             1,2,3            1,2,3            HEALTHY
+1          broker-2             1,2,3            1,2,3            HEALTHY
+2          broker-3             1,2,3            1,2              DEGRADED
+3          broker-1             1,2,3            1,2,3            HEALTHY
 ```
 
 ## Consumer groups
@@ -194,11 +192,16 @@ kafkaesque --consumer --group notification-dispatcher
 
 ```text
 Consumer Group: notification-dispatcher
+State: STABLE
+
+Lag Summary
 ================================================================================
-STATE: STABLE
-MEMBERS: 1
-TOPICS: 2
-TOTAL LAG: 4
+Total Lag: 4
+Maximum Partition Lag: 2
+Average Partition Lag: 0.4
+Healthy Partitions: 9
+Warning Partitions: 0
+Unhealthy Partitions: 0
 
 TOPICS
 ================================================================================
@@ -209,6 +212,34 @@ notifications                    1            2          HEALTHY
 
 Kafkaesque classifies topic lag using the configured warning and unhealthy
 thresholds. Kafka supplies the offsets; the health labels are Kafkaesque policy.
+
+Add `--member` to include active clients and their assignments:
+
+```sh
+kafkaesque --consumer --member --group orders-service
+```
+
+```text
+Consumer Group: orders-service
+State: STABLE
+================================================================================
+MEMBER                               CLIENT ID                HOST                 PARTITIONS
+consumer-1                           order-worker             10.0.0.12            0,1
+consumer-2                           order-worker             10.0.0.13            orders:2,3; payments:0
+
+2 members · 5 assigned partitions
+
+Lag Summary
+================================================================================
+Total Lag: 294
+Maximum Partition Lag: 161
+Average Partition Lag: 49.0
+Healthy Partitions: 4
+Warning Partitions: 2
+Unhealthy Partitions: 0
+```
+
+Member inspection is group-wide and cannot be combined with `--topic`.
 
 ## Consumer topic partition lag
 
