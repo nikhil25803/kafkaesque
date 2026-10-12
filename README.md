@@ -120,6 +120,9 @@ ARM64:
 
 ```sh
 docker pull ghcr.io/nikhil25803/kafkaesque:v0.6.0
+```
+
+```sh
 docker run --rm -p 8085:8085 \
   -e KAFKAESQUE_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 \
   ghcr.io/nikhil25803/kafkaesque:v0.6.0
@@ -128,6 +131,9 @@ docker run --rm -p 8085:8085 \
 The container runs `kafkaesque serve` as a non-root user and includes the API
 and embedded web UI. Use an exact release tag or image digest in deployments;
 `latest` follows the newest successful stable release.
+
+<details>
+<summary>Build, publish, and deploy the container</summary>
 
 Build and publish the same image to another registry when required:
 
@@ -159,6 +165,8 @@ provider and mount TLS material as files. Use `GET /api/v1/health` for process
 uptime probes and `GET /api/v1/metadata/connection` when Kafka connectivity must
 also be checked. The API and UI are currently unauthenticated, so keep the
 service private.
+
+</details>
 
 ## Flags
 
