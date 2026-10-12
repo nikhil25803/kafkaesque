@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,21 @@ const (
 	DefaultAPIHost               = "0.0.0.0"
 	DefaultAPIPort               = 8085
 	BootstrapServerEnv           = "KAFKAESQUE_BOOTSTRAP_SERVER"
+	BootstrapServersEnv          = "KAFKAESQUE_BOOTSTRAP_SERVERS"
+	ConnectionTimeoutEnv         = "KAFKAESQUE_CONNECTION_TIMEOUT"
+	BrokerAddressOverridesEnv    = "KAFKAESQUE_BROKER_ADDRESS_OVERRIDES"
+	TLSEnabledEnv                = "KAFKAESQUE_TLS_ENABLED"
+	TLSCAFileEnv                 = "KAFKAESQUE_TLS_CA_FILE"
+	TLSClientCertFileEnv         = "KAFKAESQUE_TLS_CLIENT_CERT_FILE"
+	TLSClientKeyFileEnv          = "KAFKAESQUE_TLS_CLIENT_KEY_FILE"
+	TLSServerNameEnv             = "KAFKAESQUE_TLS_SERVER_NAME"
+	SASLMechanismEnv             = "KAFKAESQUE_SASL_MECHANISM"
+	SASLUsernameEnv              = "KAFKAESQUE_SASL_USERNAME"
+	SASLPasswordEnv              = "KAFKAESQUE_SASL_PASSWORD"
+	LagWarningThresholdEnv       = "KAFKAESQUE_LAG_WARNING_THRESHOLD"
+	LagUnhealthyThresholdEnv     = "KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD"
+	APIHostEnv                   = "KAFKAESQUE_API_HOST"
+	APIPortEnv                   = "KAFKAESQUE_API_PORT"
 )
 
 // Config contains Kafkaesque's runtime configuration.
@@ -134,9 +150,11 @@ func load(path string, explicit bool) (*Config, error) {
 	if cfg.Kafka.BootstrapServer != "" && len(cfg.Kafka.BootstrapServers) > 0 {
 		return nil, fmt.Errorf("kafka bootstrap_server and bootstrap_servers cannot both be set")
 	}
-	if value, ok := os.LookupEnv(BootstrapServerEnv); ok {
-		cfg.Kafka.BootstrapServers = []string{value}
-	} else if len(cfg.Kafka.BootstrapServers) == 0 {
+	normalizeSecurity(&cfg.Kafka.Security, filepath.Dir(path))
+	if err := applyEnvironment(cfg); err != nil {
+		return nil, err
+	}
+	if len(cfg.Kafka.BootstrapServers) == 0 {
 		if cfg.Kafka.BootstrapServer == "" {
 			cfg.Kafka.BootstrapServers = []string{DefaultBootstrapServer}
 		} else {
@@ -147,7 +165,7 @@ func load(path string, explicit bool) (*Config, error) {
 	for i := range cfg.Kafka.BootstrapServers {
 		cfg.Kafka.BootstrapServers[i] = strings.TrimSpace(cfg.Kafka.BootstrapServers[i])
 	}
-	normalizeSecurity(&cfg.Kafka.Security, filepath.Dir(path))
+	normalizeSecurityValues(&cfg.Kafka.Security)
 	overrides, err := normalizeBrokerAddressOverrides(cfg.Kafka.BrokerAddressOverrides)
 	if err != nil {
 		return nil, err
@@ -158,6 +176,93 @@ func load(path string, explicit bool) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func applyEnvironment(cfg *Config) error {
+	bootstrapServer, singularSet := os.LookupEnv(BootstrapServerEnv)
+	bootstrapServers, pluralSet := os.LookupEnv(BootstrapServersEnv)
+	if singularSet && pluralSet {
+		return fmt.Errorf("%s and %s cannot both be set", BootstrapServerEnv, BootstrapServersEnv)
+	}
+	if singularSet {
+		cfg.Kafka.BootstrapServer = ""
+		cfg.Kafka.BootstrapServers = []string{bootstrapServer}
+	}
+	if pluralSet {
+		cfg.Kafka.BootstrapServer = ""
+		cfg.Kafka.BootstrapServers = strings.Split(bootstrapServers, ",")
+	}
+
+	if value, ok := os.LookupEnv(ConnectionTimeoutEnv); ok {
+		parsed, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", ConnectionTimeoutEnv, err)
+		}
+		cfg.Kafka.ConnectionTimeout = parsed
+	}
+	if value, ok := os.LookupEnv(BrokerAddressOverridesEnv); ok {
+		var overrides map[string]string
+		if err := json.Unmarshal([]byte(value), &overrides); err != nil {
+			return fmt.Errorf("parse %s: %w", BrokerAddressOverridesEnv, err)
+		}
+		if overrides == nil {
+			return fmt.Errorf("parse %s: expected a JSON object", BrokerAddressOverridesEnv)
+		}
+		cfg.Kafka.BrokerAddressOverrides = overrides
+	}
+	if value, ok := os.LookupEnv(TLSEnabledEnv); ok {
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", TLSEnabledEnv, err)
+		}
+		cfg.Kafka.Security.TLS.Enabled = parsed
+	}
+	if value, ok := os.LookupEnv(TLSCAFileEnv); ok {
+		cfg.Kafka.Security.TLS.CAFile = value
+	}
+	if value, ok := os.LookupEnv(TLSClientCertFileEnv); ok {
+		cfg.Kafka.Security.TLS.ClientCertFile = value
+	}
+	if value, ok := os.LookupEnv(TLSClientKeyFileEnv); ok {
+		cfg.Kafka.Security.TLS.ClientKeyFile = value
+	}
+	if value, ok := os.LookupEnv(TLSServerNameEnv); ok {
+		cfg.Kafka.Security.TLS.ServerName = value
+	}
+	if value, ok := os.LookupEnv(SASLMechanismEnv); ok {
+		cfg.Kafka.Security.SASL.Mechanism = value
+	}
+	if value, ok := os.LookupEnv(SASLUsernameEnv); ok {
+		cfg.Kafka.Security.SASL.Username = value
+	}
+	if value, ok := os.LookupEnv(SASLPasswordEnv); ok {
+		cfg.Kafka.Security.SASL.Password = value
+	}
+	if value, ok := os.LookupEnv(LagWarningThresholdEnv); ok {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", LagWarningThresholdEnv, err)
+		}
+		cfg.Lag.WarningThreshold = parsed
+	}
+	if value, ok := os.LookupEnv(LagUnhealthyThresholdEnv); ok {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", LagUnhealthyThresholdEnv, err)
+		}
+		cfg.Lag.UnhealthyThreshold = parsed
+	}
+	if value, ok := os.LookupEnv(APIHostEnv); ok {
+		cfg.API.Host = value
+	}
+	if value, ok := os.LookupEnv(APIPortEnv); ok {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", APIPortEnv, err)
+		}
+		cfg.API.Port = parsed
+	}
+	return nil
 }
 
 func rejectAdditionalDocuments(decoder *yaml.Decoder, path string) error {
@@ -222,11 +327,18 @@ func (c *Config) Validate() error {
 }
 
 func normalizeSecurity(security *SecurityConfig, configDir string) {
+	normalizeSecurityValues(security)
+	security.TLS.CAFile = resolveConfigPath(configDir, security.TLS.CAFile)
+	security.TLS.ClientCertFile = resolveConfigPath(configDir, security.TLS.ClientCertFile)
+	security.TLS.ClientKeyFile = resolveConfigPath(configDir, security.TLS.ClientKeyFile)
+}
+
+func normalizeSecurityValues(security *SecurityConfig) {
 	security.SASL.Mechanism = strings.ToUpper(strings.TrimSpace(security.SASL.Mechanism))
 	security.SASL.Username = strings.TrimSpace(security.SASL.Username)
-	security.TLS.CAFile = resolveConfigPath(configDir, strings.TrimSpace(security.TLS.CAFile))
-	security.TLS.ClientCertFile = resolveConfigPath(configDir, strings.TrimSpace(security.TLS.ClientCertFile))
-	security.TLS.ClientKeyFile = resolveConfigPath(configDir, strings.TrimSpace(security.TLS.ClientKeyFile))
+	security.TLS.CAFile = strings.TrimSpace(security.TLS.CAFile)
+	security.TLS.ClientCertFile = strings.TrimSpace(security.TLS.ClientCertFile)
+	security.TLS.ClientKeyFile = strings.TrimSpace(security.TLS.ClientKeyFile)
 	security.TLS.ServerName = strings.TrimSpace(security.TLS.ServerName)
 }
 

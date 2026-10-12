@@ -10,7 +10,7 @@ import (
 )
 
 func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 
 	cfg, err := load(filepath.Join(t.TempDir(), "missing.yaml"), false)
 	if err != nil {
@@ -34,7 +34,7 @@ func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
 }
 
 func TestLoadReadsAPIConfiguration(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	path := writeConfig(t, "api:\n  host: 0.0.0.0\n  port: 9000\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -46,7 +46,7 @@ func TestLoadReadsAPIConfiguration(t *testing.T) {
 }
 
 func TestLoadReadsLagThresholds(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	path := writeConfig(t, "kafka:\n  bootstrap_server: localhost:9092\nlag:\n  warning_threshold: 25\n  unhealthy_threshold: 200\n")
 
 	cfg, err := Load(path)
@@ -59,7 +59,7 @@ func TestLoadReadsLagThresholds(t *testing.T) {
 }
 
 func TestLoadReadsYAMLAndAppliesEnvironmentOverride(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	path := writeConfig(t, "kafka:\n  bootstrap_server: yaml-broker:9092\n")
 
 	cfg, err := Load(path)
@@ -81,7 +81,7 @@ func TestLoadReadsYAMLAndAppliesEnvironmentOverride(t *testing.T) {
 }
 
 func TestLoadReadsPluralBootstrapServersAndSecurity(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	path := writeConfig(t, `kafka:
   bootstrap_servers: [kafka-1:9092, kafka-2:9093]
   connection_timeout: 5s
@@ -118,7 +118,7 @@ func TestLoadReadsPluralBootstrapServersAndSecurity(t *testing.T) {
 }
 
 func TestLoadReadsBrokerAddressOverrides(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	path := writeConfig(t, `kafka:
   bootstrap_server: bootstrap.example.com:9094
   broker_address_overrides:
@@ -145,7 +145,7 @@ func TestLoadReadsBrokerAddressOverrides(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	tests := []struct {
 		name    string
 		content string
@@ -190,7 +190,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestLoadRejectsMissingExplicitFileAndEmptyEnvironment(t *testing.T) {
-	unsetEnvironment(t, BootstrapServerEnv)
+	unsetConfigEnvironment(t)
 	_, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
 	if err == nil || !strings.Contains(err.Error(), "read config") {
 		t.Fatalf("missing file error = %v", err)
@@ -201,6 +201,127 @@ func TestLoadRejectsMissingExplicitFileAndEmptyEnvironment(t *testing.T) {
 	_, err = Load(path)
 	if err == nil || !strings.Contains(err.Error(), "cannot be empty") {
 		t.Fatalf("empty environment error = %v", err)
+	}
+}
+
+func TestLoadAppliesCompleteEnvironmentConfiguration(t *testing.T) {
+	unsetConfigEnvironment(t)
+	path := writeConfig(t, `kafka:
+  bootstrap_server: yaml-broker:9092
+  connection_timeout: 20s
+  broker_address_overrides:
+    yaml-broker:9092: yaml-connect:9092
+lag:
+  warning_threshold: 100
+  unhealthy_threshold: 500
+api:
+  host: 127.0.0.1
+  port: 8085
+`)
+	t.Setenv(BootstrapServersEnv, " kafka-1:9093, kafka-2:9093 ")
+	t.Setenv(ConnectionTimeoutEnv, "5s")
+	t.Setenv(BrokerAddressOverridesEnv, `{"broker-1:9092":"connect-1:9093"}`)
+	t.Setenv(TLSEnabledEnv, "true")
+	t.Setenv(TLSCAFileEnv, "/var/run/kafka/ca.pem")
+	t.Setenv(TLSClientCertFileEnv, "/var/run/kafka/client.pem")
+	t.Setenv(TLSClientKeyFileEnv, "/var/run/kafka/client-key.pem")
+	t.Setenv(TLSServerNameEnv, " kafka.example.com ")
+	t.Setenv(SASLMechanismEnv, "scram-sha-256")
+	t.Setenv(SASLUsernameEnv, " kafkaesque ")
+	t.Setenv(SASLPasswordEnv, "secret")
+	t.Setenv(LagWarningThresholdEnv, "25")
+	t.Setenv(LagUnhealthyThresholdEnv, "250")
+	t.Setenv(APIHostEnv, "0.0.0.0")
+	t.Setenv(APIPortEnv, "9000")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.Kafka.BootstrapServers, []string{"kafka-1:9093", "kafka-2:9093"}) {
+		t.Fatalf("bootstrap servers = %v", cfg.Kafka.BootstrapServers)
+	}
+	if cfg.Kafka.ConnectionTimeout != 5*time.Second {
+		t.Fatalf("connection timeout = %s", cfg.Kafka.ConnectionTimeout)
+	}
+	if !reflect.DeepEqual(cfg.Kafka.BrokerAddressOverrides, map[string]string{"broker-1:9092": "connect-1:9093"}) {
+		t.Fatalf("broker address overrides = %v", cfg.Kafka.BrokerAddressOverrides)
+	}
+	wantTLS := TLSConfig{
+		Enabled: true, CAFile: "/var/run/kafka/ca.pem",
+		ClientCertFile: "/var/run/kafka/client.pem", ClientKeyFile: "/var/run/kafka/client-key.pem",
+		ServerName: "kafka.example.com",
+	}
+	if cfg.Kafka.Security.TLS != wantTLS {
+		t.Fatalf("TLS config = %+v, want %+v", cfg.Kafka.Security.TLS, wantTLS)
+	}
+	if cfg.Kafka.Security.SASL != (SASLConfig{Mechanism: "SCRAM-SHA-256", Username: "kafkaesque", Password: "secret"}) {
+		t.Fatalf("SASL config was not loaded from environment")
+	}
+	if cfg.Lag != (LagConfig{WarningThreshold: 25, UnhealthyThreshold: 250}) {
+		t.Fatalf("lag config = %+v", cfg.Lag)
+	}
+	if cfg.API != (APIConfig{Host: "0.0.0.0", Port: 9000}) {
+		t.Fatalf("API config = %+v", cfg.API)
+	}
+}
+
+func TestLoadRejectsInvalidEnvironmentConfiguration(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		want  string
+	}{
+		{name: "bootstrap forms", key: BootstrapServersEnv, value: "kafka-1:9092", want: "cannot both be set"},
+		{name: "timeout", key: ConnectionTimeoutEnv, value: "soon", want: ConnectionTimeoutEnv},
+		{name: "overrides", key: BrokerAddressOverridesEnv, value: "[]", want: BrokerAddressOverridesEnv},
+		{name: "TLS enabled", key: TLSEnabledEnv, value: "sometimes", want: TLSEnabledEnv},
+		{name: "warning threshold", key: LagWarningThresholdEnv, value: "many", want: LagWarningThresholdEnv},
+		{name: "unhealthy threshold", key: LagUnhealthyThresholdEnv, value: "many", want: LagUnhealthyThresholdEnv},
+		{name: "API port syntax", key: APIPortEnv, value: "http", want: APIPortEnv},
+		{name: "API port range", key: APIPortEnv, value: "70000", want: "api port must be between"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			unsetConfigEnvironment(t)
+			if test.name == "bootstrap forms" {
+				t.Setenv(BootstrapServerEnv, "kafka-0:9092")
+			}
+			t.Setenv(test.key, test.value)
+			_, err := load(filepath.Join(t.TempDir(), "missing.yaml"), false)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestLoadDoesNotExposeSASLPasswordInErrors(t *testing.T) {
+	unsetConfigEnvironment(t)
+	t.Setenv(SASLMechanismEnv, "PLAIN")
+	t.Setenv(SASLUsernameEnv, "user")
+	t.Setenv(SASLPasswordEnv, "supersecret")
+	t.Setenv(TLSEnabledEnv, "invalid")
+
+	_, err := load(filepath.Join(t.TempDir(), "missing.yaml"), false)
+	if err == nil {
+		t.Fatal("expected invalid environment error")
+	}
+	if strings.Contains(err.Error(), "supersecret") {
+		t.Fatalf("error exposed SASL password: %v", err)
+	}
+}
+
+func unsetConfigEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		BootstrapServerEnv, BootstrapServersEnv, ConnectionTimeoutEnv, BrokerAddressOverridesEnv,
+		TLSEnabledEnv, TLSCAFileEnv, TLSClientCertFileEnv, TLSClientKeyFileEnv, TLSServerNameEnv,
+		SASLMechanismEnv, SASLUsernameEnv, SASLPasswordEnv,
+		LagWarningThresholdEnv, LagUnhealthyThresholdEnv, APIHostEnv, APIPortEnv,
+	} {
+		unsetEnvironment(t, key)
 	}
 }
 
