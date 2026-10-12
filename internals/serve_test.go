@@ -73,6 +73,23 @@ func TestServeCommandRejectsInvalidFlagOverrides(t *testing.T) {
 	}
 }
 
+func TestServeCommandFlagsOverrideEnvironment(t *testing.T) {
+	t.Setenv(kafkaesque_config.APIHostEnv, "127.0.0.2")
+	t.Setenv(kafkaesque_config.APIPortEnv, "8086")
+	var got string
+	cmd := newServeCommand(func(_ context.Context, address string, _ http.Handler) error {
+		got = address
+		return nil
+	})
+	cmd.SetArgs([]string{"--host", "0.0.0.0", "--port", "9000"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got != "0.0.0.0:9000" {
+		t.Fatalf("address = %q, want 0.0.0.0:9000", got)
+	}
+}
+
 func TestApplicationRoutes(t *testing.T) {
 	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("broker:9092"), Transport: serveTransport{}}}
 	handler := newApplicationHandler(conn, &kafkaesque_config.Config{})

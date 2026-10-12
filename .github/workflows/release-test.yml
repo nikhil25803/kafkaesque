@@ -39,3 +39,23 @@ jobs:
         run: |
           test "$(find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)" -eq 6
           test -f dist/checksums.txt
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate multi-platform container build
+        run: docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION=test --output type=oci,dest=/tmp/kafkaesque-image.tar .
+      - name: Run container smoke test
+        shell: bash
+        run: |
+          docker build --build-arg VERSION=test -t kafkaesque:release-test .
+          test "$(docker image inspect --format '{{.Config.User}}' kafkaesque:release-test)" = "65532:65532"
+          test "$(docker run --rm kafkaesque:release-test --version)" = "kafkaesque version test"
+          test "$(docker run --rm -e KAFKAESQUE_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 -e KAFKAESQUE_CONNECTION_TIMEOUT=5s kafkaesque:release-test --check config)" = "Configuration is valid"
+          container_id="$(docker run --detach --publish 127.0.0.1:18085:8085 kafkaesque:release-test)"
+          trap 'docker logs "${container_id}"; docker rm --force "${container_id}"' EXIT
+          for _ in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18085/api/v1/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:18085/api/v1/health | grep -q '"success":true'
+          curl --fail --silent http://127.0.0.1:18085/ui/assets/app.css >/dev/null

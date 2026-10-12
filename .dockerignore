@@ -1,0 +1,13 @@
+.git
+.github
+asset
+bin
+certificates
+design
+dist
+kafka-env
+*.md
+coverage.out
+kafkaesque.example.yaml
+install.ps1
+install.sh

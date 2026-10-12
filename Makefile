@@ -1,6 +1,8 @@
 BINARY := kafkaesque
 BIN_DIR := bin
 GORELEASER ?= goreleaser
+DOCKER_IMAGE ?= kafkaesque
+VERSION ?= dev
 KAFKA_COMPOSE := docker compose -f kafka-env/compose.yaml
 KAFKA_CI_COMPOSE := $(KAFKA_COMPOSE) -f kafka-env/compose.ci.yaml
 KAFKA_SIMULATOR_COMPOSE := $(KAFKA_COMPOSE) --profile simulator
@@ -8,11 +10,14 @@ KAFKA_CI_SIMULATOR_COMPOSE := $(KAFKA_CI_COMPOSE) --profile simulator
 KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
 
-.PHONY: build run test release-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
+.PHONY: build docker-build run test release-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
 
 build:
 	mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/$(BINARY) ./cmd/kafkaesque
+
+docker-build:
+	docker build --build-arg VERSION=$(VERSION) -t $(DOCKER_IMAGE):$(VERSION) .
 
 run:
 	go run ./cmd/kafkaesque

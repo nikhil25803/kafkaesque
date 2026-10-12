@@ -20,6 +20,7 @@
 ## Table of contents
 
 - [Install](#install)
+- [Container image](#container-image)
 - [Flags](#flags)
 - [UI sneak peek](#ui-sneak-peek)
 - [Combining flags](#combining-flags)
@@ -109,6 +110,61 @@ curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version v0.1.1
 ```
+
+</details>
+
+## Container image
+
+Each version tag publishes a public multi-platform image for Linux on AMD64 and
+ARM64:
+
+```sh
+docker pull ghcr.io/nikhil25803/kafkaesque:v0.6.0
+```
+
+```sh
+docker run --rm -p 8085:8085 \
+  -e KAFKAESQUE_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 \
+  ghcr.io/nikhil25803/kafkaesque:v0.6.0
+```
+
+The container runs `kafkaesque serve` as a non-root user and includes the API
+and embedded web UI. Use an exact release tag or image digest in deployments;
+`latest` follows the newest successful stable release.
+
+<details>
+<summary>Build, publish, and deploy the container</summary>
+
+Build and publish the same image to another registry when required:
+
+```sh
+docker build --build-arg VERSION=dev -t kafkaesque:dev .
+docker tag kafkaesque:dev registry.example.com/kafkaesque:v0.6.0
+docker push registry.example.com/kafkaesque:v0.6.0
+```
+
+Pushing a `v*.*.*` Git tag runs the existing release checks, creates the GitHub
+Release, and publishes both the versioned image and `latest` to GHCR.
+After the first publication, set the package visibility to **Public** in its
+GitHub package settings if GHCR initially creates it as private.
+
+For TLS or mutual TLS, mount certificates read-only and configure their absolute
+container paths:
+
+```sh
+docker run --rm -p 8085:8085 \
+  --mount type=bind,src=/path/to/certificates,dst=/etc/kafka/certificates,readonly \
+  -e KAFKAESQUE_BOOTSTRAP_SERVER=kafka.example.com:9093 \
+  -e KAFKAESQUE_TLS_ENABLED=true \
+  -e KAFKAESQUE_TLS_CA_FILE=/etc/kafka/certificates/ca.pem \
+  ghcr.io/nikhil25803/kafkaesque:v0.6.0
+```
+
+In Kubernetes, provide SASL credentials through Secrets or an external secret
+provider and mount TLS material as files. Use `GET /api/v1/health` for process
+uptime probes and `GET /api/v1/metadata/connection` when Kafka connectivity must
+also be checked. The API and UI are currently unauthenticated, so keep the
+service private.
 
 </details>
 
@@ -238,9 +294,10 @@ development workflow.
 
 Configuration precedence is:
 
-1. The built-in `localhost:9092` default.
+1. Built-in defaults.
 2. YAML from the platform default path or the file selected by `--config`.
-3. The `KAFKAESQUE_BOOTSTRAP_SERVER` environment variable.
+3. Environment variables.
+4. Explicit `serve --host` and `serve --port` flags.
 
 ```yaml
 kafka:
@@ -269,6 +326,31 @@ be lower than the unhealthy threshold.
 
 See [`kafkaesque.example.yaml`](kafkaesque.example.yaml) for a ready-to-copy
 configuration. Kafkaesque never creates configuration files automatically.
+
+All runtime configuration can be supplied through the environment:
+
+| Environment variable | Value |
+| --- | --- |
+| `KAFKAESQUE_BOOTSTRAP_SERVER` | One `host:port` bootstrap server. |
+| `KAFKAESQUE_BOOTSTRAP_SERVERS` | Comma-separated `host:port` bootstrap servers. |
+| `KAFKAESQUE_CONNECTION_TIMEOUT` | Go duration such as `10s`. |
+| `KAFKAESQUE_BROKER_ADDRESS_OVERRIDES` | JSON object mapping advertised addresses to connect addresses. |
+| `KAFKAESQUE_TLS_ENABLED` | `true` or `false`. |
+| `KAFKAESQUE_TLS_CA_FILE` | CA certificate path. |
+| `KAFKAESQUE_TLS_CLIENT_CERT_FILE` | Client certificate path. |
+| `KAFKAESQUE_TLS_CLIENT_KEY_FILE` | Client private-key path. |
+| `KAFKAESQUE_TLS_SERVER_NAME` | TLS server name. |
+| `KAFKAESQUE_SASL_MECHANISM` | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`. |
+| `KAFKAESQUE_SASL_USERNAME` | SASL username. |
+| `KAFKAESQUE_SASL_PASSWORD` | SASL password. |
+| `KAFKAESQUE_LAG_WARNING_THRESHOLD` | Non-negative integer. |
+| `KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD` | Non-negative integer greater than the warning threshold. |
+| `KAFKAESQUE_API_HOST` | API listener host. |
+| `KAFKAESQUE_API_PORT` | API listener port from `1` to `65535`. |
+
+The singular and plural bootstrap environment variables cannot be set together.
+Environment certificate paths are used as supplied; use absolute paths inside
+containers. Environment values pass through the same validation as YAML.
 
 `bootstrap_server` remains supported for existing configurations. New
 configurations can use `bootstrap_servers` for multiple seed brokers; setting
