@@ -68,7 +68,7 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := topicsPage{
-		Navigation: navigationView{Active: "topics"},
+		Navigation: navigationFor(r, "topics"),
 		Query:      query,
 		Levels:     topicLevelOptions(level),
 		Results:    results,

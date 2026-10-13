@@ -56,7 +56,7 @@ func renderBrokers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := brokersPage{
-		Navigation: navigationView{Active: "brokers"},
+		Navigation: navigationFor(r, "brokers"),
 		Query:      query,
 		Results:    results,
 	}

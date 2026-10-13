@@ -31,12 +31,12 @@ func renderClusterHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := dashboardTemplate.ExecuteTemplate(w, "cluster-health", clusterHealthView(health)); err != nil {
+	if err := dashboardTemplate.ExecuteTemplate(w, "cluster-health", clusterHealthView(health, r)); err != nil {
 		http.Error(w, "Unable to render cluster health", http.StatusInternalServerError)
 	}
 }
 
-func clusterHealthView(health *kafkaesque_health.Information) clusterHealthPage {
+func clusterHealthView(health *kafkaesque_health.Information, requests ...*http.Request) clusterHealthPage {
 	statusClass := "healthy"
 	headline := "Cluster is healthy"
 	message := "All monitored cluster health signals are healthy."
@@ -45,8 +45,12 @@ func clusterHealthView(health *kafkaesque_health.Information) clusterHealthPage 
 		headline = "Cluster requires attention"
 		message = "The cluster is available, but one or more health signals require attention."
 	}
+	navigation := navigationView{Active: "cluster-health"}
+	if len(requests) > 0 {
+		navigation = navigationFor(requests[0], "cluster-health")
+	}
 	return clusterHealthPage{
-		Navigation:  navigationView{Active: "cluster-health"},
+		Navigation:  navigation,
 		Status:      health.Status,
 		StatusClass: statusClass,
 		Headline:    headline,

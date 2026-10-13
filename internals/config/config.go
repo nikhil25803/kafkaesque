@@ -23,29 +23,93 @@ const (
 	DefaultLagUnhealthyThreshold = int64(500)
 	DefaultAPIHost               = "0.0.0.0"
 	DefaultAPIPort               = 8085
-	BootstrapServerEnv           = "KAFKAESQUE_BOOTSTRAP_SERVER"
-	BootstrapServersEnv          = "KAFKAESQUE_BOOTSTRAP_SERVERS"
-	ConnectionTimeoutEnv         = "KAFKAESQUE_CONNECTION_TIMEOUT"
-	BrokerAddressOverridesEnv    = "KAFKAESQUE_BROKER_ADDRESS_OVERRIDES"
-	TLSEnabledEnv                = "KAFKAESQUE_TLS_ENABLED"
-	TLSCAFileEnv                 = "KAFKAESQUE_TLS_CA_FILE"
-	TLSClientCertFileEnv         = "KAFKAESQUE_TLS_CLIENT_CERT_FILE"
-	TLSClientKeyFileEnv          = "KAFKAESQUE_TLS_CLIENT_KEY_FILE"
-	TLSServerNameEnv             = "KAFKAESQUE_TLS_SERVER_NAME"
-	SASLMechanismEnv             = "KAFKAESQUE_SASL_MECHANISM"
-	SASLUsernameEnv              = "KAFKAESQUE_SASL_USERNAME"
-	SASLPasswordEnv              = "KAFKAESQUE_SASL_PASSWORD"
-	LagWarningThresholdEnv       = "KAFKAESQUE_LAG_WARNING_THRESHOLD"
-	LagUnhealthyThresholdEnv     = "KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD"
-	APIHostEnv                   = "KAFKAESQUE_API_HOST"
-	APIPortEnv                   = "KAFKAESQUE_API_PORT"
+	DefaultAuthAccessTTL         = 15 * time.Minute
+	DefaultAuthRefreshTTL        = 7 * 24 * time.Hour
 )
+
+const (
+	BootstrapServerEnv        = "KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER"
+	BootstrapServersEnv       = "KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS"
+	ConnectionTimeoutEnv      = "KAFKAESQUE_KAFKA_CONNECTION_TIMEOUT"
+	BrokerAddressOverridesEnv = "KAFKAESQUE_KAFKA_BROKER_ADDRESS_OVERRIDES"
+	TLSEnabledEnv             = "KAFKAESQUE_KAFKA_SECURITY_TLS_ENABLED"
+	TLSCAFileEnv              = "KAFKAESQUE_KAFKA_SECURITY_TLS_CA_FILE"
+	TLSClientCertFileEnv      = "KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_CERT_FILE"
+	TLSClientKeyFileEnv       = "KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_KEY_FILE"
+	TLSServerNameEnv          = "KAFKAESQUE_KAFKA_SECURITY_TLS_SERVER_NAME"
+	SASLMechanismEnv          = "KAFKAESQUE_KAFKA_SECURITY_SASL_MECHANISM"
+	SASLUsernameEnv           = "KAFKAESQUE_KAFKA_SECURITY_SASL_USERNAME"
+	SASLPasswordEnv           = "KAFKAESQUE_KAFKA_SECURITY_SASL_PASSWORD"
+)
+
+const (
+	LagWarningThresholdEnv   = "KAFKAESQUE_LAG_WARNING_THRESHOLD"
+	LagUnhealthyThresholdEnv = "KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD"
+)
+
+const (
+	SuperAdminUsernameEnv = "KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME"
+	SuperAdminPasswordEnv = "KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD"
+	AuthAccessTTLEnv      = "KAFKAESQUE_AUTHENTICATION_ACCESS_TTL"
+	AuthRefreshTTLEnv     = "KAFKAESQUE_AUTHENTICATION_REFRESH_TTL"
+	AuthCookieSecureEnv   = "KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE"
+)
+
+const DatabaseURLEnv = "KAFKAESQUE_DATABASE_URL"
+
+const (
+	APIHostEnv = "KAFKAESQUE_API_HOST"
+	APIPortEnv = "KAFKAESQUE_API_PORT"
+)
+
+type legacyEnvironmentVariable struct {
+	old string
+	new string
+}
+
+var legacyEnvironmentVariables = []legacyEnvironmentVariable{
+	{old: "KAFKAESQUE_BOOTSTRAP_SERVER", new: BootstrapServerEnv},
+	{old: "KAFKAESQUE_BOOTSTRAP_SERVERS", new: BootstrapServersEnv},
+	{old: "KAFKAESQUE_CONNECTION_TIMEOUT", new: ConnectionTimeoutEnv},
+	{old: "KAFKAESQUE_BROKER_ADDRESS_OVERRIDES", new: BrokerAddressOverridesEnv},
+	{old: "KAFKAESQUE_TLS_ENABLED", new: TLSEnabledEnv},
+	{old: "KAFKAESQUE_TLS_CA_FILE", new: TLSCAFileEnv},
+	{old: "KAFKAESQUE_TLS_CLIENT_CERT_FILE", new: TLSClientCertFileEnv},
+	{old: "KAFKAESQUE_TLS_CLIENT_KEY_FILE", new: TLSClientKeyFileEnv},
+	{old: "KAFKAESQUE_TLS_SERVER_NAME", new: TLSServerNameEnv},
+	{old: "KAFKAESQUE_SASL_MECHANISM", new: SASLMechanismEnv},
+	{old: "KAFKAESQUE_SASL_USERNAME", new: SASLUsernameEnv},
+	{old: "KAFKAESQUE_SASL_PASSWORD", new: SASLPasswordEnv},
+	{old: "KAFKAESQUE_ADMIN_USERNAME", new: SuperAdminUsernameEnv},
+	{old: "KAFKAESQUE_ADMIN_PASSWORD", new: SuperAdminPasswordEnv},
+	{old: "KAFKAESQUE_AUTHENTICATION_ADMIN_USERNAME", new: SuperAdminUsernameEnv},
+	{old: "KAFKAESQUE_AUTHENTICATION_ADMIN_PASSWORD", new: SuperAdminPasswordEnv},
+	{old: "KAFKAESQUE_AUTH_ACCESS_TTL", new: AuthAccessTTLEnv},
+	{old: "KAFKAESQUE_AUTH_REFRESH_TTL", new: AuthRefreshTTLEnv},
+	{old: "KAFKAESQUE_AUTH_COOKIE_SECURE", new: AuthCookieSecureEnv},
+}
 
 // Config contains Kafkaesque's runtime configuration.
 type Config struct {
-	Kafka KafkaConfig `yaml:"kafka"`
-	Lag   LagConfig   `yaml:"lag"`
-	API   APIConfig   `yaml:"api"`
+	Kafka          KafkaConfig          `yaml:"kafka"`
+	Lag            LagConfig            `yaml:"lag"`
+	Authentication AuthenticationConfig `yaml:"authentication"`
+	Database       DatabaseConfig       `yaml:"database"`
+	API            APIConfig            `yaml:"api"`
+}
+
+// AuthenticationConfig contains Super Admin and session settings.
+type AuthenticationConfig struct {
+	SuperAdminUsername string        `yaml:"super_admin_username"`
+	SuperAdminPassword string        `yaml:"super_admin_password"`
+	AccessTTL          time.Duration `yaml:"access_ttl"`
+	RefreshTTL         time.Duration `yaml:"refresh_ttl"`
+	CookieSecure       bool          `yaml:"cookie_secure"`
+}
+
+// DatabaseConfig contains PostgreSQL connection settings.
+type DatabaseConfig struct {
+	URL string `yaml:"url"`
 }
 
 // APIConfig contains HTTP API listener settings.
@@ -124,7 +188,15 @@ func load(path string, explicit bool) (*Config, error) {
 			WarningThreshold:   DefaultLagWarningThreshold,
 			UnhealthyThreshold: DefaultLagUnhealthyThreshold,
 		},
-		API: APIConfig{Host: DefaultAPIHost, Port: DefaultAPIPort},
+		Authentication: AuthenticationConfig{
+			AccessTTL:    DefaultAuthAccessTTL,
+			RefreshTTL:   DefaultAuthRefreshTTL,
+			CookieSecure: true,
+		},
+		API: APIConfig{
+			Host: DefaultAPIHost,
+			Port: DefaultAPIPort,
+		},
 	}
 
 	data, err := os.ReadFile(path)
@@ -140,6 +212,9 @@ func load(path string, explicit bool) (*Config, error) {
 		decoder := yaml.NewDecoder(bytes.NewReader(data))
 		decoder.KnownFields(true)
 		if err := decoder.Decode(cfg); err != nil {
+			if replacement := legacyYAMLReplacement(err); replacement != "" {
+				return nil, fmt.Errorf("parse config %q: %s", path, replacement)
+			}
 			return nil, fmt.Errorf("parse config %q: %w", path, err)
 		}
 		if err := rejectAdditionalDocuments(decoder, path); err != nil {
@@ -150,10 +225,12 @@ func load(path string, explicit bool) (*Config, error) {
 	if cfg.Kafka.BootstrapServer != "" && len(cfg.Kafka.BootstrapServers) > 0 {
 		return nil, fmt.Errorf("kafka bootstrap_server and bootstrap_servers cannot both be set")
 	}
+
 	normalizeSecurity(&cfg.Kafka.Security, filepath.Dir(path))
 	if err := applyEnvironment(cfg); err != nil {
 		return nil, err
 	}
+
 	if len(cfg.Kafka.BootstrapServers) == 0 {
 		if cfg.Kafka.BootstrapServer == "" {
 			cfg.Kafka.BootstrapServers = []string{DefaultBootstrapServer}
@@ -165,7 +242,11 @@ func load(path string, explicit bool) (*Config, error) {
 	for i := range cfg.Kafka.BootstrapServers {
 		cfg.Kafka.BootstrapServers[i] = strings.TrimSpace(cfg.Kafka.BootstrapServers[i])
 	}
+
 	normalizeSecurityValues(&cfg.Kafka.Security)
+	cfg.Authentication.SuperAdminUsername = strings.ToLower(strings.TrimSpace(cfg.Authentication.SuperAdminUsername))
+	cfg.Database.URL = strings.TrimSpace(cfg.Database.URL)
+
 	overrides, err := normalizeBrokerAddressOverrides(cfg.Kafka.BrokerAddressOverrides)
 	if err != nil {
 		return nil, err
@@ -178,7 +259,25 @@ func load(path string, explicit bool) (*Config, error) {
 	return cfg, nil
 }
 
+// legacyYAMLReplacement explains renamed authentication keys.
+func legacyYAMLReplacement(err error) string {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "field admin_username not found"):
+		return "authentication.admin_username was renamed to authentication.super_admin_username"
+	case strings.Contains(message, "field admin_password not found"):
+		return "authentication.admin_password was renamed to authentication.super_admin_password"
+	default:
+		return ""
+	}
+}
+
 func applyEnvironment(cfg *Config) error {
+	if err := rejectLegacyEnvironment(); err != nil {
+		return err
+	}
+
+	// Kafka connection.
 	bootstrapServer, singularSet := os.LookupEnv(BootstrapServerEnv)
 	bootstrapServers, pluralSet := os.LookupEnv(BootstrapServersEnv)
 	if singularSet && pluralSet {
@@ -210,6 +309,8 @@ func applyEnvironment(cfg *Config) error {
 		}
 		cfg.Kafka.BrokerAddressOverrides = overrides
 	}
+
+	// Kafka TLS.
 	if value, ok := os.LookupEnv(TLSEnabledEnv); ok {
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
@@ -229,6 +330,8 @@ func applyEnvironment(cfg *Config) error {
 	if value, ok := os.LookupEnv(TLSServerNameEnv); ok {
 		cfg.Kafka.Security.TLS.ServerName = value
 	}
+
+	// Kafka SASL.
 	if value, ok := os.LookupEnv(SASLMechanismEnv); ok {
 		cfg.Kafka.Security.SASL.Mechanism = value
 	}
@@ -238,6 +341,8 @@ func applyEnvironment(cfg *Config) error {
 	if value, ok := os.LookupEnv(SASLPasswordEnv); ok {
 		cfg.Kafka.Security.SASL.Password = value
 	}
+
+	// Consumer lag.
 	if value, ok := os.LookupEnv(LagWarningThresholdEnv); ok {
 		parsed, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -252,6 +357,8 @@ func applyEnvironment(cfg *Config) error {
 		}
 		cfg.Lag.UnhealthyThreshold = parsed
 	}
+
+	// API listener.
 	if value, ok := os.LookupEnv(APIHostEnv); ok {
 		cfg.API.Host = value
 	}
@@ -262,6 +369,51 @@ func applyEnvironment(cfg *Config) error {
 		}
 		cfg.API.Port = parsed
 	}
+
+	// PostgreSQL.
+	if value, ok := os.LookupEnv(DatabaseURLEnv); ok {
+		cfg.Database.URL = strings.TrimSpace(value)
+	}
+
+	// Authentication.
+	if value, ok := os.LookupEnv(SuperAdminUsernameEnv); ok {
+		cfg.Authentication.SuperAdminUsername = strings.ToLower(strings.TrimSpace(value))
+	}
+	if value, ok := os.LookupEnv(SuperAdminPasswordEnv); ok {
+		cfg.Authentication.SuperAdminPassword = value
+	}
+	if value, ok := os.LookupEnv(AuthAccessTTLEnv); ok {
+		parsed, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", AuthAccessTTLEnv, err)
+		}
+		cfg.Authentication.AccessTTL = parsed
+	}
+	if value, ok := os.LookupEnv(AuthRefreshTTLEnv); ok {
+		parsed, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", AuthRefreshTTLEnv, err)
+		}
+		cfg.Authentication.RefreshTTL = parsed
+	}
+	if value, ok := os.LookupEnv(AuthCookieSecureEnv); ok {
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", AuthCookieSecureEnv, err)
+		}
+		cfg.Authentication.CookieSecure = parsed
+	}
+
+	return nil
+}
+
+func rejectLegacyEnvironment() error {
+	for _, variable := range legacyEnvironmentVariables {
+		if _, exists := os.LookupEnv(variable.old); exists {
+			return fmt.Errorf("%s was removed; use %s", variable.old, variable.new)
+		}
+	}
+
 	return nil
 }
 
@@ -274,6 +426,52 @@ func rejectAdditionalDocuments(decoder *yaml.Decoder, path string) error {
 		return fmt.Errorf("parse config %q: multiple YAML documents are not supported", path)
 	}
 	return nil
+}
+
+// ValidateServe validates settings required only by the HTTP server.
+func (c *Config) ValidateServe() error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.Database.URL) == "" {
+		return fmt.Errorf("database.url or %s is required", DatabaseURLEnv)
+	}
+	if !validSuperAdminUsername(c.Authentication.SuperAdminUsername) {
+		return fmt.Errorf(
+			"authentication.super_admin_username or %s must be 3-64 lowercase letters, numbers, dots, underscores, or hyphens",
+			SuperAdminUsernameEnv,
+		)
+	}
+	passwordLength := len([]rune(c.Authentication.SuperAdminPassword))
+	if passwordLength < 15 || passwordLength > 128 {
+		return fmt.Errorf("authentication.super_admin_password or %s must be 15-128 characters", SuperAdminPasswordEnv)
+	}
+	if strings.ContainsAny(c.Authentication.SuperAdminPassword, "\r\n\x00") {
+		return fmt.Errorf(
+			"authentication.super_admin_password or %s contains unsupported control characters",
+			SuperAdminPasswordEnv,
+		)
+	}
+	if c.Authentication.AccessTTL <= 0 {
+		return fmt.Errorf("authentication.access_ttl or %s must be positive", AuthAccessTTLEnv)
+	}
+	if c.Authentication.RefreshTTL <= c.Authentication.AccessTTL {
+		return fmt.Errorf("authentication.refresh_ttl or %s must exceed authentication.access_ttl", AuthRefreshTTLEnv)
+	}
+	return nil
+}
+
+func validSuperAdminUsername(username string) bool {
+	if len(username) < 3 || len(username) > 64 {
+		return false
+	}
+	for _, r := range username {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // Validate checks the effective configuration.

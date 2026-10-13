@@ -1,0 +1,33 @@
+# Copy this file to test-config.yaml and add local-only credentials.
+kafka:
+  # The kafka-up fixture exposes its bootstrap broker on this address.
+  bootstrap_server: localhost:9090
+  connection_timeout: 10s
+  broker_address_overrides: {}
+
+  # The local Kafka fixture uses plaintext without SASL authentication.
+  security:
+    tls:
+      enabled: false
+
+lag:
+  warning_threshold: 100
+  unhealthy_threshold: 500
+
+authentication:
+  # Fill these values only in the ignored test-config.yaml copy.
+  super_admin_username: super_admin
+  super_admin_password: ""
+  access_ttl: 15m
+  refresh_ttl: 168h
+
+  # The local server uses HTTP, so secure cookies must be disabled.
+  cookie_secure: false
+
+database:
+  # Add the local PostgreSQL URL only in the ignored copy.
+  url: ""
+
+api:
+  host: 0.0.0.0
+  port: 8085

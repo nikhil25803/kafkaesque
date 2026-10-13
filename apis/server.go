@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_brokers "github.com/nikhil25803/kafkaesque/internals/brokers"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
@@ -27,6 +30,9 @@ type server struct {
 	conn       *kafkaesque.KafkaesqueConn
 	config     *kafkaesque_config.Config
 	thresholds kafkaesque_consumers.LagThresholds
+	auth       kafkaesque_auth.Manager
+	limiter    *kafkaesque_auth.Limiter
+	logger     *slog.Logger
 }
 
 type envelope struct {
@@ -86,26 +92,89 @@ type consumerGroupDetail struct {
 	Members []kafkaesque_consumers.ConsumerGroupMember `json:"members"`
 }
 
-func NewHandler(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) http.Handler {
+// NewHandler returns an authenticated API handler.
+func NewHandler(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	authentication kafkaesque_auth.Manager,
+	logger *slog.Logger,
+) http.Handler {
+	if authentication == nil {
+		panic("authentication manager is required")
+	}
+	return newHandler(conn, cfg, authentication, logger)
+}
+
+func newHandler(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	authentication kafkaesque_auth.Manager,
+	logger *slog.Logger,
+) http.Handler {
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+	}
 	s := &server{
-		conn: conn, config: cfg,
+		conn:    conn,
+		config:  cfg,
+		auth:    authentication,
+		limiter: kafkaesque_auth.NewLimiter(),
+		logger:  logger,
 		thresholds: kafkaesque_consumers.LagThresholds{
-			Warning: cfg.Lag.WarningThreshold, Unhealthy: cfg.Lag.UnhealthyThreshold,
+			Warning:   cfg.Lag.WarningThreshold,
+			Unhealthy: cfg.Lag.UnhealthyThreshold,
 		},
 	}
 	mux := http.NewServeMux()
+
+	// Public health check.
 	mux.HandleFunc("GET /api/v1/health", s.uptime)
-	mux.HandleFunc("GET /api/v1/metadata/connection", s.withConnection(s.connection))
-	mux.HandleFunc("GET /api/v1/metadata/cluster", s.withConnection(s.cluster))
-	mux.HandleFunc("GET /api/v1/health/cluster", s.withConnection(s.health))
-	mux.HandleFunc("GET /api/v1/consumers/groups", s.withConnection(s.consumerGroups))
-	mux.HandleFunc("GET /api/v1/consumers/groups/{group}", s.withConnection(s.consumerGroup))
-	mux.HandleFunc("GET /api/v1/consumers/groups/{group}/topics/{topic}/partitions", s.withConnection(s.consumerTopicPartitions))
-	mux.HandleFunc("GET /api/v1/topics", s.withConnection(s.topics))
-	mux.HandleFunc("GET /api/v1/topics/{topic}", s.withConnection(s.topic))
-	mux.HandleFunc("GET /api/v1/topics/{topic}/partitions", s.withConnection(s.topicPartitions))
-	mux.HandleFunc("GET /api/v1/brokers", s.withConnection(s.brokers))
+
+	// Authentication endpoints.
+	if authentication != nil {
+		mux.HandleFunc("POST /api/v1/auth/login", s.login)
+		mux.HandleFunc("POST /api/v1/auth/refresh", s.refresh)
+		mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
+		mux.HandleFunc("GET /api/v1/auth/me", s.authenticate(s.me))
+	}
+
+	// Protect every Kafka-backed endpoint.
+	protect := func(handler http.HandlerFunc) http.HandlerFunc {
+		if authentication == nil {
+			return handler
+		}
+		return s.authenticate(handler)
+	}
+
+	// Kafka metadata and cluster health.
+	mux.HandleFunc("GET /api/v1/metadata/connection", protect(s.withConnection(s.connection)))
+	mux.HandleFunc("GET /api/v1/metadata/cluster", protect(s.withConnection(s.cluster)))
+	mux.HandleFunc("GET /api/v1/health/cluster", protect(s.withConnection(s.health)))
+
+	// Consumer groups and lag.
+	mux.HandleFunc("GET /api/v1/consumers/groups", protect(s.withConnection(s.consumerGroups)))
+	mux.HandleFunc(
+		"GET /api/v1/consumers/groups/{group}",
+		protect(s.withConnection(s.consumerGroup)),
+	)
+	mux.HandleFunc(
+		"GET /api/v1/consumers/groups/{group}/topics/{topic}/partitions",
+		protect(s.withConnection(s.consumerTopicPartitions)),
+	)
+
+	// Topics and partitions.
+	mux.HandleFunc("GET /api/v1/topics", protect(s.withConnection(s.topics)))
+	mux.HandleFunc("GET /api/v1/topics/{topic}", protect(s.withConnection(s.topic)))
+	mux.HandleFunc(
+		"GET /api/v1/topics/{topic}/partitions",
+		protect(s.withConnection(s.topicPartitions)),
+	)
+
+	// Brokers.
+	mux.HandleFunc("GET /api/v1/brokers", protect(s.withConnection(s.brokers)))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeNotFound(w, "route", "") })
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")

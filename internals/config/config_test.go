@@ -31,6 +31,45 @@ func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
 	if cfg.API.Host != "0.0.0.0" || cfg.API.Port != DefaultAPIPort {
 		t.Fatalf("API config = %+v, want 0.0.0.0:%d", cfg.API, DefaultAPIPort)
 	}
+	if cfg.Authentication.AccessTTL != DefaultAuthAccessTTL ||
+		cfg.Authentication.RefreshTTL != DefaultAuthRefreshTTL ||
+		!cfg.Authentication.CookieSecure {
+		t.Fatalf("authentication defaults = %+v", cfg.Authentication)
+	}
+}
+
+func TestEnvironmentNamesMirrorYAML(t *testing.T) {
+	want := map[string]string{
+		"kafka.bootstrap_server":              BootstrapServerEnv,
+		"kafka.bootstrap_servers":             BootstrapServersEnv,
+		"kafka.connection_timeout":            ConnectionTimeoutEnv,
+		"kafka.broker_address_overrides":      BrokerAddressOverridesEnv,
+		"kafka.security.tls.enabled":          TLSEnabledEnv,
+		"kafka.security.tls.ca_file":          TLSCAFileEnv,
+		"kafka.security.tls.client_cert_file": TLSClientCertFileEnv,
+		"kafka.security.tls.client_key_file":  TLSClientKeyFileEnv,
+		"kafka.security.tls.server_name":      TLSServerNameEnv,
+		"kafka.security.sasl.mechanism":       SASLMechanismEnv,
+		"kafka.security.sasl.username":        SASLUsernameEnv,
+		"kafka.security.sasl.password":        SASLPasswordEnv,
+		"lag.warning_threshold":               LagWarningThresholdEnv,
+		"lag.unhealthy_threshold":             LagUnhealthyThresholdEnv,
+		"authentication.super_admin_username": SuperAdminUsernameEnv,
+		"authentication.super_admin_password": SuperAdminPasswordEnv,
+		"authentication.access_ttl":           AuthAccessTTLEnv,
+		"authentication.refresh_ttl":          AuthRefreshTTLEnv,
+		"authentication.cookie_secure":        AuthCookieSecureEnv,
+		"database.url":                        DatabaseURLEnv,
+		"api.host":                            APIHostEnv,
+		"api.port":                            APIPortEnv,
+	}
+
+	for yamlPath, environment := range want {
+		expected := "KAFKAESQUE_" + strings.ToUpper(strings.NewReplacer(".", "_", "-", "_").Replace(yamlPath))
+		if environment != expected {
+			t.Errorf("%s uses %s, want %s", yamlPath, environment, expected)
+		}
+	}
 }
 
 func TestLoadReadsAPIConfiguration(t *testing.T) {
@@ -42,6 +81,19 @@ func TestLoadReadsAPIConfiguration(t *testing.T) {
 	}
 	if cfg.API.Host != "0.0.0.0" || cfg.API.Port != 9000 {
 		t.Fatalf("API config = %+v", cfg.API)
+	}
+}
+
+func TestExampleConfigurationIsValid(t *testing.T) {
+	unsetConfigEnvironment(t)
+	path := filepath.Join("..", "..", "kafkaesque.example.yaml")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.ValidateServe(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -320,8 +372,12 @@ func unsetConfigEnvironment(t *testing.T) {
 		TLSEnabledEnv, TLSCAFileEnv, TLSClientCertFileEnv, TLSClientKeyFileEnv, TLSServerNameEnv,
 		SASLMechanismEnv, SASLUsernameEnv, SASLPasswordEnv,
 		LagWarningThresholdEnv, LagUnhealthyThresholdEnv, APIHostEnv, APIPortEnv,
+		DatabaseURLEnv, SuperAdminUsernameEnv, SuperAdminPasswordEnv, AuthAccessTTLEnv, AuthRefreshTTLEnv, AuthCookieSecureEnv,
 	} {
 		unsetEnvironment(t, key)
+	}
+	for _, variable := range legacyEnvironmentVariables {
+		unsetEnvironment(t, variable.old)
 	}
 }
 

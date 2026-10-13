@@ -8,8 +8,8 @@ kafkaesque serve --config kafkaesque.yaml --port 8085
 ```
 
 The listener defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` flags
-override `api.host` and `api.port` from YAML. The API has no application
-authentication yet, so restrict the listener on untrusted networks.
+override `api.host` and `api.port` from YAML. PostgreSQL 18-backed Super Admin
+authentication protects every Kafka endpoint.
 
 ## Discovery
 
@@ -47,6 +47,33 @@ Every response is JSON and includes `Cache-Control: no-store`.
 Every Kafka-backed endpoint first verifies connectivity with one complete
 metadata request and reuses that validated snapshot. Connection failures return
 `502`, and timeouts return `504`.
+
+## Authentication
+
+| Method | Path | Query Params | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/auth/login` | — | Validate Super Admin credentials and issue opaque access and refresh tokens. |
+| `POST` | `/api/v1/auth/refresh` | — | Rotate a valid refresh token and its session token pair. |
+| `POST` | `/api/v1/auth/logout` | — | Revoke the current access or refresh session. |
+| `GET` | `/api/v1/auth/me` | — | Return the authenticated Super Admin identity. |
+
+Send API access tokens as `Authorization: Bearer <access-token>`. Browser
+sessions use host-only `HttpOnly`, `SameSite=Strict` cookies and CSRF protection.
+Only discovery, uptime, login, refresh, the UI login page, and UI assets are
+public. Invalid credentials return `401`, throttled login attempts return `429`,
+and unavailable database operations return `503`.
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{"username":"super_admin","password":"your-super-admin-password"}
+```
+
+The response `data` contains `access_token`, `refresh_token`, `csrf_token`,
+their expiration timestamps, and the Super Admin identity with
+`"role":"super_admin"`. Refresh tokens are single-use and rotate the complete
+token pair.
 
 ## Metadata
 

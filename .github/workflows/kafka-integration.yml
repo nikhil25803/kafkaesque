@@ -14,6 +14,18 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: kafkaesque
+          POSTGRES_USER: kafkaesque
+          POSTGRES_PASSWORD: kafkaesque-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kafkaesque -d kafkaesque"
+          --health-interval 2s --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -112,7 +124,11 @@ jobs:
           structured="$(./bin/kafkaesque --config "${config}" --brokers --topics --output json)"
           python3 -c 'import json,sys; data=json.load(sys.stdin); assert len(data["brokers"]) == 2; assert any(topic["name"] == "orders" for topic in data["topics"])' <<<"${structured}"
 
-          ./bin/kafkaesque serve --config "${config}" --port 18085 >"${api_log}" 2>&1 &
+          KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:kafkaesque-ci@127.0.0.1:5432/kafkaesque?sslmode=disable' \
+          KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
+          KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='kafkaesque-ci-super-admin-password' \
+          KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false \
+            ./bin/kafkaesque serve --config "${config}" --port 18085 >"${api_log}" 2>&1 &
           api_pid=$!
           api_ready=false
           for _ in {1..30}; do
@@ -128,6 +144,12 @@ jobs:
           done
           test "${api_ready}" = true
           curl --fail --silent http://127.0.0.1:18085/ >"${RUNNER_TEMP}/root.json"
+          unauthorized_status="$(curl --silent --output "${RUNNER_TEMP}/unauthorized.json" --write-out '%{http_code}' http://127.0.0.1:18085/api/v1/metadata/connection)"
+          test "${unauthorized_status}" -eq 401
+          python3 -c 'import json,sys; body=json.load(open(sys.argv[1],encoding="utf-8")); assert body["success"] is False; assert body["status"] == 401; assert body["data"] is None' "${RUNNER_TEMP}/unauthorized.json"
+          cookie_jar="${RUNNER_TEMP}/cookies.txt"
+          curl --fail --silent --cookie-jar "${cookie_jar}" --data-urlencode username=super_admin --data-urlencode password=kafkaesque-ci-super-admin-password --data-urlencode next=/ui http://127.0.0.1:18085/ui/login >/dev/null
+          curl() { command curl --cookie "${cookie_jar}" "$@"; }
           curl --fail --silent http://127.0.0.1:18085/ui >"${RUNNER_TEMP}/dashboard.html"
           curl --fail --silent http://127.0.0.1:18085/ui/consumer-groups >"${RUNNER_TEMP}/consumer-groups.html"
           curl --fail --silent --header 'HX-Request: true' 'http://127.0.0.1:18085/ui/consumer-groups?q=order&state=Stable' >"${RUNNER_TEMP}/consumer-groups-fragment.html"

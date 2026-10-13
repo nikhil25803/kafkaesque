@@ -1,0 +1,38 @@
+name: PostgreSQL Authentication
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  authentication:
+    name: PostgreSQL 18
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: kafkaesque_auth_test
+          POSTGRES_USER: kafkaesque
+          POSTGRES_PASSWORD: kafkaesque-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kafkaesque -d kafkaesque_auth_test"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Test PostgreSQL authentication
+        env:
+          KAFKAESQUE_TEST_DATABASE_URL: postgres://kafkaesque:kafkaesque-ci@127.0.0.1:5432/kafkaesque_auth_test?sslmode=disable
+        run: go test -race ./internals/auth
