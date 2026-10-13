@@ -124,13 +124,21 @@ docker pull ghcr.io/nikhil25803/kafkaesque:v0.6.0
 
 ```sh
 docker run --rm -p 8085:8085 \
-  -e KAFKAESQUE_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 \
+  -e KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 \
+  -e KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:password@postgres:5432/kafkaesque?sslmode=require' \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='replace-with-a-long-secret' \
+  -e KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false \
   ghcr.io/nikhil25803/kafkaesque:v0.6.0
 ```
 
 The container runs `kafkaesque serve` as a non-root user and includes the API
 and embedded web UI. Use an exact release tag or image digest in deployments;
 `latest` follows the newest successful stable release.
+
+The example disables secure cookies only for local HTTP. Keep the default
+`KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=true` when Kafkaesque is served
+through HTTPS.
 
 <details>
 <summary>Build, publish, and deploy the container</summary>
@@ -154,17 +162,20 @@ container paths:
 ```sh
 docker run --rm -p 8085:8085 \
   --mount type=bind,src=/path/to/certificates,dst=/etc/kafka/certificates,readonly \
-  -e KAFKAESQUE_BOOTSTRAP_SERVER=kafka.example.com:9093 \
-  -e KAFKAESQUE_TLS_ENABLED=true \
-  -e KAFKAESQUE_TLS_CA_FILE=/etc/kafka/certificates/ca.pem \
+  -e KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=kafka.example.com:9093 \
+  -e KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:password@postgres:5432/kafkaesque?sslmode=require' \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='replace-with-a-long-secret' \
+  -e KAFKAESQUE_KAFKA_SECURITY_TLS_ENABLED=true \
+  -e KAFKAESQUE_KAFKA_SECURITY_TLS_CA_FILE=/etc/kafka/certificates/ca.pem \
   ghcr.io/nikhil25803/kafkaesque:v0.6.0
 ```
 
-In Kubernetes, provide SASL credentials through Secrets or an external secret
-provider and mount TLS material as files. Use `GET /api/v1/health` for process
-uptime probes and `GET /api/v1/metadata/connection` when Kafka connectivity must
-also be checked. The API and UI are currently unauthenticated, so keep the
-service private.
+In Kubernetes, provide the database URL, Super Admin password, and SASL
+credentials through Secrets or an external secret provider and mount TLS
+material as files. Production PostgreSQL connections should enforce TLS. Use
+`GET /api/v1/health` for process uptime probes and the authenticated
+`GET /api/v1/metadata/connection` when Kafka connectivity must also be checked.
 
 </details>
 
@@ -324,33 +335,61 @@ Lag up to the warning threshold is `HEALTHY`, lag above it is `WARNING`, and
 lag above the unhealthy threshold is `UNHEALTHY`. The warning threshold must
 be lower than the unhealthy threshold.
 
+Configuration follows five top-level sections:
+
+```yaml
+kafka:
+lag:
+authentication:
+database:
+api:
+```
+
 See [`kafkaesque.example.yaml`](kafkaesque.example.yaml) for a ready-to-copy
 configuration. Kafkaesque never creates configuration files automatically.
 
-All runtime configuration can be supplied through the environment:
+For local fixture testing, copy `test-config.example.yaml` to
+`test-config.yaml`, then add the local Super Admin credentials and PostgreSQL
+URL. The populated file is ignored by Git and GitGuardian.
 
-| Environment variable | Value |
-| --- | --- |
-| `KAFKAESQUE_BOOTSTRAP_SERVER` | One `host:port` bootstrap server. |
-| `KAFKAESQUE_BOOTSTRAP_SERVERS` | Comma-separated `host:port` bootstrap servers. |
-| `KAFKAESQUE_CONNECTION_TIMEOUT` | Go duration such as `10s`. |
-| `KAFKAESQUE_BROKER_ADDRESS_OVERRIDES` | JSON object mapping advertised addresses to connect addresses. |
-| `KAFKAESQUE_TLS_ENABLED` | `true` or `false`. |
-| `KAFKAESQUE_TLS_CA_FILE` | CA certificate path. |
-| `KAFKAESQUE_TLS_CLIENT_CERT_FILE` | Client certificate path. |
-| `KAFKAESQUE_TLS_CLIENT_KEY_FILE` | Client private-key path. |
-| `KAFKAESQUE_TLS_SERVER_NAME` | TLS server name. |
-| `KAFKAESQUE_SASL_MECHANISM` | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`. |
-| `KAFKAESQUE_SASL_USERNAME` | SASL username. |
-| `KAFKAESQUE_SASL_PASSWORD` | SASL password. |
-| `KAFKAESQUE_LAG_WARNING_THRESHOLD` | Non-negative integer. |
-| `KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD` | Non-negative integer greater than the warning threshold. |
-| `KAFKAESQUE_API_HOST` | API listener host. |
-| `KAFKAESQUE_API_PORT` | API listener port from `1` to `65535`. |
+All runtime configuration can be supplied through YAML or its equivalent
+environment variable. Environment variables always override YAML values.
+
+| YAML path | Environment variable | Value |
+| --- | --- | --- |
+| `kafka.bootstrap_server` | `KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER` | One `host:port` bootstrap server. |
+| `kafka.bootstrap_servers` | `KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS` | Comma-separated `host:port` bootstrap servers. |
+| `kafka.connection_timeout` | `KAFKAESQUE_KAFKA_CONNECTION_TIMEOUT` | Go duration such as `10s`. |
+| `kafka.broker_address_overrides` | `KAFKAESQUE_KAFKA_BROKER_ADDRESS_OVERRIDES` | JSON object mapping advertised addresses to connect addresses. |
+| `kafka.security.tls.enabled` | `KAFKAESQUE_KAFKA_SECURITY_TLS_ENABLED` | `true` or `false`. |
+| `kafka.security.tls.ca_file` | `KAFKAESQUE_KAFKA_SECURITY_TLS_CA_FILE` | CA certificate path. |
+| `kafka.security.tls.client_cert_file` | `KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_CERT_FILE` | Client certificate path. |
+| `kafka.security.tls.client_key_file` | `KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_KEY_FILE` | Client private-key path. |
+| `kafka.security.tls.server_name` | `KAFKAESQUE_KAFKA_SECURITY_TLS_SERVER_NAME` | TLS server name. |
+| `kafka.security.sasl.mechanism` | `KAFKAESQUE_KAFKA_SECURITY_SASL_MECHANISM` | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`. |
+| `kafka.security.sasl.username` | `KAFKAESQUE_KAFKA_SECURITY_SASL_USERNAME` | SASL username. |
+| `kafka.security.sasl.password` | `KAFKAESQUE_KAFKA_SECURITY_SASL_PASSWORD` | SASL password. |
+| `lag.warning_threshold` | `KAFKAESQUE_LAG_WARNING_THRESHOLD` | Non-negative integer. |
+| `lag.unhealthy_threshold` | `KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD` | Non-negative integer greater than the warning threshold. |
+| `authentication.super_admin_username` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME` | Super Admin name required by `serve`. |
+| `authentication.super_admin_password` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD` | Super Admin password containing 15–128 characters. |
+| `authentication.access_ttl` | `KAFKAESQUE_AUTHENTICATION_ACCESS_TTL` | Access-token lifetime; defaults to `15m`. |
+| `authentication.refresh_ttl` | `KAFKAESQUE_AUTHENTICATION_REFRESH_TTL` | Refresh-token lifetime; defaults to `168h`. |
+| `authentication.cookie_secure` | `KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE` | Require HTTPS for browser cookies; defaults to `true`. |
+| `database.url` | `KAFKAESQUE_DATABASE_URL` | Complete PostgreSQL 18+ connection URL required by `serve`. |
+| `api.host` | `KAFKAESQUE_API_HOST` | API listener host. |
+| `api.port` | `KAFKAESQUE_API_PORT` | Port from `1` to `65535`. |
+
+The hierarchical Kafka and authentication environment names are a breaking
+change. Removed names such as `KAFKAESQUE_BOOTSTRAP_SERVERS`,
+`KAFKAESQUE_ADMIN_USERNAME`, and
+`KAFKAESQUE_AUTHENTICATION_ADMIN_USERNAME` now produce an error that names
+their replacement.
 
 The singular and plural bootstrap environment variables cannot be set together.
 Environment certificate paths are used as supplied; use absolute paths inside
-containers. Environment values pass through the same validation as YAML.
+containers. Environment values pass through the same validation as YAML and
+always take precedence.
 
 `bootstrap_server` remains supported for existing configurations. New
 configurations can use `bootstrap_servers` for multiple seed brokers; setting
@@ -421,17 +460,22 @@ the broker configuration is not practical.
 
 ## Read-only HTTP API
 
-Start the API with the same Kafka configuration used by the CLI:
+Start the API with the same Kafka configuration used by the CLI. PostgreSQL and
+Super Admin values can come from YAML or environment variables:
 
 ```sh
+KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:password@db:5432/kafkaesque?sslmode=require' \
+KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
+KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='replace-with-a-long-secret' \
 kafkaesque serve --config kafkaesque.yaml --port 8085
 ```
 
 The API defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` values
 override the YAML `api` section. It serves the read-only API and web UI, and
-keeps one authenticated Kafka connection for the server lifetime. Because API
-authentication is not included yet, restrict `api.host` or `--host` when the
-machine is connected to an untrusted network.
+keeps one authenticated Kafka connection for the server lifetime. PostgreSQL
+18 or newer and the three required effective database/Super Admin values must be
+available at startup. Browser users sign in at `/ui/login`; API clients obtain
+opaque access and refresh tokens from `/api/v1/auth/login`.
 
 ```http
 GET /api/v1/health
@@ -453,6 +497,10 @@ continue to work as ordinary links and forms without JavaScript. Consumer Lag
 includes topic and partition offsets, lag sorting, member grouping, and
 assignments.
 
+For local authentication development, start the PostgreSQL 18 fixture with
+`make postgres-up`. `make postgres-down` preserves its data;
+`make postgres-reset` removes and recreates the development volume.
+
 ## Local Kafka environment
 
 <details>
@@ -466,14 +514,14 @@ make kafka-up
 ```
 
 ```sh
-KAFKAESQUE_BOOTSTRAP_SERVER=localhost:9090 kafkaesque --metadata
+KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=localhost:9090 kafkaesque --metadata
 ```
 
 Start the optional activity simulator to keep consumer groups active:
 
 ```sh
 make kafka-simulator-start
-KAFKAESQUE_BOOTSTRAP_SERVER=localhost:9090 kafkaesque --consumers
+KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=localhost:9090 kafkaesque --consumers
 make kafka-simulator-stop
 ```
 

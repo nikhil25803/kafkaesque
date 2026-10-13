@@ -26,5 +26,5 @@ func renderUIError(w http.ResponseWriter, r *http.Request, status int, active, t
 		Navigation     navigationView
 		Status         int
 		Title, Message string
-	}{Navigation: navigationView{Active: active}, Status: status, Title: title, Message: message})
+	}{Navigation: navigationFor(r, active), Status: status, Title: title, Message: message})
 }

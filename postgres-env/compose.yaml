@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: kafkaesque
+      POSTGRES_USER: kafkaesque
+      POSTGRES_PASSWORD: kafkaesque-dev-only
+    ports:
+      - "0.0.0.0:${KAFKAESQUE_POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - kafkaesque-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kafkaesque -d kafkaesque"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  kafkaesque-postgres:

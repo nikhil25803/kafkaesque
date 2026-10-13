@@ -114,8 +114,9 @@ Initial navigation contains, in this order:
 4. Brokers
 5. Cluster Health
 
-Do not show Alerts, Settings, authentication, or user controls until those
-features exist.
+Do not show Alerts or Settings until those features exist. The shared shell
+anchors the authenticated Super Admin role and logout control at the bottom of
+the sidebar.
 
 | State | Surface | Text and icon | Additional requirement |
 | --- | --- | --- | --- |
@@ -242,7 +243,17 @@ the initial interface.
 Treat `asset/image/KafkaesqueBanner.png` and
 `asset/image/KafkaesqueLogo.png` as visual references. They are detailed raster
 compositions with black backgrounds and must not be used as compact sidebar
-icons. Use the text wordmark until a transparent, simplified mark is designed.
+icons. The login page uses the complete logo composition in its branding panel;
+the sidebar keeps the text wordmark until a transparent mark is designed.
+
+## Login
+
+- Use a 50/50 desktop split with the Super Admin form on the left and branding
+  on the right.
+- Match the logo's dotted and orbital background with subdued CSS decoration.
+- Stack the form before the branding panel on smaller screens.
+- Keep generic errors, visible labels, browser autocomplete, and a full-width
+  submit button below the credentials.
 
 ## Initial Boundaries
 
@@ -254,5 +265,6 @@ icons. Use the text wordmark until a transparent, simplified mark is designed.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
 - Topic Detail remains deferred until it is explicitly approved.
-- Charts, authentication, alerts, settings, and new logo assets remain
-  deferred.
+- PostgreSQL-backed Super Admin login and logout are implemented. Additional
+  users, password management, MFA, charts, alerts, settings, and new logo assets
+  remain deferred.

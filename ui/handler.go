@@ -7,12 +7,15 @@ import (
 	"errors"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
+	imageassets "github.com/nikhil25803/kafkaesque/asset/image"
+	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
@@ -34,7 +37,10 @@ type dashboardPage struct {
 }
 
 type navigationView struct {
-	Active string
+	Active    string
+	Username  string
+	Role      string
+	CSRFToken string
 }
 
 type connectionView struct {
@@ -98,7 +104,7 @@ type healthView struct {
 	Lagging         int
 }
 
-func dashboardView(data *dashboardData, source dataSource) dashboardPage {
+func dashboardView(r *http.Request, data *dashboardData, source dataSource) dashboardPage {
 	metadata := data.Snapshot.Metadata
 	partitionCount := 0
 	for _, topic := range metadata.Topics {
@@ -108,7 +114,7 @@ func dashboardView(data *dashboardData, source dataSource) dashboardPage {
 	total := len(groups)
 	shown := min(4, total)
 	return dashboardPage{
-		Navigation:     navigationView{Active: "dashboard"},
+		Navigation:     navigationFor(r, "dashboard"),
 		Connection:     connectionView{Status: "CONNECTED", Latency: strconv.FormatInt(data.Snapshot.Latency.Milliseconds(), 10) + "ms", Protocol: source.Protocol(), Mechanism: source.Authentication()},
 		Metrics:        []metricView{{Label: "Brokers", Value: int64(len(metadata.Brokers))}, {Label: "Topics", Value: int64(len(metadata.Topics))}, {Label: "Partitions", Value: int64(partitionCount)}, {Label: "Consumer Groups", Value: int64(total)}},
 		ConsumerGroups: groups[:shown], Health: healthViewFrom(data.Health),
@@ -158,29 +164,64 @@ func healthViewFrom(info *kafkaesque_health.Information) healthView {
 	return healthView{Status: info.Status, StatusClass: class, Offline: info.OfflinePartitionCount, UnderReplicated: info.UnderReplicatedCount, Rebalancing: info.RebalancingGroupCount, Dead: info.DeadGroupCount, Lagging: info.LaggingGroupCount}
 }
 
-// NewHandler returns the embedded UI handler.
-func NewHandler(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) http.Handler {
-	return newHandler(newLiveDataSource(conn, cfg))
+// NewHandler returns an authenticated embedded UI handler.
+func NewHandler(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	authentication kafkaesque_auth.Manager,
+	logger *slog.Logger,
+) http.Handler {
+	if authentication == nil {
+		panic("authentication manager is required")
+	}
+	return newHandlerWithAuth(
+		newLiveDataSource(conn, cfg),
+		authentication,
+		cfg.Authentication.CookieSecure,
+		logger,
+	)
 }
 
 type dataSourceKey struct{}
 
 func newHandler(source dataSource) http.Handler {
+	return newHandlerWithAuth(source, nil, false, nil)
+}
+
+func newHandlerWithAuth(
+	source dataSource,
+	authentication kafkaesque_auth.Manager,
+	cookieSecure bool,
+	logger *slog.Logger,
+) http.Handler {
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /ui", renderDashboard)
+	limiter := kafkaesque_auth.NewLimiter()
+	protect := func(handler http.HandlerFunc) http.HandlerFunc {
+		if authentication == nil {
+			return handler
+		}
+		return authenticateUI(authentication, cookieSecure, logger, handler)
+	}
+	if authentication != nil {
+		mux.HandleFunc("GET /ui/login", renderLogin)
+		mux.HandleFunc("POST /ui/login", loginUI(authentication, limiter, cookieSecure, logger))
+		mux.HandleFunc("POST /ui/logout", protect(logoutUI(authentication, cookieSecure, logger)))
+	}
+	mux.HandleFunc("GET /ui", protect(renderDashboard))
 	mux.HandleFunc("GET /ui/{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/ui", http.StatusPermanentRedirect)
+		protect(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/ui", http.StatusPermanentRedirect) })(w, r)
 	})
-	mux.HandleFunc("GET /ui/consumer-groups", renderConsumerGroups)
-	mux.HandleFunc("GET /ui/consumer-groups/{group}", renderConsumerGroupDetail)
-	mux.HandleFunc("GET /ui/topics", renderTopics)
-	mux.HandleFunc("GET /ui/brokers", renderBrokers)
-	mux.HandleFunc("GET /ui/cluster-health", renderClusterHealth)
+	mux.HandleFunc("GET /ui/consumer-groups", protect(renderConsumerGroups))
+	mux.HandleFunc("GET /ui/consumer-groups/{group}", protect(renderConsumerGroupDetail))
+	mux.HandleFunc("GET /ui/topics", protect(renderTopics))
+	mux.HandleFunc("GET /ui/brokers", protect(renderBrokers))
+	mux.HandleFunc("GET /ui/cluster-health", protect(renderClusterHealth))
+	mux.Handle("GET /ui/assets/KafkaesqueLogo.png", http.StripPrefix("/ui/assets/", http.FileServerFS(imageassets.Files)))
 	mux.Handle("GET /ui/assets/", http.StripPrefix("/ui/assets/", http.FileServerFS(static)))
 	return withHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), dataSourceKey{}, source)))
@@ -195,7 +236,7 @@ func renderDashboard(w http.ResponseWriter, r *http.Request) {
 		renderUpstreamError(w, r, "dashboard", err)
 		return
 	}
-	view := dashboardView(data, sourceFrom(r))
+	view := dashboardView(r, data, sourceFrom(r))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := dashboardTemplate.ExecuteTemplate(w, "dashboard", view); err != nil {
 		http.Error(w, "Unable to render Dashboard", http.StatusInternalServerError)
@@ -226,7 +267,7 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := consumerGroupsPage{
-		Navigation: navigationView{Active: "consumer-groups"},
+		Navigation: navigationFor(r, "consumer-groups"),
 		Query:      query,
 		States:     consumerStateOptions(state),
 		Results:    results,

@@ -107,7 +107,7 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().StringVar(&output, "output", "text", "Output format (text|json)")
 	cmd.Flags().IntVar(&watchSeconds, "watch", 0, "Refresh information every N seconds")
 	cmd.Flags().BoolP("version", "v", false, "Show Kafkaesque version")
-	cmd.AddCommand(newServeCommand(serveAPI))
+	cmd.AddCommand(newServeCommand(serveAPI, initializeServer))
 
 	return cmd
 }

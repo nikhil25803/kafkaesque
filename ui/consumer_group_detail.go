@@ -91,7 +91,7 @@ func renderConsumerGroupDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := data.Group.LagSummary
-	page := consumerGroupDetailPage{Navigation: navigationView{Active: "consumer-groups"}, Group: detail,
+	page := consumerGroupDetailPage{Navigation: navigationFor(r, "consumer-groups"), Group: detail,
 		Metrics: []metricView{{Label: "Topics", Value: int64(data.Group.TopicsCount)}, {Label: "Members", Value: int64(data.Group.MembersCount)}, {Label: "Total Lag", Value: data.Group.TotalLag}, {Label: "Maximum Partition Lag", Value: s.MaximumPartitionLag}},
 		Summary: detailLagSummary{Average: s.AveragePartitionLag, Healthy: s.HealthyPartitions, Warning: s.WarningPartitions, Unhealthy: s.UnhealthyPartitions, TotalLag: s.TotalLag, MaximumLag: s.MaximumPartitionLag, MemberCount: data.Group.MembersCount, TopicCount: data.Group.TopicsCount}, Partition: partition}
 	if err := dashboardTemplate.ExecuteTemplate(w, "consumer-group-detail", page); err != nil {

@@ -1101,6 +1101,23 @@ func TestRootCommandChecksConfiguration(t *testing.T) {
 	}
 }
 
+func TestCLIConfigurationCheckDoesNotRequireAuthentication(t *testing.T) {
+	t.Setenv(kafkaesque_config.DatabaseURLEnv, "")
+	t.Setenv(kafkaesque_config.SuperAdminUsernameEnv, "")
+	t.Setenv(kafkaesque_config.SuperAdminPasswordEnv, "")
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--check", "config", "--config", writeRootConfig(t, "localhost:9092")})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "Configuration is valid\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
 func TestRootCommandChecksKafkaConnection(t *testing.T) {
 	var output bytes.Buffer
 	var checkedAddresses []string

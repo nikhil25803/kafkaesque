@@ -1,31 +1,97 @@
+# Environment variables always override their equivalent YAML values.
 kafka:
+  # Use bootstrap_servers for one or more brokers.
+  # ENV: KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS (comma-separated)
   bootstrap_servers:
-    - localhost:9090
+    - localhost:9092
+
+  # Use bootstrap_server only for single-broker configurations.
+  # Do not set it together with bootstrap_servers.
+  # ENV: KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER
+  # bootstrap_server: localhost:9092
+
+  # Maximum time allowed for Kafka connection operations.
+  # ENV: KAFKAESQUE_KAFKA_CONNECTION_TIMEOUT
   connection_timeout: 10s
-  # Map an advertised broker address to its reachable listener when required.
+
+  # Map broker-advertised addresses to addresses reachable by Kafkaesque.
+  # This is commonly needed across Kubernetes or network boundaries.
+  # ENV: KAFKAESQUE_KAFKA_BROKER_ADDRESS_OVERRIDES (JSON object)
+  broker_address_overrides: {}
   # broker_address_overrides:
   #   "broker-0.kafka.svc.cluster.local:9092": "broker-0.example.com:9094"
 
-  # TLS is optional. Omit ca_file to use the system certificate pool.
-  # security:
-  #   tls:
-  #     enabled: true
-  #     ca_file: certificates/ca.pem
-  #     # Providing both files enables mutual TLS authentication.
-  #     client_cert_file: certificates/client.pem
-  #     client_key_file: certificates/client-key.pem
-  #     server_name: kafka.example.com
-  #   sasl:
-  #     # Supported: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512.
-  #     mechanism: SCRAM-SHA-256
-  #     username: kafkaesque
-  #     password: secret
+  security:
+    tls:
+      # Enable TLS server verification. Leave false for plaintext Kafka.
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_TLS_ENABLED
+      enabled: false
+
+      # Omit ca_file to use the system certificate pool.
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_TLS_CA_FILE
+      # ca_file: certificates/ca.pem
+
+      # Providing both client files enables mutual TLS authentication.
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_CERT_FILE
+      # client_cert_file: certificates/client.pem
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_KEY_FILE
+      # client_key_file: certificates/client-key.pem
+
+      # Override the hostname verified in the broker certificate when required.
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_TLS_SERVER_NAME
+      # server_name: kafka.example.com
+
+    sasl:
+      # A mechanism enables SASL. Supported values are PLAIN,
+      # SCRAM-SHA-256, and SCRAM-SHA-512. Use TLS with PLAIN because PLAIN
+      # otherwise exposes credentials on the network.
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_SASL_MECHANISM
+      # mechanism: SCRAM-SHA-256
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_SASL_USERNAME
+      # username: kafkaesque
+      # ENV: KAFKAESQUE_KAFKA_SECURITY_SASL_PASSWORD
+      # password: replace-with-a-secret
 
 lag:
+  # Lag at or below this value is healthy.
+  # ENV: KAFKAESQUE_LAG_WARNING_THRESHOLD
   warning_threshold: 100
+
+  # Lag above this value is unhealthy; values between thresholds are warnings.
+  # ENV: KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD
   unhealthy_threshold: 500
 
-# The HTTP API is unauthenticated; restrict this host on untrusted networks.
+authentication:
+  # `serve` requires a Super Admin name and password. In Kubernetes, inject
+  # them from a Secret instead of committing production credentials to YAML.
+  # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME
+  super_admin_username: super_admin
+  # Passwords must contain 15-128 characters.
+  # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD
+  super_admin_password: replace-with-a-long-secret
+
+  # Short-lived access token lifetime.
+  # ENV: KAFKAESQUE_AUTHENTICATION_ACCESS_TTL
+  access_ttl: 15m
+
+  # Refresh lifetime must be longer than access_ttl.
+  # ENV: KAFKAESQUE_AUTHENTICATION_REFRESH_TTL
+  refresh_ttl: 168h
+
+  # Keep true behind HTTPS. Set false only for a private HTTP deployment.
+  # ENV: KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE
+  cookie_secure: true
+
+database:
+  # `serve` requires PostgreSQL 18 or newer. Production URLs should enforce TLS;
+  # use sslmode=disable only for trusted local development.
+  # ENV: KAFKAESQUE_DATABASE_URL
+  url: postgres://kafkaesque:replace-with-a-secret@postgres:5432/kafkaesque?sslmode=require
+
 api:
+  # Use 0.0.0.0 inside containers; use 127.0.0.1 for local-only access.
+  # ENV: KAFKAESQUE_API_HOST
   host: 0.0.0.0
+
+  # ENV: KAFKAESQUE_API_PORT
   port: 8085

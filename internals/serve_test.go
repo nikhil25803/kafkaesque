@@ -1,16 +1,22 @@
 package internals
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafka "github.com/segmentio/kafka-go"
@@ -19,6 +25,37 @@ import (
 )
 
 type serveTransport struct{}
+
+type serveAuth struct{}
+
+func (serveAuth) Login(context.Context, string, string) (kafkaesque_auth.Tokens, error) {
+	return kafkaesque_auth.Tokens{}, nil
+}
+
+func (serveAuth) AuthenticateAccess(context.Context, string) (kafkaesque_auth.User, error) {
+	return kafkaesque_auth.User{ID: "user-1", Username: "super_admin", Role: "super_admin"}, nil
+}
+
+func (serveAuth) Refresh(context.Context, string) (kafkaesque_auth.Tokens, error) {
+	return kafkaesque_auth.Tokens{}, nil
+}
+
+func (serveAuth) Logout(context.Context, string) error { return nil }
+
+func (serveAuth) ValidateCSRF(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
+func (serveAuth) ValidateRefreshCSRF(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
+func testServerInitializer(_ context.Context, cfg *kafkaesque_config.Config, _ *slog.Logger) (*serverRuntime, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+	return &serverRuntime{handler: http.NotFoundHandler(), close: func() {}}, nil
+}
 
 func (serveTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
 	switch request.(type) {
@@ -53,7 +90,7 @@ func TestServeCommandUsesConfigAndExplicitOverrides(t *testing.T) {
 					t.Fatal("handler is nil")
 				}
 				return nil
-			})
+			}, testServerInitializer)
 			cmd.SetArgs(test.args)
 			if err := cmd.Execute(); err != nil {
 				t.Fatal(err)
@@ -66,7 +103,7 @@ func TestServeCommandUsesConfigAndExplicitOverrides(t *testing.T) {
 }
 
 func TestServeCommandRejectsInvalidFlagOverrides(t *testing.T) {
-	cmd := newServeCommand(func(context.Context, string, http.Handler) error { return nil })
+	cmd := newServeCommand(func(context.Context, string, http.Handler) error { return nil }, testServerInitializer)
 	cmd.SetArgs([]string{"--host", "", "--port", "0"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected invalid API configuration")
@@ -80,7 +117,7 @@ func TestServeCommandFlagsOverrideEnvironment(t *testing.T) {
 	cmd := newServeCommand(func(_ context.Context, address string, _ http.Handler) error {
 		got = address
 		return nil
-	})
+	}, testServerInitializer)
 	cmd.SetArgs([]string{"--host", "0.0.0.0", "--port", "9000"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -92,7 +129,12 @@ func TestServeCommandFlagsOverrideEnvironment(t *testing.T) {
 
 func TestApplicationRoutes(t *testing.T) {
 	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("broker:9092"), Transport: serveTransport{}}}
-	handler := newApplicationHandler(conn, &kafkaesque_config.Config{})
+	handler := newApplicationHandler(
+		conn,
+		&kafkaesque_config.Config{},
+		serveAuth{},
+		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	)
 
 	t.Run("discovery", func(t *testing.T) {
 		response := httptest.NewRecorder()
@@ -128,4 +170,53 @@ func TestApplicationRoutes(t *testing.T) {
 			t.Fatalf("API response = %d %q", response.Code, response.Header().Get("Content-Type"))
 		}
 	})
+}
+
+func TestRequestLoggerUsesStatusSeverityAndSafeFields(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /ok/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("GET /bad", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	})
+	mux.HandleFunc("GET /failed", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	handler := requestLogger(logger, mux)
+
+	for _, target := range []string{
+		"/ok/secret-value?token=must-not-be-logged",
+		"/bad",
+		"/failed",
+		"/unknown/private-value?token=also-private",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+	}
+
+	logs := output.String()
+	for _, expected := range []string{
+		`"level":"INFO"`,
+		`"level":"WARN"`,
+		`"level":"ERROR"`,
+		`"route":"GET /ok/{id}"`,
+		`"route":"unmatched"`,
+	} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("missing %s in logs: %s", expected, logs)
+		}
+	}
+	for _, secret := range []string{
+		"secret-value",
+		"must-not-be-logged",
+		"private-value",
+		"also-private",
+	} {
+		if strings.Contains(logs, secret) {
+			t.Fatalf("request log contains %q: %s", secret, logs)
+		}
+	}
 }

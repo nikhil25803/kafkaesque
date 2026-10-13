@@ -48,9 +48,13 @@ jobs:
           docker build --build-arg VERSION=test -t kafkaesque:release-test .
           test "$(docker image inspect --format '{{.Config.User}}' kafkaesque:release-test)" = "65532:65532"
           test "$(docker run --rm kafkaesque:release-test --version)" = "kafkaesque version test"
-          test "$(docker run --rm -e KAFKAESQUE_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 -e KAFKAESQUE_CONNECTION_TIMEOUT=5s kafkaesque:release-test --check config)" = "Configuration is valid"
-          container_id="$(docker run --detach --publish 127.0.0.1:18085:8085 kafkaesque:release-test)"
-          trap 'docker logs "${container_id}"; docker rm --force "${container_id}"' EXIT
+          test "$(docker run --rm -e KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 -e KAFKAESQUE_KAFKA_CONNECTION_TIMEOUT=5s kafkaesque:release-test --check config)" = "Configuration is valid"
+          docker network create kafkaesque-release-test
+          postgres_id="$(docker run --detach --network kafkaesque-release-test --name kafkaesque-postgres --health-cmd 'pg_isready -U kafkaesque -d kafkaesque' --health-interval 2s --health-timeout 3s --health-retries 20 -e POSTGRES_DB=kafkaesque -e POSTGRES_USER=kafkaesque -e POSTGRES_PASSWORD=kafkaesque-ci postgres:18)"
+          for _ in {1..30}; do test "$(docker inspect --format '{{.State.Health.Status}}' "${postgres_id}")" = healthy && break; sleep 1; done
+          test "$(docker inspect --format '{{.State.Health.Status}}' "${postgres_id}")" = healthy
+          container_id="$(docker run --detach --network kafkaesque-release-test --publish 127.0.0.1:18085:8085 -e KAFKAESQUE_DATABASE_URL=postgres://kafkaesque:kafkaesque-ci@kafkaesque-postgres:5432/kafkaesque?sslmode=disable -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD=kafkaesque-ci-super-admin-password -e KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false kafkaesque:release-test)"
+          trap 'docker logs "${container_id}"; docker rm --force "${container_id}"; docker rm --force "${postgres_id}"; docker network rm kafkaesque-release-test' EXIT
           for _ in {1..30}; do
             if curl --fail --silent http://127.0.0.1:18085/api/v1/health >/dev/null; then
               break
@@ -59,3 +63,15 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:18085/api/v1/health | grep -q '"success":true'
           curl --fail --silent http://127.0.0.1:18085/ui/assets/app.css >/dev/null
+          login="$(curl --fail --silent --cookie-jar /tmp/kafkaesque-cookies.txt --header 'Content-Type: application/json' --data '{"username":"super_admin","password":"kafkaesque-ci-super-admin-password"}' http://127.0.0.1:18085/api/v1/auth/login)"
+          access="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["access_token"])' <<<"${login}")"
+          refresh="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["refresh_token"])' <<<"${login}")"
+          curl --fail --silent --header "Authorization: Bearer ${access}" http://127.0.0.1:18085/api/v1/auth/me | grep -q '"role":"super_admin"'
+          ui_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie /tmp/kafkaesque-cookies.txt http://127.0.0.1:18085/ui)"
+          test "${ui_status}" = 502 || test "${ui_status}" = 504
+          refreshed="$(curl --fail --silent --header 'Content-Type: application/json' --data "{\"refresh_token\":\"${refresh}\"}" http://127.0.0.1:18085/api/v1/auth/refresh)"
+          new_access="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["access_token"])' <<<"${refreshed}")"
+          curl --fail --silent --request POST --header "Authorization: Bearer ${new_access}" http://127.0.0.1:18085/api/v1/auth/logout | grep -q 'LOGGED_OUT'
+          docker restart "${container_id}" >/dev/null
+          for _ in {1..30}; do curl --fail --silent http://127.0.0.1:18085/api/v1/health >/dev/null && break; sleep 1; done
+          curl --fail --silent --header 'Content-Type: application/json' --data '{"username":"super_admin","password":"kafkaesque-ci-super-admin-password"}' http://127.0.0.1:18085/api/v1/auth/login | grep -q '"success":true'

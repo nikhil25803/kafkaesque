@@ -83,7 +83,7 @@ func testHandler(transport kafka.RoundTripper) http.Handler {
 		Lag:   kafkaesque_config.LagConfig{WarningThreshold: 100, UnhealthyThreshold: 500},
 	}
 	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("bootstrap:9092"), Transport: transport}}
-	return NewHandler(conn, cfg)
+	return newHandler(conn, cfg, nil, nil)
 }
 
 func TestRoutesReturnJSONEnvelopes(t *testing.T) {
@@ -194,7 +194,7 @@ func TestConnectionReportsSecurityWithoutSecrets(t *testing.T) {
 		},
 	}
 	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("bootstrap:9092"), Transport: &apiTransport{}}}
-	response := request(t, NewHandler(conn, cfg), "/api/v1/metadata/connection")
+	response := request(t, newHandler(conn, cfg, nil, nil), "/api/v1/metadata/connection")
 	body := response.Body.String()
 	if !strings.Contains(body, `"protocol":"SASL_SSL"`) || !strings.Contains(body, `"sasl_mechanism":"SCRAM-SHA-256"`) || !strings.Contains(body, `"mtls":true`) {
 		t.Fatalf("security response = %s", body)
