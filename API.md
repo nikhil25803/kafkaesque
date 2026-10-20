@@ -104,6 +104,10 @@ The uptime endpoint is not protected by Kafka connection middleware.
 | `GET` | `/api/v1/consumers/groups/{group}` | — | Current group state, lag summary, members, assignments, and topic lag. |
 | `GET` | `/api/v1/consumers/groups/{group}/topics/{topic}/partitions` | `page`, `page_size` | Committed offset, log-end offset, and lag for each partition. |
 
+Consumer-group lists normalize Kafka's transient states into `Stable`,
+`Rebalancing`, `Empty`, `Dead`, or `Unknown`. Individual group responses retain
+the raw Kafka state for diagnostics.
+
 ```http
 GET /api/v1/consumers/groups?state=stable&page_size=10
 ```
@@ -131,7 +135,7 @@ Search matches broker IDs, addresses, and racks.
 | `q` | List endpoints | Case-insensitive name or address search. |
 | `page` | List and partition endpoints | Positive integer; default `1`. |
 | `page_size` | List and partition endpoints | Integer from `1` through `100`; default `25`. |
-| `state` | Consumer-group list | Case-insensitive exact state match. |
+| `state` | Consumer-group list | `stable`, `rebalancing`, `empty`, `dead`, or `unknown`; case-insensitive. |
 | `level` | Topic list | `internal` or `external`. |
 | `status` | Topic partitions | `healthy` or `degraded`. |
 

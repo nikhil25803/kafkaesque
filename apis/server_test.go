@@ -11,6 +11,7 @@ import (
 	"time"
 
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
+	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafka "github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/protocol/describegroups"
@@ -26,6 +27,7 @@ type apiTransport struct {
 	metadataResponse *metadataAPI.Response
 	metadataRequests int
 	emptyGroups      bool
+	groupState       string
 }
 
 func (t *apiTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
@@ -45,8 +47,12 @@ func (t *apiTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Re
 		}
 		return &listgroups.Response{Groups: []listgroups.ResponseGroup{{GroupID: "orders-service", ProtocolType: "consumer", BrokerID: 1}}}, nil
 	case *describegroups.Request:
+		state := t.groupState
+		if state == "" {
+			state = kafkaesque_consumers.GroupStateStable
+		}
 		return &describegroups.Response{Groups: []describegroups.ResponseGroup{{
-			GroupID: request.Groups[0], GroupState: "Stable",
+			GroupID: request.Groups[0], GroupState: state,
 			Members: []describegroups.ResponseGroupMember{{MemberID: "member-1", ClientID: "worker", ClientHost: "/10.0.0.1"}},
 		}}}, nil
 	case *findcoordinator.Request:
@@ -146,11 +152,31 @@ func TestListFilteringPaginationAndSorting(t *testing.T) {
 	}
 }
 
+func TestConsumerGroupStateFiltering(t *testing.T) {
+	handler := testHandler(&apiTransport{groupState: "PreparingRebalance"})
+
+	response := request(t, handler, "/api/v1/consumers/groups?state=rebalancing")
+	body := response.Body.String()
+	if response.Code != http.StatusOK || !strings.Contains(body, `"group_name":"orders-service"`) || !strings.Contains(body, `"state":"Rebalancing"`) {
+		t.Fatalf("rebalancing filter = %d %s", response.Code, body)
+	}
+
+	response = request(t, handler, "/api/v1/consumers/groups?state=stable")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"data":[]`) {
+		t.Fatalf("stable filter = %d %s", response.Code, response.Body.String())
+	}
+
+	response = request(t, handler, "/api/v1/consumers/groups/orders-service")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"PreparingRebalance"`) {
+		t.Fatalf("consumer detail state = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestInvalidQueriesAndMissingResources(t *testing.T) {
 	handler := testHandler(&apiTransport{})
 	for _, path := range []string{
 		"/api/v1/topics?page=0", "/api/v1/topics?page_size=101", "/api/v1/topics?level=private",
-		"/api/v1/topics/orders/partitions?status=warning",
+		"/api/v1/topics/orders/partitions?status=warning", "/api/v1/consumers/groups?state=PreparingRebalance",
 	} {
 		response := request(t, handler, path)
 		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"success":false,"status":400,"data":null`) || !strings.Contains(response.Body.String(), `"code":"invalid_request"`) {

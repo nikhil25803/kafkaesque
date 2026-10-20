@@ -170,6 +170,12 @@ func TestGetInformationDegradationTriggers(t *testing.T) {
 			count:     func(info *Information) int { return info.RebalancingGroupCount },
 		},
 		{
+			name:      "unknown group state",
+			metadata:  healthMetadata,
+			transport: healthGroupTransport("FutureState", 0, 0),
+			count:     func(info *Information) int { return info.RebalancingGroupCount },
+		},
+		{
 			name:      "dead group",
 			metadata:  healthMetadata,
 			transport: healthGroupTransport("Dead", 0, 0),

@@ -62,6 +62,26 @@
       </section>
 
       <div class="dashboard-grid">
+        <section class="panel health-panel" aria-labelledby="health-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Diagnostics</p>
+              <h2 id="health-title">Cluster health</h2>
+            </div>
+            <div class="panel-actions">
+              <span class="status-label {{.Health.StatusClass}}"><span class="status-dot {{.Health.StatusClass}}" aria-hidden="true"></span>{{.Health.Status}}</span>
+              <a class="text-link" href="/ui/cluster-health">View details</a>
+            </div>
+          </div>
+          <dl class="health-list">
+            <div><dt>Offline partitions</dt><dd{{if gt .Health.Offline 0}} class="critical-text"{{end}}>{{.Health.Offline}}</dd></div>
+            <div><dt>Under-replicated</dt><dd{{if gt .Health.UnderReplicated 0}} class="warning-text"{{end}}>{{.Health.UnderReplicated}}</dd></div>
+            <div><dt>Rebalancing groups</dt><dd{{if gt .Health.Rebalancing 0}} class="warning-text"{{end}}>{{.Health.Rebalancing}}</dd></div>
+            <div><dt>Dead groups</dt><dd{{if gt .Health.Dead 0}} class="critical-text"{{end}}>{{.Health.Dead}}</dd></div>
+            <div><dt>Lagging groups</dt><dd{{if gt .Health.Lagging 0}} class="warning-text"{{end}}>{{.Health.Lagging}}</dd></div>
+          </dl>
+        </section>
+
         <section class="panel consumer-panel" aria-labelledby="consumers-title">
           <div class="panel-heading">
             <div>
@@ -96,26 +116,6 @@
           {{else}}
           <div class="empty-state compact"><h3>No consumer groups found</h3><p>The cluster currently has no consumer groups.</p></div>
           {{end}}
-        </section>
-
-        <section class="panel health-panel" aria-labelledby="health-title">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Diagnostics</p>
-              <h2 id="health-title">Cluster health</h2>
-            </div>
-            <div class="panel-actions">
-              <span class="status-label {{.Health.StatusClass}}"><span class="status-dot {{.Health.StatusClass}}" aria-hidden="true"></span>{{.Health.Status}}</span>
-              <a class="text-link" href="/ui/cluster-health">View details</a>
-            </div>
-          </div>
-          <dl class="health-list">
-            <div><dt>Offline partitions</dt><dd>{{.Health.Offline}}</dd></div>
-            <div><dt>Under-replicated</dt><dd class="warning-text">{{.Health.UnderReplicated}}</dd></div>
-            <div><dt>Rebalancing groups</dt><dd class="warning-text">{{.Health.Rebalancing}}</dd></div>
-            <div><dt>Dead groups</dt><dd>{{.Health.Dead}}</dd></div>
-            <div><dt>Lagging groups</dt><dd class="warning-text">{{.Health.Lagging}}</dd></div>
-          </dl>
         </section>
       </div>
     </main>

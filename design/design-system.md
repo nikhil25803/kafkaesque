@@ -40,6 +40,18 @@ for nonessential hints and disabled content, not body copy. Healthy, Warning,
 and Critical must be paired with a visible label or icon and an accessible
 name.
 
+Use semantic colors only when the displayed value represents an active state:
+
+| State | Color | Examples |
+| --- | --- | --- |
+| Neutral | Primary or Secondary Text | Zero counts, inventory, empty groups, and topic levels |
+| Healthy | Healthy | Connected, stable, healthy, and positive healthy counts |
+| Warning | Warning | Degraded, rebalancing, under-replicated, lagging, and warning-level lag |
+| Error | Critical | Failed, unhealthy, dead, offline, and blocking UI errors |
+
+A zero warning or error count is neutral, not yellow, red, or green. Color must
+describe the current value rather than the category that the value measures.
+
 ## Typography
 
 Use locally available system fonts; do not require a font download.
@@ -161,7 +173,7 @@ the initial interface.
 - Do not use filled semantic backgrounds for large areas; prefer semantic text
   and borders on the dark Surface.
 - Use consistent mappings across pages: Healthy/Stable/Connected, Warning/
-  Degraded/Rebalancing, and Critical/Failed/Dead/Unhealthy.
+  Degraded/Rebalancing/Unknown, and Critical/Failed/Dead/Unhealthy.
 
 ### Data Tables
 

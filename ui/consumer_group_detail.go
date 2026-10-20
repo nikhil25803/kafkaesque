@@ -122,7 +122,8 @@ func detailControls(r *http.Request) (string, string, string, error) {
 }
 
 func groupDetailViewFrom(data *groupDetailData, thresholds kafkaesque_consumers.LagThresholds) groupDetailView {
-	view := groupDetailView{Name: data.Group.GroupName, State: data.Group.State, StateClass: stateClass(data.Group.State)}
+	state := kafkaesque_consumers.GroupStateCategory(data.Group.State)
+	view := groupDetailView{Name: data.Group.GroupName, State: state, StateClass: stateClass(state)}
 	owners := map[int]string{}
 	for _, member := range data.Group.Members {
 		assignments := []string{}

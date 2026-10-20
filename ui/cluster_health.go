@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
 )
@@ -39,11 +41,9 @@ func renderClusterHealth(w http.ResponseWriter, r *http.Request) {
 func clusterHealthView(health *kafkaesque_health.Information, requests ...*http.Request) clusterHealthPage {
 	statusClass := "healthy"
 	headline := "Cluster is healthy"
-	message := "All monitored cluster health signals are healthy."
 	if health.Status != kafkaesque_health.StatusHealthy {
 		statusClass = "warning"
 		headline = "Cluster requires attention"
-		message = "The cluster is available, but one or more health signals require attention."
 	}
 	navigation := navigationView{Active: "cluster-health"}
 	if len(requests) > 0 {
@@ -54,7 +54,7 @@ func clusterHealthView(health *kafkaesque_health.Information, requests ...*http.
 		Status:      health.Status,
 		StatusClass: statusClass,
 		Headline:    headline,
-		Message:     message,
+		Message:     clusterHealthMessage(health),
 		Metrics:     []metricView{{Label: "Brokers", Value: int64(health.BrokerCount)}, {Label: "Topics", Value: int64(health.TopicCount)}, {Label: "Partitions", Value: int64(health.PartitionCount)}, {Label: "Consumer Groups", Value: int64(health.ConsumerGroupCount)}},
 		PartitionDiagnostics: []healthDiagnosticView{
 			diagnostic("Offline partitions", health.OfflinePartitionCount, true),
@@ -66,6 +66,45 @@ func clusterHealthView(health *kafkaesque_health.Information, requests ...*http.
 			diagnostic("Lagging groups", health.LaggingGroupCount, false),
 		},
 	}
+}
+
+func clusterHealthMessage(health *kafkaesque_health.Information) string {
+	if health.Status == kafkaesque_health.StatusHealthy {
+		return "All monitored cluster health signals are healthy."
+	}
+
+	reasons := make([]string, 0, 5)
+	addReason := func(count int, singular, plural string) {
+		if count == 0 {
+			return
+		}
+		label := plural
+		if count == 1 {
+			label = singular
+		}
+		reasons = append(reasons, fmt.Sprintf("%d %s", count, label))
+	}
+
+	addReason(health.OfflinePartitionCount, "offline partition", "offline partitions")
+	addReason(health.UnderReplicatedCount, "under-replicated partition", "under-replicated partitions")
+	addReason(health.RebalancingGroupCount, "rebalancing consumer group", "rebalancing consumer groups")
+	addReason(health.DeadGroupCount, "dead consumer group", "dead consumer groups")
+	addReason(health.LaggingGroupCount, "lagging consumer group", "lagging consumer groups")
+
+	if len(reasons) == 0 {
+		return "The cluster is available, but one or more health signals require attention. Review the diagnostics below."
+	}
+
+	var summary string
+	switch len(reasons) {
+	case 1:
+		summary = reasons[0]
+	case 2:
+		summary = strings.Join(reasons, " and ")
+	default:
+		summary = strings.Join(reasons[:len(reasons)-1], ", ") + ", and " + reasons[len(reasons)-1]
+	}
+	return "Detected " + summary + ". Review the diagnostics below."
 }
 
 func diagnostic(label string, value int, critical bool) healthDiagnosticView {
