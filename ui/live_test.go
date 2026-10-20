@@ -24,6 +24,8 @@ import (
 type fakeDataSource struct {
 	err            error
 	dashboardCalls int
+	groups         []kafkaesque_consumers.ConsumerGroupInformation
+	health         *kafkaesque_health.Information
 }
 
 func (f *fakeDataSource) Dashboard(context.Context) (*dashboardData, error) {
@@ -40,8 +42,8 @@ func (f *fakeDataSource) Dashboard(context.Context) (*dashboardData, error) {
 	}
 	return &dashboardData{
 		Snapshot: &kafkaesque.MetadataSnapshot{Metadata: metadata, Latency: 42 * time.Millisecond},
-		Groups:   fixtureGroups(),
-		Health:   fixtureHealth(),
+		Groups:   f.groupInformation(),
+		Health:   f.healthInformation(),
 	}, nil
 }
 
@@ -49,7 +51,7 @@ func (f *fakeDataSource) ConsumerGroups(context.Context) ([]kafkaesque_consumers
 	if f.err != nil {
 		return nil, f.err
 	}
-	return fixtureGroups(), nil
+	return f.groupInformation(), nil
 }
 
 func (f *fakeDataSource) ConsumerGroup(_ context.Context, group, topic string) (*groupDetailData, error) {
@@ -65,7 +67,7 @@ func (f *fakeDataSource) ConsumerGroup(_ context.Context, group, topic string) (
 	if topic != "orders" {
 		return nil, errors.New("topic not found")
 	}
-	info := fixtureGroups()[1]
+	info := f.groupInformation()[1]
 	info.Members = []kafkaesque_consumers.ConsumerGroupMember{{
 		MemberID: "consumer-1", ClientID: "worker", Host: "10.0.0.12",
 		Assignments: []kafkaesque_consumers.ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{0}}},
@@ -106,13 +108,27 @@ func (f *fakeDataSource) Health(context.Context) (*kafkaesque_health.Information
 	if f.err != nil {
 		return nil, f.err
 	}
-	return fixtureHealth(), nil
+	return f.healthInformation(), nil
 }
 
 func (*fakeDataSource) Protocol() string       { return "SASL_SSL" }
 func (*fakeDataSource) Authentication() string { return "SCRAM-SHA-256 + mTLS" }
 func (*fakeDataSource) Thresholds() kafkaesque_consumers.LagThresholds {
 	return kafkaesque_consumers.LagThresholds{Warning: 100, Unhealthy: 500}
+}
+
+func (f *fakeDataSource) groupInformation() []kafkaesque_consumers.ConsumerGroupInformation {
+	if f.groups != nil {
+		return f.groups
+	}
+	return fixtureGroups()
+}
+
+func (f *fakeDataSource) healthInformation() *kafkaesque_health.Information {
+	if f.health != nil {
+		return f.health
+	}
+	return fixtureHealth()
 }
 
 func fixtureGroups() []kafkaesque_consumers.ConsumerGroupInformation {
@@ -183,6 +199,78 @@ func TestLivePages(t *testing.T) {
 	}
 }
 
+func TestDashboardShowsHealthBeforeWorkloads(t *testing.T) {
+	response := requestUI(t, newHandler(&fakeDataSource{}), "/ui", false)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+
+	body := response.Body.String()
+	healthPosition := strings.Index(body, "Cluster health")
+	workloadsPosition := strings.Index(body, "Workloads")
+	if healthPosition == -1 || workloadsPosition == -1 {
+		t.Fatal("dashboard is missing cluster health or workloads")
+	}
+	if healthPosition > workloadsPosition {
+		t.Fatal("cluster health is rendered after workloads")
+	}
+}
+
+func TestHealthColorsFollowCurrentValues(t *testing.T) {
+	healthy := &kafkaesque_health.Information{Status: kafkaesque_health.StatusHealthy}
+	dashboard := requestUI(t, newHandler(&fakeDataSource{health: healthy}), "/ui", false)
+	requireContains(t, dashboard.Body.String(),
+		"<dt>Offline partitions</dt><dd>0</dd>",
+		"<dt>Under-replicated</dt><dd>0</dd>",
+		"<dt>Rebalancing groups</dt><dd>0</dd>",
+		"<dt>Dead groups</dt><dd>0</dd>",
+		"<dt>Lagging groups</dt><dd>0</dd>",
+	)
+
+	healthPage := requestUI(t, newHandler(&fakeDataSource{health: healthy}), "/ui/cluster-health", false)
+	requireContains(t, healthPage.Body.String(), `class="health-status-panel healthy"`)
+
+	degraded := &kafkaesque_health.Information{
+		Status:                kafkaesque_health.StatusDegraded,
+		OfflinePartitionCount: 1,
+		UnderReplicatedCount:  2,
+		RebalancingGroupCount: 3,
+		DeadGroupCount:        4,
+		LaggingGroupCount:     5,
+	}
+	dashboard = requestUI(t, newHandler(&fakeDataSource{health: degraded}), "/ui", false)
+	requireContains(t, dashboard.Body.String(),
+		`<dt>Offline partitions</dt><dd class="critical-text">1</dd>`,
+		`<dt>Under-replicated</dt><dd class="warning-text">2</dd>`,
+		`<dt>Rebalancing groups</dt><dd class="warning-text">3</dd>`,
+		`<dt>Dead groups</dt><dd class="critical-text">4</dd>`,
+		`<dt>Lagging groups</dt><dd class="warning-text">5</dd>`,
+	)
+
+	healthPage = requestUI(t, newHandler(&fakeDataSource{health: degraded}), "/ui/cluster-health", false)
+	requireContains(t, healthPage.Body.String(), `class="health-status-panel warning"`)
+}
+
+func TestLagSummaryColorsOnlyPositiveCounts(t *testing.T) {
+	response := requestUI(t, newHandler(&fakeDataSource{}), "/ui/consumer-groups/orders-service", false)
+	requireContains(t, response.Body.String(),
+		`<dt>Healthy Partitions</dt><dd class="healthy-text">1</dd>`,
+		`<dt>Warning Partitions</dt><dd class="warning-text">1</dd>`,
+		"<dt>Unhealthy Partitions</dt><dd>0</dd>",
+	)
+
+	groups := fixtureGroups()
+	groups[1].LagSummary.HealthyPartitions = 0
+	groups[1].LagSummary.WarningPartitions = 0
+	groups[1].LagSummary.UnhealthyPartitions = 1
+	response = requestUI(t, newHandler(&fakeDataSource{groups: groups}), "/ui/consumer-groups/orders-service", false)
+	requireContains(t, response.Body.String(),
+		"<dt>Healthy Partitions</dt><dd>0</dd>",
+		"<dt>Warning Partitions</dt><dd>0</dd>",
+		`<dt>Unhealthy Partitions</dt><dd class="critical-text">1</dd>`,
+	)
+}
+
 func TestLiveFilteringAndFragments(t *testing.T) {
 	handler := newHandler(&fakeDataSource{})
 	tests := []struct {
@@ -220,6 +308,7 @@ func TestUIErrorsAreSanitizedAndHTMXSwappable(t *testing.T) {
 		t.Fatalf("status = %d, want 504", response.Code)
 	}
 	requireContains(t, response.Body.String(), "Kafka request timed out")
+	requireContains(t, response.Body.String(), `class="panel error-panel"`)
 	if strings.Contains(response.Body.String(), "deadline exceeded") || strings.Contains(response.Body.String(), "<!doctype html>") {
 		t.Fatalf("unsafe or full HTMX error response: %q", response.Body.String())
 	}
@@ -229,6 +318,7 @@ func TestUIErrorsAreSanitizedAndHTMXSwappable(t *testing.T) {
 		t.Fatalf("status = %d, want 400", response.Code)
 	}
 	requireContains(t, response.Body.String(), "page must be a positive integer")
+	requireContains(t, response.Body.String(), `class="main-content error-page"`)
 }
 
 func TestUIAssetsAndRedirect(t *testing.T) {

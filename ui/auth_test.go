@@ -193,6 +193,7 @@ func TestUILoginDatabaseFailureIsUnavailable(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "private database error") {
 		t.Fatalf("status/body = %d %s", response.Code, response.Body.String())
 	}
+	requireContains(t, response.Body.String(), `class="login-error"`)
 }
 
 func TestUIDatabaseFailureIsUnavailable(t *testing.T) {
