@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 type fakeDataSource struct {
 	err            error
 	dashboardCalls int
+	groupCalls     int
 	groups         []kafkaesque_consumers.ConsumerGroupInformation
 	health         *kafkaesque_health.Information
 }
@@ -55,6 +57,7 @@ func (f *fakeDataSource) ConsumerGroups(context.Context) ([]kafkaesque_consumers
 }
 
 func (f *fakeDataSource) ConsumerGroup(_ context.Context, group, topic string) (*groupDetailData, error) {
+	f.groupCalls++
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -166,6 +169,22 @@ func requireContains(t *testing.T, body string, values ...string) {
 		if !strings.Contains(body, value) {
 			t.Errorf("response does not contain %q", value)
 		}
+	}
+}
+
+func requireRefreshTimestamp(t *testing.T, body string) {
+	t.Helper()
+
+	pattern := regexp.MustCompile(`id="last-refreshed" datetime="([^"]+)" data-utc-fallback="([^"]+)">([^<]+)</time>`)
+	match := pattern.FindStringSubmatch(body)
+	if len(match) != 4 {
+		t.Fatalf("response does not contain a refresh timestamp: %s", body)
+	}
+	if _, err := time.Parse(time.RFC3339, match[1]); err != nil {
+		t.Fatalf("refresh datetime %q is not RFC3339: %v", match[1], err)
+	}
+	if match[2] != match[3] || !strings.Contains(match[2], "(UTC)") {
+		t.Fatalf("UTC fallback = %q, content = %q", match[2], match[3])
 	}
 }
 
@@ -369,7 +388,54 @@ func TestConsumerLagUsesLiveInt64OffsetsAndAssignments(t *testing.T) {
 	requireContains(t, response.Body.String(), "9000000000", "9000000124", "consumer-1", "Unassigned", "Total lag 136")
 }
 
-func TestUIErrorsAreSanitizedAndHTMXSwappable(t *testing.T) {
+func TestConsumerLagAutoRefreshRendersCompleteSnapshots(t *testing.T) {
+	source := &fakeDataSource{}
+	handler := newHandler(source)
+
+	response := requestUI(t, handler, "/ui/consumer-groups/orders-service?topic=orders&sort=lag&direction=desc&group_by=member", false)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	requireContains(t, response.Body.String(),
+		`id="consumer-group-detail" data-consumer-lag-refresh`,
+		`<span>Auto refresh</span>`,
+		`<option value="off">Off</option>`,
+		`<option value="5">Every 5 seconds</option>`,
+		`<option value="10" selected>Every 10 seconds</option>`,
+		`<option value="30">Every 30 seconds</option>`,
+		`<option value="60">Every 60 seconds</option>`,
+	)
+	if strings.Contains(response.Body.String(), `name="refresh"`) {
+		t.Fatal("auto-refresh preference was added to the server request")
+	}
+	requireRefreshTimestamp(t, response.Body.String())
+
+	fragment := requestUI(t, handler, "/ui/consumer-groups/orders-service?topic=orders&sort=lag&direction=desc&group_by=member", true)
+	if fragment.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d", fragment.Code)
+	}
+	requireContains(t, fragment.Body.String(),
+		`id="consumer-group-detail"`,
+		"Overview",
+		"Lag summary",
+		"Partition lag · orders",
+		`<option value="orders" selected>orders</option>`,
+		`<option value="member" selected>Consumer member</option>`,
+		`aria-label="Sort lag lowest first"`,
+		"Topic summary",
+		"Members and assignments",
+		"consumer-1 · worker",
+	)
+	if strings.Contains(fragment.Body.String(), "<!doctype html>") || strings.Contains(fragment.Body.String(), `class="sidebar"`) {
+		t.Fatalf("consumer lag refresh returned the full page: %s", fragment.Body.String())
+	}
+	requireRefreshTimestamp(t, fragment.Body.String())
+	if source.groupCalls != 2 {
+		t.Fatalf("consumer group collections = %d, want one per request", source.groupCalls)
+	}
+}
+
+func TestUIErrorsAreSanitizedForHTMXToasts(t *testing.T) {
 	handler := newHandler(&fakeDataSource{err: context.DeadlineExceeded})
 	response := requestUI(t, handler, "/ui/topics", true)
 	if response.Code != http.StatusGatewayTimeout {
@@ -399,7 +465,17 @@ func TestUIAssetsAndRedirect(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("asset status = %d", response.Code)
 	}
-	requireContains(t, response.Body.String(), "htmx:beforeSwap", "event.key === 'Escape'")
+	requireContains(t, response.Body.String(),
+		"htmx:beforeSwap",
+		"event.detail.shouldSwap = false",
+		"kafkaesque.consumerLag.refresh",
+		"window.htmx.ajax",
+		"document.hidden",
+		"resolvedOptions().timeZone",
+		"timestamp.dataset.utcFallback",
+		"toast-region",
+		"event.key === 'Escape'",
+	)
 }
 
 type dashboardTransport struct {

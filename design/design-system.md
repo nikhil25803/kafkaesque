@@ -217,6 +217,20 @@ the initial interface.
 - Unavailable: distinguish unavailable Kafka data from a valid empty result.
 - Never replace the entire application shell for a section-level failure.
 
+### Auto Refresh and Toasts
+
+- Consumer Lag detail refreshes in the browser only and defaults to every 10
+  seconds, with Off, 5, 10, 30, and 60 second choices.
+- Remember the selected interval in browser storage, pause while the page is
+  hidden, and never overlap refresh requests.
+- Refresh the complete group snapshot atomically so its metrics, members,
+  topics, and partition lag describe the same request.
+- Keep the last successful content when a dynamic request fails. Show refresh
+  failures as bottom-right warning toasts and other HTMX failures as critical
+  toasts.
+- Toasts use sanitized text, an accessible live region, a dismiss button, and
+  never stack duplicate failures. Initial-page and login errors remain inline.
+
 ### Pagination
 
 - Show previous and next controls, the current page, and total pages.

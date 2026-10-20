@@ -8,17 +8,19 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafka "github.com/segmentio/kafka-go"
 )
 
 type consumerGroupDetailPage struct {
-	Navigation navigationView
-	Group      groupDetailView
-	Metrics    []metricView
-	Summary    detailLagSummary
-	Partition  partitionSection
+	Navigation  navigationView
+	Group       groupDetailView
+	Metrics     []metricView
+	Summary     detailLagSummary
+	Partition   partitionSection
+	RefreshedAt time.Time
 }
 type groupDetailView struct {
 	Name, State, StateClass string
@@ -81,19 +83,42 @@ func renderConsumerGroupDetail(w http.ResponseWriter, r *http.Request) {
 		renderUpstreamError(w, r, "consumer-groups", err)
 		return
 	}
+	refreshedAt := time.Now().UTC()
+
 	detail := groupDetailViewFrom(data, sourceFrom(r).Thresholds())
 	partition := buildPartitionSection(detail, data.SelectedTopic, groupBy, sortBy, direction)
+	s := data.Group.LagSummary
+	page := consumerGroupDetailPage{
+		Navigation: navigationFor(r, "consumer-groups"),
+		Group:      detail,
+		Metrics: []metricView{
+			{Label: "Topics", Value: int64(data.Group.TopicsCount)},
+			{Label: "Members", Value: int64(data.Group.MembersCount)},
+			{Label: "Total Lag", Value: data.Group.TotalLag},
+			{Label: "Maximum Partition Lag", Value: s.MaximumPartitionLag},
+		},
+		Summary: detailLagSummary{
+			Average:     s.AveragePartitionLag,
+			Healthy:     s.HealthyPartitions,
+			Warning:     s.WarningPartitions,
+			Unhealthy:   s.UnhealthyPartitions,
+			TotalLag:    s.TotalLag,
+			MaximumLag:  s.MaximumPartitionLag,
+			MemberCount: data.Group.MembersCount,
+			TopicCount:  data.Group.TopicsCount,
+		},
+		Partition:   partition,
+		RefreshedAt: refreshedAt,
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
-		if err := dashboardTemplate.ExecuteTemplate(w, "partition-lag", partition); err != nil {
-			http.Error(w, "Unable to render partition lag", http.StatusInternalServerError)
+		if err := dashboardTemplate.ExecuteTemplate(w, "consumer-group-detail-content", page); err != nil {
+			http.Error(w, "Unable to render consumer lag", http.StatusInternalServerError)
 		}
 		return
 	}
-	s := data.Group.LagSummary
-	page := consumerGroupDetailPage{Navigation: navigationFor(r, "consumer-groups"), Group: detail,
-		Metrics: []metricView{{Label: "Topics", Value: int64(data.Group.TopicsCount)}, {Label: "Members", Value: int64(data.Group.MembersCount)}, {Label: "Total Lag", Value: data.Group.TotalLag}, {Label: "Maximum Partition Lag", Value: s.MaximumPartitionLag}},
-		Summary: detailLagSummary{Average: s.AveragePartitionLag, Healthy: s.HealthyPartitions, Warning: s.WarningPartitions, Unhealthy: s.UnhealthyPartitions, TotalLag: s.TotalLag, MaximumLag: s.MaximumPartitionLag, MemberCount: data.Group.MembersCount, TopicCount: data.Group.TopicsCount}, Partition: partition}
+
 	if err := dashboardTemplate.ExecuteTemplate(w, "consumer-group-detail", page); err != nil {
 		http.Error(w, "Unable to render consumer lag", http.StatusInternalServerError)
 	}
