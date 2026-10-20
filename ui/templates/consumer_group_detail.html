@@ -15,6 +15,8 @@
     {{template "sidebar" .Navigation}}
 
     <main class="main-content" id="main-content">
+      {{block "consumer-group-detail-content" .}}
+      <div id="consumer-group-detail" data-consumer-lag-refresh>
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <a href="/ui/consumer-groups">Consumer Groups</a><span aria-hidden="true">/</span><span aria-current="page">{{.Group.Name}}</span>
       </nav>
@@ -23,13 +25,26 @@
           <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
-          <div>
+          <div class="detail-title">
             <div class="title-with-badge">
               <h1>{{.Group.Name}}</h1>
               <span class="status-label {{.Group.StateClass}}"><span class="status-dot {{.Group.StateClass}}" aria-hidden="true"></span>{{.Group.State}}</span>
             </div>
             <p>Consumer lag, partition offsets, and member assignments</p>
           </div>
+        </div>
+        <div class="refresh-settings">
+          <label class="auto-refresh-control" for="consumer-lag-refresh">
+            <span>Auto refresh</span>
+            <select id="consumer-lag-refresh">
+              <option value="off">Off</option>
+              <option value="5">Every 5 seconds</option>
+              <option value="10" selected>Every 10 seconds</option>
+              <option value="30">Every 30 seconds</option>
+              <option value="60">Every 60 seconds</option>
+            </select>
+          </label>
+          <p class="last-refreshed">Last refreshed: <time id="last-refreshed" datetime="{{.RefreshedAt.Format "2006-01-02T15:04:05Z"}}" data-utc-fallback="{{.RefreshedAt.Format "02 Jan 2006, 15:04:05 (UTC)"}}">{{.RefreshedAt.Format "02 Jan 2006, 15:04:05 (UTC)"}}</time></p>
         </div>
       </header>
 
@@ -99,6 +114,8 @@
         <div class="empty-state compact"><h3>No active members</h3><p>This consumer group currently has no member assignments.</p></div>
         {{end}}
       </section>
+      </div>
+      {{end}}
     </main>
   </div>
 </body>
@@ -116,17 +133,17 @@
     <span class="panel-count">Total lag {{.TotalLag}}</span>
   </div>
   <form class="partition-controls" action="{{.Action}}" method="get"
-        hx-get="{{.Action}}" hx-target="#partition-lag" hx-swap="outerHTML"
+        hx-get="{{.Action}}" hx-target="#consumer-group-detail" hx-swap="outerHTML"
         hx-push-url="true" hx-indicator="#partition-loading">
-    <label class="field">
+    <label class="field" for="partition-topic">
       <span>Topic</span>
-      <select name="topic">
+      <select id="partition-topic" name="topic">
         {{range .TopicOptions}}<option value="{{.Name}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>{{end}}
       </select>
     </label>
-    <label class="field">
+    <label class="field" for="partition-grouping">
       <span>Group partitions</span>
-      <select name="group_by">
+      <select id="partition-grouping" name="group_by">
         {{range .GroupOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
       </select>
     </label>
@@ -143,7 +160,7 @@
             <th scope="col" class="number">Partition</th>
             <th scope="col" class="number">Committed Offset</th>
             <th scope="col" class="number">Log End Offset</th>
-            <th scope="col" class="number"><a class="sort-link" href="{{$.LagSortURL}}" aria-label="{{$.LagSortLabel}}" hx-get="{{$.LagSortURL}}" hx-target="#partition-lag" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#partition-loading">Lag <span aria-hidden="true">{{$.LagSortIcon}}</span></a></th>
+            <th scope="col" class="number"><a class="sort-link" id="lag-sort" href="{{$.LagSortURL}}" aria-label="{{$.LagSortLabel}}" hx-get="{{$.LagSortURL}}" hx-target="#consumer-group-detail" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#partition-loading">Lag <span aria-hidden="true">{{$.LagSortIcon}}</span></a></th>
             <th scope="col">Assigned Member</th>
           </tr>
         </thead>
