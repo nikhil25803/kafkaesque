@@ -126,19 +126,20 @@ func consumerGroupViews(groups []kafkaesque_consumers.ConsumerGroupInformation, 
 	views := make([]consumerGroupView, 0, len(groups))
 	for _, group := range groups {
 		health, healthClass := lagStatusView(kafkaesque_consumers.ConsumerLagStatus(group.TotalLag, thresholds))
-		views = append(views, consumerGroupView{Name: group.GroupName, URL: "/ui/consumer-groups/" + url.PathEscape(group.GroupName), Topics: group.TopicsCount, Members: group.MembersCount, State: group.State, StateClass: stateClass(group.State), TotalLag: group.TotalLag, Health: health, HealthClass: healthClass})
+		state := kafkaesque_consumers.GroupStateCategory(group.State)
+		views = append(views, consumerGroupView{Name: group.GroupName, URL: "/ui/consumer-groups/" + url.PathEscape(group.GroupName), Topics: group.TopicsCount, Members: group.MembersCount, State: state, StateClass: stateClass(state), TotalLag: group.TotalLag, Health: health, HealthClass: healthClass})
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].Name < views[j].Name })
 	return views
 }
 
 func stateClass(state string) string {
-	switch strings.ToLower(state) {
-	case "stable":
+	switch kafkaesque_consumers.GroupStateCategory(state) {
+	case kafkaesque_consumers.GroupStateStable:
 		return "healthy"
-	case "dead":
+	case kafkaesque_consumers.GroupStateDead:
 		return "critical"
-	case "empty":
+	case kafkaesque_consumers.GroupStateEmpty:
 		return "neutral"
 	default:
 		return "warning"
@@ -251,6 +252,10 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if state != "" && !kafkaesque_consumers.IsGroupStateCategory(state) {
+		renderUIError(w, r, http.StatusBadRequest, "consumer-groups", "Invalid consumer group request", "state must be stable, rebalancing, empty, dead, or unknown")
+		return
+	}
 	information, err := sourceFrom(r).ConsumerGroups(r.Context())
 	if err != nil {
 		renderUpstreamError(w, r, "consumer-groups", err)
@@ -345,7 +350,14 @@ func consumerGroupsURL(query, state string, page int) string {
 }
 
 func consumerStateOptions(selected string) []stateOption {
-	options := []stateOption{{Value: ""}, {Value: "Stable"}, {Value: "Rebalancing"}, {Value: "Empty"}, {Value: "Dead"}}
+	options := []stateOption{
+		{Value: ""},
+		{Value: kafkaesque_consumers.GroupStateStable},
+		{Value: kafkaesque_consumers.GroupStateRebalancing},
+		{Value: kafkaesque_consumers.GroupStateEmpty},
+		{Value: kafkaesque_consumers.GroupStateDead},
+		{Value: kafkaesque_consumers.GroupStateUnknown},
+	}
 	for i := range options {
 		options[i].Selected = strings.EqualFold(options[i].Value, selected)
 	}

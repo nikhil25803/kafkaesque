@@ -292,6 +292,74 @@ func TestLiveFilteringAndFragments(t *testing.T) {
 	}
 }
 
+func TestConsumerGroupStateFiltersUseDisplayedCategories(t *testing.T) {
+	groups := []kafkaesque_consumers.ConsumerGroupInformation{
+		{GroupName: "classic-preparing", State: "PreparingRebalance"},
+		{GroupName: "classic-completing", State: "CompletingRebalance"},
+		{GroupName: "modern-assigning", State: "Assigning"},
+		{GroupName: "modern-reconciling", State: "Reconciling"},
+		{GroupName: "stable-group", State: "Stable"},
+		{GroupName: "empty-group", State: "Empty"},
+		{GroupName: "dead-group", State: "Dead"},
+		{GroupName: "future-group", State: "FutureState"},
+	}
+	handler := newHandler(&fakeDataSource{groups: groups})
+
+	response := requestUI(t, handler, "/ui/consumer-groups", false)
+	body := response.Body.String()
+	requireContains(t, body,
+		`<option value="Stable">Stable</option>`,
+		`<option value="Rebalancing">Rebalancing</option>`,
+		`<option value="Empty">Empty</option>`,
+		`<option value="Dead">Dead</option>`,
+		`<option value="Unknown">Unknown</option>`,
+		`<span class="status-label warning"><span class="status-dot warning" aria-hidden="true"></span>Unknown</span>`,
+	)
+	for _, rawState := range []string{"PreparingRebalance", "CompletingRebalance", "Assigning", "Reconciling", "FutureState"} {
+		if strings.Contains(body, rawState) {
+			t.Fatalf("consumer-group list contains raw state %q", rawState)
+		}
+	}
+
+	response = requestUI(t, handler, "/ui/consumer-groups?state=rebalancing", true)
+	body = response.Body.String()
+	requireContains(t, body, "classic-preparing", "classic-completing", "modern-assigning", "modern-reconciling", "Rebalancing")
+	if strings.Contains(body, "stable-group") || strings.Contains(body, "future-group") {
+		t.Fatalf("rebalancing filter contains another state: %s", body)
+	}
+
+	response = requestUI(t, handler, "/ui/consumer-groups?q=MODERN&state=Rebalancing", true)
+	body = response.Body.String()
+	requireContains(t, body, "modern-assigning", "modern-reconciling")
+	if strings.Contains(body, "classic-preparing") {
+		t.Fatalf("combined filter ignored group name: %s", body)
+	}
+
+	response = requestUI(t, handler, "/ui/consumer-groups?state=Unknown", true)
+	requireContains(t, response.Body.String(), "future-group", "Unknown")
+
+	response = requestUI(t, handler, "/ui/consumer-groups?state=PreparingRebalance", false)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid state status = %d, want 400", response.Code)
+	}
+	requireContains(t, response.Body.String(), "state must be stable, rebalancing, empty, dead, or unknown")
+}
+
+func TestDashboardAndConsumerDetailNormalizeGroupState(t *testing.T) {
+	groups := fixtureGroups()
+	groups[1].State = "Assigning"
+	handler := newHandler(&fakeDataSource{groups: groups})
+
+	for _, path := range []string{"/ui", "/ui/consumer-groups/orders-service"} {
+		response := requestUI(t, handler, path, false)
+		body := response.Body.String()
+		requireContains(t, body, "Rebalancing")
+		if strings.Contains(body, "Assigning") {
+			t.Fatalf("%s contains raw group state: %s", path, body)
+		}
+	}
+}
+
 func TestConsumerLagUsesLiveInt64OffsetsAndAssignments(t *testing.T) {
 	handler := newHandler(&fakeDataSource{})
 	response := requestUI(t, handler, "/ui/consumer-groups/orders-service?topic=orders&sort=lag&direction=desc&group_by=member", false)

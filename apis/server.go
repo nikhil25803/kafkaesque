@@ -256,6 +256,10 @@ func (s *server) consumerGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if state != "" && !kafkaesque_consumers.IsGroupStateCategory(state) {
+		writeInvalid(w, "state must be stable, rebalancing, empty, dead, or unknown")
+		return
+	}
 	metadata := snapshotFrom(r).Metadata
 	groups, err := kafkaesque_consumers.GetConsumerGroupsInformation(s.conn, r.Context(), metadata, s.thresholds)
 	if err != nil {
@@ -264,7 +268,8 @@ func (s *server) consumerGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]consumerGroupSummary, 0, len(groups))
 	for _, group := range groups {
-		if !containsFold(group.GroupName, page.query) || state != "" && !strings.EqualFold(group.State, state) {
+		groupState := kafkaesque_consumers.GroupStateCategory(group.State)
+		if !containsFold(group.GroupName, page.query) || state != "" && !strings.EqualFold(groupState, state) {
 			continue
 		}
 		topicNames := make([]string, 0, len(group.Topics))
@@ -273,7 +278,7 @@ func (s *server) consumerGroups(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, consumerGroupSummary{
 			GroupName: group.GroupName, Topics: topicNames, MembersCount: group.MembersCount,
-			State: group.State, TotalLag: group.TotalLag,
+			State: groupState, TotalLag: group.TotalLag,
 		})
 	}
 	start, end, meta := pageBounds(len(items), page)

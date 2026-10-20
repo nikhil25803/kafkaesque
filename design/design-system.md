@@ -173,7 +173,7 @@ the initial interface.
 - Do not use filled semantic backgrounds for large areas; prefer semantic text
   and borders on the dark Surface.
 - Use consistent mappings across pages: Healthy/Stable/Connected, Warning/
-  Degraded/Rebalancing, and Critical/Failed/Dead/Unhealthy.
+  Degraded/Rebalancing/Unknown, and Critical/Failed/Dead/Unhealthy.
 
 ### Data Tables
 

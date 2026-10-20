@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
@@ -67,12 +66,11 @@ func BuildInformation(metadata *kafka.MetadataResponse, groups []kafkaesque_cons
 	info.ConsumerGroupCount = len(groups)
 
 	for _, group := range groups {
-		state := strings.ToLower(group.State)
-		if state == "dead" {
+		switch kafkaesque_consumers.GroupStateCategory(group.State) {
+		case kafkaesque_consumers.GroupStateDead:
 			info.DeadGroupCount++
 			continue
-		}
-		if state != "stable" && state != "empty" {
+		case kafkaesque_consumers.GroupStateRebalancing, kafkaesque_consumers.GroupStateUnknown:
 			info.RebalancingGroupCount++
 		}
 		if kafkaesque_consumers.ConsumerLagStatus(group.TotalLag, thresholds) != kafkaesque_consumers.LagStatusHealthy {
