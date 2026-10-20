@@ -11,7 +11,20 @@ KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
 POSTGRES_COMPOSE := docker compose -f postgres-env/compose.yaml
 
-.PHONY: build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
+.PHONY: check fmt-check lint build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
+
+check: fmt-check lint test build
+
+fmt-check:
+	@unformatted="$$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"; \
+	if [ -n "$$unformatted" ]; then \
+		echo "The following Go files need formatting:"; \
+		echo "$$unformatted"; \
+		exit 1; \
+	fi
+
+lint:
+	go vet ./...
 
 build:
 	mkdir -p $(BIN_DIR)
