@@ -180,7 +180,7 @@ func TestLivePages(t *testing.T) {
 		{"/ui/consumer-groups", []string{"Consumer Groups", "1–2 of 2 groups", "analytics", "orders-service", "Warning"}},
 		{"/ui/topics", []string{"Topics", "1–2 of 2 topics", "orders", "__consumer_offsets", "Internal"}},
 		{"/ui/brokers", []string{"Brokers", "1–2 of 2 brokers", "broker-1:9092", "10.0.0.11:9092", "rack-a", "—"}},
-		{"/ui/cluster-health", []string{"Cluster Health", "Cluster requires attention", "Under-replicated partitions", "Lagging groups"}},
+		{"/ui/cluster-health", []string{"Cluster Health", "Cluster requires attention", "Detected 1 under-replicated partition, 1 rebalancing consumer group, and 1 lagging consumer group. Review the diagnostics below.", "Under-replicated partitions", "Lagging groups"}},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
