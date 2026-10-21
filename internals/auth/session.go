@@ -23,18 +23,25 @@ func (s *Service) Login(ctx context.Context, username, password string) (Tokens,
 		return Tokens{}, ErrInvalidCredentials
 	}
 	const query = `
-		SELECT u.id, u.username, r.name, u.password_hash, u.active
+		SELECT u.id, u.username, r.name, u.password_hash, u.active,
+			ARRAY(
+				SELECT p.module || ':' || p.resource || ':' || p.action
+				FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id
+				WHERE rp.role_id = r.id
+				ORDER BY p.module, p.resource, p.action
+			)
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id
 		JOIN roles r ON r.id = ur.role_id
-		WHERE u.username = $1
-			AND r.name = 'super_admin'`
+		WHERE u.username = $1`
 	err := s.pool.QueryRow(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Role,
 		&hash,
 		&active,
+		&user.Permissions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		VerifyPassword(password, s.dummyPasswordHash)
@@ -100,7 +107,14 @@ func (s *Service) createSession(ctx context.Context, user User) (Tokens, error) 
 func (s *Service) AuthenticateAccess(ctx context.Context, token string) (User, error) {
 	var user User
 	const query = `
-		SELECT u.id, u.username, r.name
+		SELECT u.id, u.username, r.name,
+			ARRAY(
+				SELECT p.module || ':' || p.resource || ':' || p.action
+				FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id
+				WHERE rp.role_id = r.id
+				ORDER BY p.module, p.resource, p.action
+			)
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		JOIN user_roles ur ON ur.user_id = u.id
@@ -108,12 +122,12 @@ func (s *Service) AuthenticateAccess(ctx context.Context, token string) (User, e
 		WHERE s.access_token_hash = $1
 			AND s.revoked_at IS NULL
 			AND s.access_expires_at > now()
-			AND u.active
-			AND r.name = 'super_admin'`
+			AND u.active`
 	err := s.pool.QueryRow(ctx, query, tokenHash(token)).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Role,
+		&user.Permissions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrInvalidToken
@@ -138,7 +152,14 @@ func (s *Service) Refresh(ctx context.Context, token string) (Tokens, error) {
 	var user User
 	var sessionID string
 	const findSession = `
-		SELECT s.id, u.id, u.username, r.name
+		SELECT s.id, u.id, u.username, r.name,
+			ARRAY(
+				SELECT p.module || ':' || p.resource || ':' || p.action
+				FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id
+				WHERE rp.role_id = r.id
+				ORDER BY p.module, p.resource, p.action
+			)
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		JOIN user_roles ur ON ur.user_id = u.id
@@ -147,13 +168,13 @@ func (s *Service) Refresh(ctx context.Context, token string) (Tokens, error) {
 			AND s.revoked_at IS NULL
 			AND s.refresh_expires_at > now()
 			AND u.active
-			AND r.name = 'super_admin'
 		FOR UPDATE OF s`
 	err = tx.QueryRow(ctx, findSession, tokenHash(token)).Scan(
 		&sessionID,
 		&user.ID,
 		&user.Username,
 		&user.Role,
+		&user.Permissions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tokens{}, ErrInvalidToken

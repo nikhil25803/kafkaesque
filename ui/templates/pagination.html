@@ -1,0 +1,14 @@
+{{define "page-size-control"}}
+<form class="page-size-form" action="{{.Action}}" method="get"
+      hx-get="{{.Action}}" hx-target="{{.Target}}" hx-swap="outerHTML" hx-push-url="true">
+  {{range .Filters}}{{if .Value}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}{{end}}
+  <input type="hidden" name="page" value="1">
+  <label>
+    <span>Rows per page</span>
+    <select name="page_size">
+      {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}
+    </select>
+  </label>
+  <button class="secondary-button" type="submit">Apply</button>
+</form>
+{{end}}

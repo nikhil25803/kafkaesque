@@ -23,18 +23,71 @@ func navigationFor(r *http.Request, active string) navigationView {
 		Username:  user.Username,
 		Role:      roleLabel(user.Role),
 		CSRFToken: kafkaesque_auth.CookieValue(r, kafkaesque_auth.CSRFCookie),
+		ShowUsers: kafkaesque_auth.HasPermission(user, kafkaesque_auth.PermissionUserView),
+		ShowRoles: user.Role == "super_admin",
+	}
+}
+
+// authorizeUI requires one account-management permission.
+func authorizeUI(permission string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := kafkaesque_auth.UserFromContext(r.Context())
+		if !ok || !kafkaesque_auth.HasPermission(user, permission) {
+			renderUIError(
+				w,
+				r,
+				http.StatusForbidden,
+				"",
+				"Permission denied",
+				"You do not have permission to access this page.",
+			)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// superAdminUI restricts role administration to the configured Super Admin.
+func superAdminUI(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := kafkaesque_auth.UserFromContext(r.Context())
+		if !ok || user.Role != "super_admin" {
+			renderUIError(
+				w,
+				r,
+				http.StatusForbidden,
+				"",
+				"Permission denied",
+				"Only the Super Admin can manage roles.",
+			)
+			return
+		}
+
+		next(w, r)
 	}
 }
 
 func roleLabel(role string) string {
-	if role == "super_admin" {
+	switch role {
+	case "super_admin":
 		return "Super Admin"
+	case "admin":
+		return "Admin"
+	case "user":
+		return "User"
+	default:
+		return role
 	}
-	return role
 }
 
 // authenticateUI validates browser sessions before rendering protected pages.
-func authenticateUI(service kafkaesque_auth.Manager, secure bool, logger *slog.Logger, next http.HandlerFunc) http.HandlerFunc {
+func authenticateUI(
+	service kafkaesque_auth.Manager,
+	secure bool,
+	logger *slog.Logger,
+	next http.HandlerFunc,
+) http.HandlerFunc {
 	logger = uiLogger(logger)
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := kafkaesque_auth.CookieValue(r, kafkaesque_auth.AccessCookie)
@@ -61,9 +114,17 @@ func authenticateUI(service kafkaesque_auth.Manager, secure bool, logger *slog.L
 		if err != nil {
 			if !errors.Is(err, kafkaesque_auth.ErrInvalidToken) {
 				logger.Error("authentication_failed", "reason", "database_unavailable")
-				renderUIError(w, r, http.StatusServiceUnavailable, "", "Authentication unavailable", "The authentication database is unavailable.")
+				renderUIError(
+					w,
+					r,
+					http.StatusServiceUnavailable,
+					"",
+					"Authentication unavailable",
+					"The authentication database is unavailable.",
+				)
 				return
 			}
+
 			logger.Warn("authentication_rejected", "reason", "invalid_token")
 			target := "/ui/login?next=" + url.QueryEscape(safeNext(r.URL.RequestURI()))
 			if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -80,15 +141,24 @@ func authenticateUI(service kafkaesque_auth.Manager, secure bool, logger *slog.L
 			validCSRF, csrfErr := service.ValidateCSRF(r.Context(), token, csrf)
 			if csrfErr != nil {
 				logger.Error("csrf_validation_failed", "reason", "database_unavailable")
-				renderUIError(w, r, http.StatusServiceUnavailable, "", "Authentication unavailable", "The authentication database is unavailable.")
+				renderUIError(
+					w,
+					r,
+					http.StatusServiceUnavailable,
+					"",
+					"Authentication unavailable",
+					"The authentication database is unavailable.",
+				)
 				return
 			}
+
 			if csrf == "" || csrf != kafkaesque_auth.CookieValue(r, kafkaesque_auth.CSRFCookie) || !validCSRF {
 				logger.Warn("csrf_rejected", "user_id", user.ID)
 				renderUIError(w, r, http.StatusForbidden, "", "Request rejected", "CSRF validation failed.")
 				return
 			}
 		}
+
 		kafkaesque_auth.RecordAuthenticatedUser(w, user.ID)
 		next(w, r.WithContext(kafkaesque_auth.WithUser(r.Context(), user)))
 	}
@@ -99,8 +169,13 @@ func renderLogin(w http.ResponseWriter, r *http.Request) {
 	_ = dashboardTemplate.ExecuteTemplate(w, "login", loginPage{Next: safeNext(r.URL.Query().Get("next"))})
 }
 
-// loginUI validates the Super Admin and starts a browser session.
-func loginUI(service kafkaesque_auth.Manager, limiter *kafkaesque_auth.Limiter, secure bool, logger *slog.Logger) http.HandlerFunc {
+// loginUI validates an account and starts a browser session.
+func loginUI(
+	service kafkaesque_auth.Manager,
+	limiter *kafkaesque_auth.Limiter,
+	secure bool,
+	logger *slog.Logger,
+) http.HandlerFunc {
 	logger = uiLogger(logger)
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
@@ -111,14 +186,24 @@ func loginUI(service kafkaesque_auth.Manager, limiter *kafkaesque_auth.Limiter, 
 		clientAddress := kafkaesque_auth.ClientAddress(r.RemoteAddr)
 		if !limiter.Allow(username, r.RemoteAddr) {
 			logger.Warn("login_throttled", "username", username, "client_address", clientAddress)
-			renderLoginFailure(w, http.StatusTooManyRequests, "Too many login attempts; try again later", r.FormValue("next"))
+			renderLoginFailure(
+				w,
+				http.StatusTooManyRequests,
+				"Too many login attempts; try again later",
+				r.FormValue("next"),
+			)
 			return
 		}
 		tokens, err := service.Login(r.Context(), username, r.FormValue("password"))
 		if err != nil {
 			if !errors.Is(err, kafkaesque_auth.ErrInvalidCredentials) {
 				logger.Error("login_failed", "reason", "database_unavailable", "client_address", clientAddress)
-				renderLoginFailure(w, http.StatusServiceUnavailable, "Authentication is temporarily unavailable", r.FormValue("next"))
+				renderLoginFailure(
+					w,
+					http.StatusServiceUnavailable,
+					"Authentication is temporarily unavailable",
+					r.FormValue("next"),
+				)
 				return
 			}
 			limiter.Failure(username, r.RemoteAddr)
@@ -146,7 +231,14 @@ func logoutUI(service kafkaesque_auth.Manager, secure bool, logger *slog.Logger)
 		err := service.Logout(r.Context(), kafkaesque_auth.CookieValue(r, kafkaesque_auth.AccessCookie))
 		if err != nil && !errors.Is(err, kafkaesque_auth.ErrInvalidToken) {
 			logger.Error("logout_failed", "reason", "database_unavailable")
-			renderUIError(w, r, http.StatusServiceUnavailable, "", "Authentication unavailable", "The authentication database is unavailable.")
+			renderUIError(
+				w,
+				r,
+				http.StatusServiceUnavailable,
+				"",
+				"Authentication unavailable",
+				"The authentication database is unavailable.",
+			)
 			return
 		}
 		if errors.Is(err, kafkaesque_auth.ErrInvalidToken) {
@@ -171,8 +263,14 @@ func safeNext(value string) string {
 		return "/ui"
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.IsAbs() || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/ui") || strings.HasPrefix(parsed.Path, "//") {
+	unsafe := err != nil ||
+		parsed.IsAbs() ||
+		parsed.Host != "" ||
+		!strings.HasPrefix(parsed.Path, "/ui") ||
+		strings.HasPrefix(parsed.Path, "//")
+	if unsafe {
 		return "/ui"
 	}
+
 	return parsed.RequestURI()
 }

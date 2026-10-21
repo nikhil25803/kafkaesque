@@ -22,12 +22,15 @@ type consumerGroupDetailPage struct {
 	Partition   partitionSection
 	RefreshedAt time.Time
 }
+
 type groupDetailView struct {
 	Name, State, StateClass string
 	Members                 []detailMember
 	Topics                  []detailTopic
 }
+
 type detailMember struct{ ID, ClientID, Host, Assignments string }
+
 type detailTopic struct {
 	Name                     string
 	Partitions               []detailPartition
@@ -74,15 +77,28 @@ func renderConsumerGroupDetail(w http.ResponseWriter, r *http.Request) {
 		renderUIError(w, r, http.StatusBadRequest, "consumer-groups", "Invalid consumer lag request", err.Error())
 		return
 	}
-	data, err := sourceFrom(r).ConsumerGroup(r.Context(), r.PathValue("group"), strings.TrimSpace(r.URL.Query().Get("topic")))
+	data, err := sourceFrom(r).ConsumerGroup(
+		r.Context(),
+		r.PathValue("group"),
+		strings.TrimSpace(r.URL.Query().Get("topic")),
+	)
 	if err != nil {
 		if isNotFound(err) {
-			renderUIError(w, r, http.StatusNotFound, "consumer-groups", "Consumer group or topic not found", "The requested consumer group or topic is not available.")
+			renderUIError(
+				w,
+				r,
+				http.StatusNotFound,
+				"consumer-groups",
+				"Consumer group or topic not found",
+				"The requested consumer group or topic is not available.",
+			)
 			return
 		}
+
 		renderUpstreamError(w, r, "consumer-groups", err)
 		return
 	}
+
 	refreshedAt := time.Now().UTC()
 
 	detail := groupDetailViewFrom(data, sourceFrom(r).Thresholds())
@@ -116,6 +132,7 @@ func renderConsumerGroupDetail(w http.ResponseWriter, r *http.Request) {
 		if err := dashboardTemplate.ExecuteTemplate(w, "consumer-group-detail-content", page); err != nil {
 			http.Error(w, "Unable to render consumer lag", http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -143,6 +160,7 @@ func detailControls(r *http.Request) (string, string, string, error) {
 	if direction != "asc" && direction != "desc" {
 		return "", "", "", fmt.Errorf("direction must be asc or desc")
 	}
+
 	return groupBy, sortBy, direction, nil
 }
 
@@ -162,12 +180,27 @@ func groupDetailViewFrom(data *groupDetailData, thresholds kafkaesque_consumers.
 			}
 			assignments = append(assignments, a.Topic+":"+strings.Join(parts, ","))
 		}
-		view.Members = append(view.Members, detailMember{ID: member.MemberID, ClientID: member.ClientID, Host: member.Host, Assignments: strings.Join(assignments, "; ")})
+		view.Members = append(view.Members, detailMember{
+			ID:          member.MemberID,
+			ClientID:    member.ClientID,
+			Host:        member.Host,
+			Assignments: strings.Join(assignments, "; "),
+		})
 	}
+
 	for _, topic := range data.Group.Topics {
 		health, class := lagStatusView(topic.Status)
-		view.Topics = append(view.Topics, detailTopic{Name: topic.Topic, Partitions: make([]detailPartition, topic.Partitions), Lag: topic.Lag, Health: health, HealthClass: class, Selected: topic.Topic == data.SelectedTopic, URL: detailURL(data.Group.GroupName, topic.Topic, "", "partition", "asc")})
+		view.Topics = append(view.Topics, detailTopic{
+			Name:        topic.Topic,
+			Partitions:  make([]detailPartition, topic.Partitions),
+			Lag:         topic.Lag,
+			Health:      health,
+			HealthClass: class,
+			Selected:    topic.Topic == data.SelectedTopic,
+			URL:         detailURL(data.Group.GroupName, topic.Topic, "", "partition", "asc"),
+		})
 	}
+
 	if data.Topic != nil {
 		for i := range view.Topics {
 			if view.Topics[i].Name == data.Topic.Topic {
@@ -178,16 +211,34 @@ func groupDetailViewFrom(data *groupDetailData, thresholds kafkaesque_consumers.
 						member = "Unassigned"
 					}
 					health, class := lagStatusView(kafkaesque_consumers.ConsumerLagStatus(p.Lag, thresholds))
-					view.Topics[i].Partitions = append(view.Topics[i].Partitions, detailPartition{Partition: p.Partition, CommittedOffset: p.CommittedOffset, LogEndOffset: p.LogEndOffset, Lag: p.Lag, Member: member, Health: health, HealthClass: class})
+					view.Topics[i].Partitions = append(view.Topics[i].Partitions, detailPartition{
+						Partition:       p.Partition,
+						CommittedOffset: p.CommittedOffset,
+						LogEndOffset:    p.LogEndOffset,
+						Lag:             p.Lag,
+						Member:          member,
+						Health:          health,
+						HealthClass:     class,
+					})
 				}
 			}
 		}
 	}
+
 	return view
 }
 
 func buildPartitionSection(detail groupDetailView, topicName, groupBy, sortBy, direction string) partitionSection {
-	section := partitionSection{Action: "/ui/consumer-groups/" + url.PathEscape(detail.Name), Topic: topicName, Empty: topicName == "", GroupOptions: []groupOption{{Label: "None", Selected: groupBy == ""}, {Value: "member", Label: "Consumer member", Selected: groupBy == "member"}}}
+	section := partitionSection{
+		Action: "/ui/consumer-groups/" + url.PathEscape(detail.Name),
+		Topic:  topicName,
+		Empty:  topicName == "",
+		GroupOptions: []groupOption{
+			{Label: "None", Selected: groupBy == ""},
+			{Value: "member", Label: "Consumer member", Selected: groupBy == "member"},
+		},
+	}
+
 	for _, item := range detail.Topics {
 		section.TopicOptions = append(section.TopicOptions, topicOption{Name: item.Name, Selected: item.Name == topicName})
 		if item.Name == topicName {
@@ -212,6 +263,7 @@ func buildPartitionSection(detail groupDetailView, topicName, groupBy, sortBy, d
 			}
 		}
 	}
+
 	next, icon, label := "desc", "↕", "Sort lag highest first"
 	if sortBy == "lag" && direction == "desc" {
 		next, icon, label = "asc", "↓", "Sort lag lowest first"
@@ -221,6 +273,7 @@ func buildPartitionSection(detail groupDetailView, topicName, groupBy, sortBy, d
 	if topicName != "" {
 		section.LagSortURL = detailURL(detail.Name, topicName, groupBy, "lag", next)
 	}
+
 	section.LagSortIcon, section.LagSortLabel = icon, label
 	return section
 }
@@ -239,15 +292,23 @@ func groupPartitionsByMember(partitions []detailPartition, members []detailMembe
 	if rows := by["Unassigned"]; len(rows) > 0 {
 		groups = append(groups, partitionGroup{Name: "Unassigned", Partitions: rows})
 	}
+
 	return groups
 }
+
 func detailURL(group, topic, groupBy, sortBy, direction string) string {
 	values := url.Values{"topic": {topic}, "sort": {sortBy}, "direction": {direction}}
 	if groupBy != "" {
 		values.Set("group_by", groupBy)
 	}
+
 	return "/ui/consumer-groups/" + url.PathEscape(group) + "?" + values.Encode()
 }
+
 func isNotFound(err error) bool {
-	return errors.Is(err, kafka.GroupIdNotFound) || strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(strings.ToLower(err.Error()), "no committed offsets")
+	message := strings.ToLower(err.Error())
+
+	return errors.Is(err, kafka.GroupIdNotFound) ||
+		strings.Contains(message, "not found") ||
+		strings.Contains(message, "no committed offsets")
 }

@@ -19,7 +19,11 @@ type ConsumerGroupDescriptionRequest struct {
 }
 
 // GetConsumerGroupDescription completes a consumer group with its state and member count.
-func GetConsumerGroupDescription(c *kafkaesque.KafkaesqueConn, ctx context.Context, req ConsumerGroupDescriptionRequest) ([]ConsumerGroups, error) {
+func GetConsumerGroupDescription(
+	c *kafkaesque.KafkaesqueConn,
+	ctx context.Context,
+	req ConsumerGroupDescriptionRequest,
+) ([]ConsumerGroups, error) {
 	if c.Client.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Client.Timeout)

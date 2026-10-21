@@ -1,0 +1,210 @@
+{{define "users"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Users · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/htmx-4.0.0.min.js" defer></script>
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <header class="page-header users-page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <h1>Users</h1>
+            <p>Manage Kafkaesque accounts</p>
+          </div>
+        </div>
+        {{if .CanCreate}}<a class="primary-button" href="/ui/users/new">+ Add user</a>{{end}}
+      </header>
+
+      {{if .Success}}<div class="form-message success" role="status">{{.Success}}</div>{{end}}
+      {{template "users-results" .Results}}
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "new-user"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{if .Form.Editing}}Edit user{{else}}Add user{{end}} · Kafkaesque</title>
+  <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    {{template "sidebar" .Navigation}}
+
+    <main class="main-content" id="main-content">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/ui/users">Users</a>
+        <span aria-hidden="true">/</span>
+        <span>{{if .Form.Editing}}Edit user{{else}}Add user{{end}}</span>
+      </nav>
+
+      <header class="page-header">
+        <div class="page-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <h1>{{if .Form.Editing}}Edit user{{else}}Add user{{end}}</h1>
+            <p>{{if .Form.Editing}}Update this Kafkaesque account{{else}}Create an account that can sign in immediately{{end}}</p>
+          </div>
+        </div>
+      </header>
+
+      <div class="user-create-shell">
+        <section class="panel user-create-panel" aria-labelledby="create-user-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Account management</p>
+              <h2 id="create-user-title">User details</h2>
+            </div>
+          </div>
+
+          <form class="user-form" method="post" action="{{if .Form.Editing}}/ui/users/{{.Form.ID}}{{else}}/ui/users{{end}}" data-user-form>
+            <input type="hidden" name="csrf_token" value="{{.Navigation.CSRFToken}}">
+            {{if .Form.Error}}<div class="form-message error" role="alert">{{.Form.Error}}</div>{{end}}
+
+            <div class="user-form-grid">
+              <label class="field">
+                <span>Name</span>
+                <input name="name" type="text" value="{{.Form.Name}}" maxlength="100" autocomplete="name" required>
+              </label>
+
+              <label class="field">
+                <span>Email</span>
+                <input id="user-email" name="email" type="email" value="{{.Form.Email}}" maxlength="254" autocomplete="email" required>
+              </label>
+
+              <div class="username-field-group">
+                <label class="field">
+                  <span>Username</span>
+                  <input id="user-username" name="username" type="text" value="{{.Form.Username}}" minlength="3" maxlength="254" autocomplete="username" required{{if .Form.UseEmailAsUsername}} readonly{{end}}>
+                </label>
+                <label class="checkbox-field">
+                  <input id="use-email-as-username" name="use_email_as_username" type="checkbox" value="true"{{if .Form.UseEmailAsUsername}} checked{{end}}>
+                  <span>Use email as username</span>
+                </label>
+              </div>
+
+              {{if not .Form.Editing}}<label class="field user-password-field">
+                <span>Password</span>
+                <input id="new-user-password" name="password" type="password" minlength="8" maxlength="99" autocomplete="new-password" aria-describedby="password-progress password-policy" required>
+              </label>
+
+              <div class="password-meter" id="password-progress" data-password-meter role="progressbar" aria-label="Password requirements met" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0" aria-valuetext="0 of 5 password requirements met">
+                <span class="password-meter-segment critical" data-password-segment="length" aria-hidden="true"></span>
+                <span class="password-meter-segment critical" data-password-segment="uppercase" aria-hidden="true"></span>
+                <span class="password-meter-segment critical" data-password-segment="lowercase" aria-hidden="true"></span>
+                <span class="password-meter-segment critical" data-password-segment="number" aria-hidden="true"></span>
+                <span class="password-meter-segment critical" data-password-segment="special" aria-hidden="true"></span>
+              </div>
+              <span class="visually-hidden" data-password-summary aria-live="polite">0 of 5 password requirements met</span>
+
+              <details class="password-policy" id="password-policy" data-password-policy>
+                <summary>Password requirements</summary>
+                <ul>
+                  <li class="critical" data-password-rule="length"><span>8–99 characters</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
+                  <li class="critical" data-password-rule="uppercase"><span>One uppercase letter</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
+                  <li class="critical" data-password-rule="lowercase"><span>One lowercase letter</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
+                  <li class="critical" data-password-rule="number"><span>One number</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
+                  <li class="critical" data-password-rule="special"><span>One of !@#$%^&amp;*()_</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
+                </ul>
+              </details>{{end}}
+
+              <label class="field">
+                <span>Role</span>
+                <select name="role"{{if not .Form.CanManageRole}} disabled{{end}}>
+                  {{range .Form.RoleOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+              </label>
+
+            </div>
+
+            <div class="user-form-actions">
+              <button class="primary-button" type="submit">{{if .Form.Editing}}Save changes{{else}}Create user{{end}}</button>
+              <a class="secondary-button" href="/ui/users">Cancel</a>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
+
+{{define "users-results"}}
+<section class="panel users-panel" id="users-results" aria-labelledby="users-title" aria-live="polite">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">Kafkaesque access</p>
+      <h2 id="users-title">All users</h2>
+    </div>
+    <span class="panel-count">{{.Range}}</span>
+  </div>
+
+  {{if .Users}}
+  <div class="table-scroll" tabindex="0" aria-label="Users table, horizontally scrollable">
+    <table class="users-table">
+      <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Added</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+        {{range .Users}}<tr>
+          <th scope="row">{{.Name}}</th>
+          <td class="mono">{{.Username}}</td>
+          <td>{{.Email}}</td>
+          <td><span class="level-label">{{.Role}}</span></td>
+          <td><time datetime="{{.AddedAt}}">{{.Added}}</time></td>
+          <td class="actions-cell">{{if or .CanEdit .CanDelete}}
+            <button class="action-menu-trigger" type="button" popovertarget="user-actions-{{.ID}}" aria-label="Actions for {{.Name}}"><span aria-hidden="true">&#8942;</span></button>
+            <div class="action-menu-items" id="user-actions-{{.ID}}" popover="auto" aria-label="Actions for {{.Name}}">
+              {{if .CanEdit}}<a href="/ui/users/{{.ID}}/edit">Edit</a>{{end}}
+              {{if .CanDelete}}<form method="post" action="/ui/users/{{.ID}}/delete" onsubmit="return confirm('Permanently delete this user?')">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button class="critical" type="submit">Delete</button>
+              </form>{{end}}
+            </div>
+          {{end}}</td>
+        </tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <h3>No users found</h3>
+    <p>This page does not contain any user accounts.</p>
+  </div>
+  {{end}}
+
+  {{if .Pages}}
+  <nav class="pagination" aria-label="User pages">
+    <div class="pagination-links">
+    {{if .PreviousURL}}<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#users-results" hx-swap="outerHTML" hx-push-url="true">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
+    <div class="page-links">
+      {{range .Pages}}{{if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#users-results" hx-swap="outerHTML" hx-push-url="true">{{.Number}}</a>{{end}}{{end}}
+    </div>
+    {{if .NextURL}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#users-results" hx-swap="outerHTML" hx-push-url="true">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+    </div>
+    {{template "page-size-control" .Pagination}}
+  </nav>
+  {{end}}
+</section>
+{{end}}

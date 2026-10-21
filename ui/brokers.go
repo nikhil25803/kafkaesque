@@ -28,10 +28,17 @@ type brokersResults struct {
 	PreviousURL string
 	NextURL     string
 	HasFilters  bool
+	ClearURL    string
+	Pagination  pageSizeControl
 }
 
 func renderBrokers(w http.ResponseWriter, r *http.Request) {
 	page, err := positivePage(r.URL.Query().Get("page"))
+	if err != nil {
+		renderUIError(w, r, http.StatusBadRequest, "brokers", "Invalid brokers request", err.Error())
+		return
+	}
+	pageSize, err := parsePageSize(r.URL.Query().Get("page_size"), 10)
 	if err != nil {
 		renderUIError(w, r, http.StatusBadRequest, "brokers", "Invalid brokers request", err.Error())
 		return
@@ -44,9 +51,14 @@ func renderBrokers(w http.ResponseWriter, r *http.Request) {
 	}
 	brokers := make([]brokerView, 0, len(information))
 	for _, broker := range information {
-		brokers = append(brokers, brokerView{ID: broker.ID, Address: broker.Address, ConnectAddress: broker.ConnectAddress, Rack: broker.Rack})
+		brokers = append(brokers, brokerView{
+			ID:             broker.ID,
+			Address:        broker.Address,
+			ConnectAddress: broker.ConnectAddress,
+			Rack:           broker.Rack,
+		})
 	}
-	results := paginateBrokers(filterBrokers(brokers, query), query, page)
+	results := paginateBrokers(filterBrokers(brokers, query), query, page, pageSize)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -76,12 +88,14 @@ func filterBrokers(brokers []brokerView, query string) []brokerView {
 			filtered = append(filtered, broker)
 		}
 	}
-	sort.Slice(filtered, func(i, j int) bool { return filtered[i].ID < filtered[j].ID })
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].ID < filtered[j].ID
+	})
+
 	return filtered
 }
 
-func paginateBrokers(brokers []brokerView, query string, page int) brokersResults {
-	const pageSize = 10
+func paginateBrokers(brokers []brokerView, query string, page, pageSize int) brokersResults {
 	total := len(brokers)
 	totalPages := (total + pageSize - 1) / pageSize
 	start := (page - 1) * pageSize
@@ -91,7 +105,11 @@ func paginateBrokers(brokers []brokerView, query string, page int) brokersResult
 	end := min(start+pageSize, total)
 	pages := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pages = append(pages, pageLink{Number: number, URL: brokersURL(query, number), Active: number == page})
+		pages = append(pages, pageLink{
+			Number: number,
+			URL:    brokersURL(query, number, pageSize),
+			Active: number == page,
+		})
 	}
 	rangeText := "0 brokers"
 	if start < end {
@@ -100,22 +118,33 @@ func paginateBrokers(brokers []brokerView, query string, page int) brokersResult
 		rangeText = "0 of " + strconv.Itoa(total) + " brokers"
 	}
 	results := brokersResults{
-		Brokers: brokers[start:end], Range: rangeText, Pages: pages, HasFilters: query != "",
+		Brokers:    brokers[start:end],
+		Range:      rangeText,
+		Pages:      pages,
+		HasFilters: query != "",
+		ClearURL:   brokersURL("", 1, pageSize),
+		Pagination: newPageSizeControl(
+			"/ui/brokers",
+			"#brokers-results",
+			pageSize,
+			queryField{Name: "q", Value: query},
+		),
 	}
 	if page > 1 && page <= totalPages {
-		results.PreviousURL = brokersURL(query, page-1)
+		results.PreviousURL = brokersURL(query, page-1, pageSize)
 	}
 	if page < totalPages {
-		results.NextURL = brokersURL(query, page+1)
+		results.NextURL = brokersURL(query, page+1, pageSize)
 	}
 	return results
 }
 
-func brokersURL(query string, page int) string {
+func brokersURL(query string, page, pageSize int) string {
 	values := url.Values{}
 	if query != "" {
 		values.Set("q", query)
 	}
 	values.Set("page", strconv.Itoa(page))
+	values.Set("page_size", strconv.Itoa(pageSize))
 	return "/ui/brokers?" + values.Encode()
 }

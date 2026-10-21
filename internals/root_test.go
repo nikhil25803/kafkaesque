@@ -1104,7 +1104,9 @@ func TestRootCommandChecksConfiguration(t *testing.T) {
 func TestCLIConfigurationCheckDoesNotRequireAuthentication(t *testing.T) {
 	t.Setenv(kafkaesque_config.DatabaseURLEnv, "")
 	t.Setenv(kafkaesque_config.SuperAdminUsernameEnv, "")
+	t.Setenv(kafkaesque_config.SuperAdminEmailEnv, "")
 	t.Setenv(kafkaesque_config.SuperAdminPasswordEnv, "")
+	t.Setenv(kafkaesque_config.SuperAdminRecoveryEnv, "")
 	var output bytes.Buffer
 	cmd := newRootCommand()
 	cmd.SetOut(&output)

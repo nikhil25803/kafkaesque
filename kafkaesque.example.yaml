@@ -62,13 +62,25 @@ lag:
   unhealthy_threshold: 500
 
 authentication:
-  # `serve` requires a Super Admin name and password. In Kubernetes, inject
-  # them from a Secret instead of committing production credentials to YAML.
+  # `serve` requires the Super Admin identity and password. In Kubernetes,
+  # inject these values from a Secret instead of committing credentials.
   # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME
   super_admin_username: super_admin
-  # Passwords must contain 15-128 characters.
+
+  # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL
+  super_admin_email: super-admin@example.com
+
+  # Passwords must contain 8-99 characters, including uppercase, lowercase,
+  # a number, and one of !@#$%^&*()_.
   # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD
-  super_admin_password: replace-with-a-long-secret
+  super_admin_password: Replace1_with_a_long_secret
+
+  # verify stops on a bootstrap mismatch. update reconciles a valid Super Admin
+  # and revokes its sessions. reinitialize drops and rebuilds the entire public
+  # schema when credentials, migrations, or authentication integrity differ.
+  # Use reinitialize only with a database dedicated to Kafkaesque.
+  # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY
+  super_admin_recovery: verify
 
   # Short-lived access token lifetime.
   # ENV: KAFKAESQUE_AUTHENTICATION_ACCESS_TTL

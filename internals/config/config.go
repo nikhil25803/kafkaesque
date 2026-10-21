@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nikhil25803/kafkaesque/internals/credentials"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,6 +26,7 @@ const (
 	DefaultAPIPort               = 8085
 	DefaultAuthAccessTTL         = 15 * time.Minute
 	DefaultAuthRefreshTTL        = 7 * 24 * time.Hour
+	DefaultSuperAdminRecovery    = "verify"
 )
 
 const (
@@ -49,7 +51,9 @@ const (
 
 const (
 	SuperAdminUsernameEnv = "KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME"
+	SuperAdminEmailEnv    = "KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL"
 	SuperAdminPasswordEnv = "KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD"
+	SuperAdminRecoveryEnv = "KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY"
 	AuthAccessTTLEnv      = "KAFKAESQUE_AUTHENTICATION_ACCESS_TTL"
 	AuthRefreshTTLEnv     = "KAFKAESQUE_AUTHENTICATION_REFRESH_TTL"
 	AuthCookieSecureEnv   = "KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE"
@@ -101,7 +105,9 @@ type Config struct {
 // AuthenticationConfig contains Super Admin and session settings.
 type AuthenticationConfig struct {
 	SuperAdminUsername string        `yaml:"super_admin_username"`
+	SuperAdminEmail    string        `yaml:"super_admin_email"`
 	SuperAdminPassword string        `yaml:"super_admin_password"`
+	SuperAdminRecovery string        `yaml:"super_admin_recovery"`
 	AccessTTL          time.Duration `yaml:"access_ttl"`
 	RefreshTTL         time.Duration `yaml:"refresh_ttl"`
 	CookieSecure       bool          `yaml:"cookie_secure"`
@@ -189,9 +195,10 @@ func load(path string, explicit bool) (*Config, error) {
 			UnhealthyThreshold: DefaultLagUnhealthyThreshold,
 		},
 		Authentication: AuthenticationConfig{
-			AccessTTL:    DefaultAuthAccessTTL,
-			RefreshTTL:   DefaultAuthRefreshTTL,
-			CookieSecure: true,
+			SuperAdminRecovery: DefaultSuperAdminRecovery,
+			AccessTTL:          DefaultAuthAccessTTL,
+			RefreshTTL:         DefaultAuthRefreshTTL,
+			CookieSecure:       true,
 		},
 		API: APIConfig{
 			Host: DefaultAPIHost,
@@ -245,6 +252,8 @@ func load(path string, explicit bool) (*Config, error) {
 
 	normalizeSecurityValues(&cfg.Kafka.Security)
 	cfg.Authentication.SuperAdminUsername = strings.ToLower(strings.TrimSpace(cfg.Authentication.SuperAdminUsername))
+	cfg.Authentication.SuperAdminEmail = strings.ToLower(strings.TrimSpace(cfg.Authentication.SuperAdminEmail))
+	cfg.Authentication.SuperAdminRecovery = strings.ToLower(strings.TrimSpace(cfg.Authentication.SuperAdminRecovery))
 	cfg.Database.URL = strings.TrimSpace(cfg.Database.URL)
 
 	overrides, err := normalizeBrokerAddressOverrides(cfg.Kafka.BrokerAddressOverrides)
@@ -379,8 +388,14 @@ func applyEnvironment(cfg *Config) error {
 	if value, ok := os.LookupEnv(SuperAdminUsernameEnv); ok {
 		cfg.Authentication.SuperAdminUsername = strings.ToLower(strings.TrimSpace(value))
 	}
+	if value, ok := os.LookupEnv(SuperAdminEmailEnv); ok {
+		cfg.Authentication.SuperAdminEmail = strings.ToLower(strings.TrimSpace(value))
+	}
 	if value, ok := os.LookupEnv(SuperAdminPasswordEnv); ok {
 		cfg.Authentication.SuperAdminPassword = value
+	}
+	if value, ok := os.LookupEnv(SuperAdminRecoveryEnv); ok {
+		cfg.Authentication.SuperAdminRecovery = strings.ToLower(strings.TrimSpace(value))
 	}
 	if value, ok := os.LookupEnv(AuthAccessTTLEnv); ok {
 		parsed, err := time.ParseDuration(value)
@@ -436,20 +451,30 @@ func (c *Config) ValidateServe() error {
 	if strings.TrimSpace(c.Database.URL) == "" {
 		return fmt.Errorf("database.url or %s is required", DatabaseURLEnv)
 	}
-	if !validSuperAdminUsername(c.Authentication.SuperAdminUsername) {
+	username, usernameValid := credentials.NormalizeUsername(c.Authentication.SuperAdminUsername)
+	if !usernameValid {
 		return fmt.Errorf(
-			"authentication.super_admin_username or %s must be 3-64 lowercase letters, numbers, dots, underscores, or hyphens",
+			"authentication.super_admin_username or %s must be a 3-64 character handle or the configured email",
 			SuperAdminUsernameEnv,
 		)
 	}
-	passwordLength := len([]rune(c.Authentication.SuperAdminPassword))
-	if passwordLength < 15 || passwordLength > 128 {
-		return fmt.Errorf("authentication.super_admin_password or %s must be 15-128 characters", SuperAdminPasswordEnv)
+	email, emailValid := credentials.NormalizeEmail(c.Authentication.SuperAdminEmail)
+	if !emailValid {
+		return fmt.Errorf("authentication.super_admin_email or %s must be a valid email address", SuperAdminEmailEnv)
 	}
-	if strings.ContainsAny(c.Authentication.SuperAdminPassword, "\r\n\x00") {
+	if strings.Contains(username, "@") && username != email {
 		return fmt.Errorf(
-			"authentication.super_admin_password or %s contains unsupported control characters",
-			SuperAdminPasswordEnv,
+			"authentication.super_admin_username must match authentication.super_admin_email when it is an email address",
+		)
+	}
+	if err := credentials.ValidatePassword(c.Authentication.SuperAdminPassword); err != nil {
+		return fmt.Errorf("authentication.super_admin_password or %s %s", SuperAdminPasswordEnv, err)
+	}
+	recovery := c.Authentication.SuperAdminRecovery
+	if recovery != "verify" && recovery != "update" && recovery != "reinitialize" {
+		return fmt.Errorf(
+			"authentication.super_admin_recovery or %s must be verify, update, or reinitialize",
+			SuperAdminRecoveryEnv,
 		)
 	}
 	if c.Authentication.AccessTTL <= 0 {
@@ -459,19 +484,6 @@ func (c *Config) ValidateServe() error {
 		return fmt.Errorf("authentication.refresh_ttl or %s must exceed authentication.access_ttl", AuthRefreshTTLEnv)
 	}
 	return nil
-}
-
-func validSuperAdminUsername(username string) bool {
-	if len(username) < 3 || len(username) > 64 {
-		return false
-	}
-	for _, r := range username {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-' {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 // Validate checks the effective configuration.
@@ -548,7 +560,10 @@ func resolveConfigPath(configDir, path string) string {
 }
 
 func validateSecurity(security SecurityConfig) error {
-	tlsConfigured := security.TLS.CAFile != "" || security.TLS.ClientCertFile != "" || security.TLS.ClientKeyFile != "" || security.TLS.ServerName != ""
+	tlsConfigured := security.TLS.CAFile != "" ||
+		security.TLS.ClientCertFile != "" ||
+		security.TLS.ClientKeyFile != "" ||
+		security.TLS.ServerName != ""
 	if tlsConfigured && !security.TLS.Enabled {
 		return fmt.Errorf("kafka TLS settings require tls.enabled")
 	}

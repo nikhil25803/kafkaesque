@@ -94,7 +94,8 @@ Use a four-pixel base scale: `4`, `8`, `12`, `16`, `24`, `32`, and `48px`.
 ### Desktop — 1024px and wider
 
 - Use a fixed `240px` sidebar spanning the viewport height.
-- Place a text-only **Kafkaesque** wordmark at the top of the sidebar.
+- Place a full-width, prominent text-only **Kafkaesque** wordmark at the top of
+  the sidebar. Use approximately `26px` type with a heavy weight.
 - Put the page title at the top-left of the main content area.
 - Let the main content column fill the remaining width with a sensible maximum
   width for dense tables rather than centering a narrow marketing layout.
@@ -103,6 +104,8 @@ Use a four-pixel base scale: `4`, `8`, `12`, `16`, `24`, `32`, and `48px`.
 ### Tablet — 768px through 1023px
 
 - Collapse the sidebar to a `72px` icon rail.
+- Reduce only the sidebar wordmark to a visible `K`; login-page branding must
+  remain complete at this width.
 - Preserve the active state and expose each label through an accessible name.
 - Show the visible label in a tooltip on hover and keyboard focus.
 - Keep the page title in the main content header.
@@ -125,10 +128,11 @@ Initial navigation contains, in this order:
 3. Topics
 4. Brokers
 5. Cluster Health
+6. Users
 
 Do not show Alerts or Settings until those features exist. The shared shell
-anchors the authenticated Super Admin role and logout control at the bottom of
-the sidebar.
+anchors the authenticated account role and logout control at the bottom of the
+sidebar.
 
 | State | Surface | Text and icon | Additional requirement |
 | --- | --- | --- | --- |
@@ -183,6 +187,11 @@ the initial interface.
 - Use tabular numbers or the monospace stack for comparable numeric columns.
 - Preserve deterministic row ordering and never encode status by color alone.
 - On narrow screens, use horizontal scrolling; do not silently hide columns.
+- Put row-level actions behind an accessible vertical three-dot popover. Render
+  it in the browser top layer so tables and panels cannot clip its contents.
+  Show no action control when the row has no available actions.
+- Collapse long permission lists behind a labelled disclosure such as
+  `View permissions (3)` and group expanded permissions by module.
 
 ### Search and Filters
 
@@ -192,6 +201,8 @@ the initial interface.
 - Keep search, state filters, and pagination separate so each can be changed or
   cleared independently.
 - Display active filters and provide a clear action when any are applied.
+- Paginated lists offer 10, 25, 50, and 100 rows per page. Preserve filters
+  when changing size and reset to the first page.
 
 ### Buttons
 
@@ -274,12 +285,27 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 
 ## Login
 
-- Use a 50/50 desktop split with the Super Admin form on the left and branding
+- Use a 50/50 desktop split with the sign-in form on the left and branding
   on the right.
+- Make **Kafkaesque** the dominant `40–56px` form-panel wordmark and keep the
+  **Sign in** heading smaller at approximately `24px`.
 - Match the logo's dotted and orbital background with subdued CSS decoration.
 - Stack the form before the branding panel on smaller screens.
 - Keep generic errors, visible labels, browser autocomplete, and a full-width
   submit button below the credentials.
+
+## User Management
+
+- Keep the user list as the primary `/ui/users` content, with Add user in the
+  page header.
+- Render account creation on `/ui/users/new` in a centered panel and stack form
+  fields on narrow screens.
+- Keep roles neutral; they are authorization labels rather than health states.
+- Show a five-segment red/green password meter and keep the detailed ×/✓ rules
+  collapsed by default. Update both after a 250ms input debounce.
+- Preserve safe form fields after validation failures, but never render a
+  submitted password.
+- State clearly that new accounts can sign in immediately.
 
 ## Initial Boundaries
 
@@ -291,6 +317,6 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
 - Topic Detail remains deferred until it is explicitly approved.
-- PostgreSQL-backed Super Admin login and logout are implemented. Additional
-  users, password management, MFA, charts, alerts, settings, and new logo assets
-  remain deferred.
+- PostgreSQL-backed account login, logout, user lifecycle management, and
+  custom account roles are implemented. Password management,
+  MFA, charts, alerts, settings, and new logo assets remain deferred.

@@ -39,7 +39,7 @@ func TestNormalizeUsername(t *testing.T) {
 		{input: " Admin.User ", want: "admin.user", valid: true},
 		{input: "ab", valid: false},
 		{input: "invalid name", valid: false},
-		{input: "admin@example.com", valid: false},
+		{input: "admin@example.com", want: "admin@example.com", valid: true},
 	}
 	for _, test := range tests {
 		got, valid := NormalizeUsername(test.input)

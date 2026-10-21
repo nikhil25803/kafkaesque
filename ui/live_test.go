@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -311,6 +312,66 @@ func TestLiveFilteringAndFragments(t *testing.T) {
 	}
 }
 
+func TestKafkaListPageSizesPreserveFilters(t *testing.T) {
+	handler := newHandler(&fakeDataSource{})
+	tests := []struct {
+		path     string
+		clearURL string
+		filter   string
+	}{
+		{path: "/ui/consumer-groups?q=orders&page_size=25", clearURL: "/ui/consumer-groups?page=1&amp;page_size=25", filter: `name="q" value="orders"`},
+		{path: "/ui/topics?q=orders&level=external&page_size=25", clearURL: "/ui/topics?page=1&amp;page_size=25", filter: `name="level" value="external"`},
+		{path: "/ui/brokers?q=rack-a&page_size=25", clearURL: "/ui/brokers?page=1&amp;page_size=25", filter: `name="q" value="rack-a"`},
+	}
+	for _, test := range tests {
+		response := requestUI(t, handler, test.path, false)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", test.path, response.Code, response.Body.String())
+		}
+		requireContains(t, response.Body.String(), `<option value="25" selected>25</option>`, test.clearURL, test.filter)
+	}
+}
+
+func TestPageSizeValidation(t *testing.T) {
+	for _, value := range []string{"10", "25", "50", "100"} {
+		parsed, err := parsePageSize(value, 10)
+		if err != nil || strconv.Itoa(parsed) != value {
+			t.Fatalf("page size %s parsed=%d error=%v", value, parsed, err)
+		}
+	}
+	for _, value := range []string{"0", "20", "101", "invalid"} {
+		if _, err := parsePageSize(value, 10); err == nil {
+			t.Fatalf("page size %q was accepted", value)
+		}
+	}
+
+	handler := newHandler(&fakeDataSource{})
+	for _, path := range []string{
+		"/ui/consumer-groups?page_size=20",
+		"/ui/topics?page_size=20",
+		"/ui/brokers?page_size=20",
+	} {
+		response := requestUI(t, handler, path, false)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s status=%d", path, response.Code)
+		}
+	}
+}
+
+func TestPaginationURLsPreservePageSizeAndFilters(t *testing.T) {
+	tests := map[string]string{
+		consumerGroupsURL("orders", "Stable", 2, 50): "/ui/consumer-groups?page=2&page_size=50&q=orders&state=Stable",
+		topicsURL("orders", "external", 2, 50):       "/ui/topics?level=external&page=2&page_size=50&q=orders",
+		brokersURL("rack-a", 2, 50):                  "/ui/brokers?page=2&page_size=50&q=rack-a",
+		usersURL(2, 50):                              "/ui/users?page=2&page_size=50",
+	}
+	for got, want := range tests {
+		if got != want {
+			t.Fatalf("pagination URL=%q, want %q", got, want)
+		}
+	}
+}
+
 func TestConsumerGroupStateFiltersUseDisplayedCategories(t *testing.T) {
 	groups := []kafkaesque_consumers.ConsumerGroupInformation{
 		{GroupName: "classic-preparing", State: "PreparingRebalance"},
@@ -474,6 +535,11 @@ func TestUIAssetsAndRedirect(t *testing.T) {
 		"resolvedOptions().timeZone",
 		"timestamp.dataset.utcFallback",
 		"toast-region",
+		"initializeUserForm",
+		"use-email-as-username",
+		"window.setTimeout(updatePasswordPolicy, 250)",
+		"uppercase: /[A-Z]/",
+		"special: /[!@#$%^&*()_]/",
 		"event.key === 'Escape'",
 	)
 }

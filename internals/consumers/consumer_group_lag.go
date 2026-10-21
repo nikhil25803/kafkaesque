@@ -240,7 +240,12 @@ func getConsumerGroupPartitionLags(
 		for _, topic := range latest.Topics {
 			for _, partition := range topic.Partitions {
 				if partition.ErrorCode != 0 {
-					return nil, fmt.Errorf("fetch latest offset for %s partition %d: %w", topic.Topic, partition.Partition, kafka.Error(partition.ErrorCode))
+					return nil, fmt.Errorf(
+						"fetch latest offset for %s partition %d: %w",
+						topic.Topic,
+						partition.Partition,
+						kafka.Error(partition.ErrorCode),
+					)
 				}
 				key := topicPartition{topic: topic.Topic, partition: int(partition.Partition)}
 				committedOffset, ok := committed[key]

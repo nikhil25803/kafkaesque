@@ -14,13 +14,23 @@ import (
 )
 
 type fakeAuthManager struct {
-	user       kafkaesque_auth.User
-	tokens     kafkaesque_auth.Tokens
-	loginErr   error
-	authErr    error
-	refreshErr error
-	logoutErr  error
-	csrfValid  bool
+	user        kafkaesque_auth.User
+	tokens      kafkaesque_auth.Tokens
+	loginErr    error
+	authErr     error
+	refreshErr  error
+	logoutErr   error
+	csrfValid   bool
+	users       []kafkaesque_auth.ManagedUser
+	usersTotal  int
+	listErr     error
+	createErr   error
+	created     kafkaesque_auth.ManagedUser
+	createInput kafkaesque_auth.CreateUserInput
+	listCalls   int
+	createCalls int
+	listPage    int
+	listSize    int
 }
 
 func (f *fakeAuthManager) Login(context.Context, string, string) (kafkaesque_auth.Tokens, error) {
@@ -28,6 +38,16 @@ func (f *fakeAuthManager) Login(context.Context, string, string) (kafkaesque_aut
 }
 
 func (f *fakeAuthManager) AuthenticateAccess(context.Context, string) (kafkaesque_auth.User, error) {
+	if len(f.user.Permissions) == 0 {
+		switch f.user.Role {
+		case "super_admin":
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}
+		case "admin":
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}
+		case "user":
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView}
+		}
+	}
 	return f.user, f.authErr
 }
 
@@ -43,6 +63,56 @@ func (f *fakeAuthManager) ValidateCSRF(context.Context, string, string) (bool, e
 
 func (f *fakeAuthManager) ValidateRefreshCSRF(context.Context, string, string) (bool, error) {
 	return f.csrfValid, nil
+}
+
+func (f *fakeAuthManager) ListUsers(_ context.Context, page, pageSize int) ([]kafkaesque_auth.ManagedUser, int, error) {
+	f.listCalls++
+	f.listPage = page
+	f.listSize = pageSize
+	return f.users, f.usersTotal, f.listErr
+}
+
+func (f *fakeAuthManager) GetUser(context.Context, string) (kafkaesque_auth.ManagedUser, error) {
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) CreateUser(_ context.Context, _ kafkaesque_auth.User, input kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	f.createCalls++
+	f.createInput = input
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) UpdateUser(context.Context, kafkaesque_auth.User, string, kafkaesque_auth.UpdateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) DeleteUser(context.Context, kafkaesque_auth.User, string) (kafkaesque_auth.ManagedUser, error) {
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) ListRoles(context.Context) ([]kafkaesque_auth.ManagedRole, error) {
+	return []kafkaesque_auth.ManagedRole{
+		{Name: "admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}},
+		{Name: "super_admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}},
+		{Name: "user", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView}},
+		{ID: "support-role", Name: "support", Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate}},
+	}, nil
+}
+
+func (f *fakeAuthManager) GetRole(context.Context, string) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, kafkaesque_auth.ErrNotFound
+}
+
+func (f *fakeAuthManager) CreateRole(context.Context, kafkaesque_auth.User, kafkaesque_auth.RoleInput) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+
+func (f *fakeAuthManager) UpdateRole(context.Context, kafkaesque_auth.User, string, kafkaesque_auth.RoleInput) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+
+func (f *fakeAuthManager) DeleteRole(context.Context, kafkaesque_auth.User, string) error {
+	return nil
 }
 
 func TestSafeNext(t *testing.T) {
@@ -70,7 +140,8 @@ func TestLoginPageAndGenericFailure(t *testing.T) {
 	requireContains(
 		t,
 		response.Body.String(),
-		"Super Admin sign in",
+		`class="wordmark login-wordmark"`,
+		`id="login-title">Sign in</h1>`,
 		"Read. Understand. Monitor. Alert.",
 		"A lightweight, read-only Kafka observability tool",
 		"/ui/assets/KafkaesqueLogo.png",
@@ -87,6 +158,21 @@ func TestLoginPageAndGenericFailure(t *testing.T) {
 	requireContains(t, response.Body.String(), "Invalid username or password")
 	if strings.Contains(response.Body.String(), "unknown") {
 		t.Fatal("login failure exposed the submitted username")
+	}
+}
+
+func TestLoginAndSidebarWordmarksUseSeparateResponsiveStyles(t *testing.T) {
+	handler := newHandlerWithAuth(&fakeDataSource{}, &fakeAuthManager{}, false, nil)
+	response := requestUI(t, handler, "/ui/assets/app.css", false)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("stylesheet status = %d", response.Code)
+	}
+
+	stylesheet := response.Body.String()
+	requireContains(t, stylesheet, ".sidebar .wordmark {", ".login-wordmark {")
+	if strings.Contains(stylesheet, "  .wordmark { width: 36px;") {
+		t.Fatal("tablet sidebar rule also affects the login wordmark")
 	}
 }
 
@@ -140,7 +226,7 @@ func TestProtectedUIRedirectsAndHTMXExpiry(t *testing.T) {
 }
 
 func TestAuthenticatedShellAndLogout(t *testing.T) {
-	user := kafkaesque_auth.User{ID: "user-1", Username: "super_admin", Role: "super_admin"}
+	user := kafkaesque_auth.User{ID: "user-1", Username: "viewer", Role: "user"}
 	authentication := &fakeAuthManager{user: user, csrfValid: true}
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/ui", nil)
@@ -151,7 +237,7 @@ func TestAuthenticatedShellAndLogout(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("dashboard status = %d", response.Code)
 	}
-	requireContains(t, response.Body.String(), "Logged in as", "Role: Super Admin", "Log out")
+	requireContains(t, response.Body.String(), "Logged in as", "Role: User", ">Users</span>", "Log out")
 
 	form := url.Values{"csrf_token": {"csrf"}}
 	request = httptest.NewRequest(http.MethodPost, "/ui/logout", strings.NewReader(form.Encode()))

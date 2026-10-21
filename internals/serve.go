@@ -35,25 +35,36 @@ func serveAPI(ctx context.Context, address string, handler http.Handler) error {
 func newApplicationHandler(
 	conn *kafkaesque.KafkaesqueConn,
 	cfg *kafkaesque_config.Config,
-	authentication kafkaesque_auth.Manager,
+	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
+
+	// API routes.
 	mux.Handle("/api/", apis.NewHandler(conn, cfg, authentication, logger))
+
+	// UI routes.
 	uiHandler := ui.NewHandler(conn, cfg, authentication, logger)
 	mux.Handle("/ui", uiHandler)
 	mux.Handle("/ui/", uiHandler)
+
+	// Root discovery.
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
+
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"status":  http.StatusOK,
 			"data": map[string]string{
-				"name": "Kafkaesque", "api": "/api/v1", "health": "/api/v1/health", "ui": "/ui",
+				"name":   "Kafkaesque",
+				"api":    "/api/v1",
+				"health": "/api/v1/health",
+				"ui":     "/ui",
 			},
 		})
 	})
+
 	return requestLogger(logger, mux)
 }
 
@@ -65,7 +76,9 @@ type statusWriter struct {
 }
 
 // SetAuthenticatedUser records identity for the outer request log.
-func (w *statusWriter) SetAuthenticatedUser(userID string) { w.userID = userID }
+func (w *statusWriter) SetAuthenticatedUser(userID string) {
+	w.userID = userID
+}
 
 func (w *statusWriter) WriteHeader(status int) {
 	if w.wroteHeader {
@@ -88,11 +101,14 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		wrapped := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+
 		next.ServeHTTP(wrapped, r)
+
 		route := r.Pattern
 		if route == "" {
 			route = "unmatched"
 		}
+
 		arguments := []any{
 			"method", r.Method,
 			"route", route,
@@ -102,6 +118,7 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 		if wrapped.userID != "" {
 			arguments = append(arguments, "user_id", wrapped.userID)
 		}
+
 		switch {
 		case wrapped.status >= http.StatusInternalServerError:
 			logger.Error("http_request", arguments...)

@@ -40,6 +40,7 @@
         <form class="filter-form" action="/ui/topics" method="get"
               hx-get="/ui/topics" hx-target="#topics-results"
               hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">
+          <input type="hidden" name="page_size" value="{{.Results.Pagination.Selected}}">
           <label class="field search-field">
             <span>Topic name</span>
             <input type="search" name="q" value="{{.Query}}" placeholder="Search topics…" autocomplete="off">
@@ -51,7 +52,7 @@
             </select>
           </label>
           <button class="primary-button" type="submit">Apply filters</button>
-          {{if .Results.HasFilters}}<a class="secondary-button" href="/ui/topics">Clear filters</a>{{end}}
+          {{if .Results.HasFilters}}<a class="secondary-button" href="{{.Results.ClearURL}}">Clear filters</a>{{end}}
         </form>
       </section>
 
@@ -92,17 +93,20 @@
   <div class="empty-state">
     <h3>No topics found</h3>
     <p>No topics match the current search and level filter.</p>
-    {{if .HasFilters}}<a class="secondary-button" href="/ui/topics">Clear filters</a>{{end}}
+    {{if .HasFilters}}<a class="secondary-button" href="{{.ClearURL}}">Clear filters</a>{{end}}
   </div>
   {{end}}
 
   {{if .Pages}}
   <nav class="pagination" aria-label="Topics pages">
+    <div class="pagination-links">
     {{if .PreviousURL}}<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#topics-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
     <div class="page-links">
       {{range .Pages}}{{if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#topics-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">{{.Number}}</a>{{end}}{{end}}
     </div>
     {{if .NextURL}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#topics-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+    </div>
+    {{template "page-size-control" .Pagination}}
   </nav>
   {{end}}
 </section>

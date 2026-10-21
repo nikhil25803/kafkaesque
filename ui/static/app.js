@@ -175,7 +175,10 @@
   document.addEventListener('htmx:afterRequest', () => {
     if (!automaticRefreshPending) scheduleRefresh();
   });
-  document.addEventListener('htmx:afterSwap', initializeRefreshControl);
+  document.addEventListener('htmx:afterSwap', () => {
+    initializeRefreshControl();
+    syncFilterPageSize();
+  });
 
   document.addEventListener('change', (event) => {
     if (event.target.id !== 'consumer-lag-refresh') return;
@@ -191,6 +194,125 @@
     }
     scheduleRefresh();
   });
+
+  const initializeUserForm = () => {
+    const form = document.querySelector('[data-user-form]');
+    if (!form) return;
+
+    const email = form.querySelector('#user-email');
+    const username = form.querySelector('#user-username');
+    const useEmail = form.querySelector('#use-email-as-username');
+    const password = form.querySelector('#new-user-password');
+    const policy = form.querySelector('[data-password-policy]');
+    const meter = form.querySelector('[data-password-meter]');
+    const summary = form.querySelector('[data-password-summary]');
+    let manualUsername = username.value;
+    let passwordTimer;
+
+    const syncUsername = () => {
+      if (!useEmail.checked) return;
+      username.value = email.value.trim().toLowerCase();
+    };
+
+    useEmail.addEventListener('change', () => {
+      if (useEmail.checked) {
+        manualUsername = username.value;
+        username.readOnly = true;
+        syncUsername();
+        return;
+      }
+
+      username.readOnly = false;
+      username.value = manualUsername;
+      username.focus();
+    });
+
+    email.addEventListener('input', syncUsername);
+    username.addEventListener('input', () => {
+      if (!useEmail.checked) manualUsername = username.value;
+    });
+
+    const updatePasswordPolicy = () => {
+      const value = password.value;
+      const length = [...value].length;
+      const checks = {
+        length: length >= 8 && length <= 99,
+        uppercase: /[A-Z]/.test(value),
+        lowercase: /[a-z]/.test(value),
+        number: /[0-9]/.test(value),
+        special: /[!@#$%^&*()_]/.test(value),
+      };
+
+      let metCount = 0;
+      policy.querySelectorAll('[data-password-rule]').forEach((item) => {
+        const met = checks[item.dataset.passwordRule];
+        if (met) metCount += 1;
+
+        item.classList.toggle('healthy', met);
+        item.classList.toggle('critical', !met);
+        item.querySelector('[data-rule-icon]').textContent = met ? '✓' : '×';
+        item.querySelector('[data-rule-status]').textContent = met ? 'Met' : 'Not met';
+
+        const segment = meter.querySelector(`[data-password-segment="${item.dataset.passwordRule}"]`);
+        segment.classList.toggle('healthy', met);
+        segment.classList.toggle('critical', !met);
+      });
+
+      const progress = `${metCount} of 5 password requirements met`;
+      meter.setAttribute('aria-valuenow', String(metCount));
+      meter.setAttribute('aria-valuetext', progress);
+      summary.textContent = progress;
+    };
+
+    password.addEventListener('input', () => {
+      window.clearTimeout(passwordTimer);
+      passwordTimer = window.setTimeout(updatePasswordPolicy, 250);
+    });
+
+    syncUsername();
+  };
+
+  const initializeActionMenus = () => {
+    const positionMenu = (menu) => {
+      const trigger = document.querySelector(`[popovertarget="${menu.id}"]`);
+      if (!trigger) return;
+
+      const gap = 6;
+      const padding = 8;
+      const triggerBounds = trigger.getBoundingClientRect();
+      const menuBounds = menu.getBoundingClientRect();
+      let top = triggerBounds.bottom + gap;
+      if (top + menuBounds.height > window.innerHeight - padding) {
+        top = triggerBounds.top - menuBounds.height - gap;
+      }
+      const left = Math.min(
+        Math.max(padding, triggerBounds.right - menuBounds.width),
+        window.innerWidth - menuBounds.width - padding,
+      );
+      menu.style.top = `${Math.max(padding, top)}px`;
+      menu.style.left = `${left}px`;
+    };
+
+    document.addEventListener('beforetoggle', (event) => {
+      if (!event.target.matches('.action-menu-items[popover]') || event.newState !== 'open') return;
+      window.requestAnimationFrame(() => positionMenu(event.target));
+    }, true);
+
+    const repositionOpenMenus = () => {
+      document.querySelectorAll('.action-menu-items:popover-open').forEach(positionMenu);
+    };
+    window.addEventListener('resize', repositionOpenMenus);
+    document.addEventListener('scroll', repositionOpenMenus, true);
+  };
+
+  function syncFilterPageSize() {
+    const selected = document.querySelector('.page-size-form select[name="page_size"]')?.value;
+    if (!selected) return;
+
+    document.querySelectorAll('.filter-form input[name="page_size"]').forEach((input) => {
+      input.value = selected;
+    });
+  }
 
   const sidebar = document.querySelector('#sidebar');
   const closeButton = document.querySelector('#drawer-close');
@@ -249,4 +371,7 @@
   }
 
   initializeRefreshControl();
+  initializeUserForm();
+  initializeActionMenus();
+  syncFilterPageSize();
 })();

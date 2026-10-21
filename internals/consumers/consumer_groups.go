@@ -28,7 +28,10 @@ func GetConsumerGroupsInformation(
 			consumerGroups = append(consumerGroups, group)
 		}
 	}
-	sort.Slice(consumerGroups, func(i, j int) bool { return consumerGroups[i].GroupName < consumerGroups[j].GroupName })
+
+	sort.Slice(consumerGroups, func(i, j int) bool {
+		return consumerGroups[i].GroupName < consumerGroups[j].GroupName
+	})
 
 	brokerAddresses := make(map[int]string, len(metadata.Brokers))
 	for _, broker := range kafkaesque_brokers.GetBrokerInformation(metadata, c.ResolveBrokerAddress) {
@@ -41,7 +44,10 @@ func GetConsumerGroupsInformation(
 		if !ok {
 			return nil, fmt.Errorf("coordinator broker %d for consumer group %s not found", group.CoordinatorID, group.GroupName)
 		}
-		described, err := GetConsumerGroupDescription(c, ctx, ConsumerGroupDescriptionRequest{Group: group, BrokerAddress: brokerAddress})
+		described, err := GetConsumerGroupDescription(c, ctx, ConsumerGroupDescriptionRequest{
+			Group:         group,
+			BrokerAddress: brokerAddress,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("describe consumer group %s: %w", group.GroupName, err)
 		}
@@ -50,9 +56,11 @@ func GetConsumerGroupsInformation(
 		}
 
 		information := ConsumerGroupInformation{
-			GroupName: group.GroupName, State: described[0].State,
-			MembersCount: described[0].MembersCount, TopicsCount: described[0].TopicsCount,
-			Topics: []ConsumerGroupTopicLag{},
+			GroupName:    group.GroupName,
+			State:        described[0].State,
+			MembersCount: described[0].MembersCount,
+			TopicsCount:  described[0].TopicsCount,
+			Topics:       []ConsumerGroupTopicLag{},
 		}
 		if !strings.EqualFold(information.State, "dead") {
 			topics, summary, err := GetConsumerGroupLag(c, ctx, metadata, brokerAddress, group.GroupName, thresholds)
@@ -66,5 +74,6 @@ func GetConsumerGroupsInformation(
 		}
 		result = append(result, information)
 	}
+
 	return result, nil
 }
