@@ -71,9 +71,12 @@ authentication:
   super_admin_email: super-admin@example.com
 
   # Passwords must contain 8-99 characters, including uppercase, lowercase,
-  # a number, and one of !@#$%^&*()_.
+  # a number, and one of !@#$%^&*()_. Set this through a secret source before
+  # starting `serve`.
   # ENV: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD
-  super_admin_password: Replace1_with_a_long_secret
+  super_admin_password: >-
+    example
+    A1_
 
   # verify stops on a bootstrap mismatch. update reconciles a valid Super Admin
   # and revokes its sessions. reinitialize drops and rebuilds the entire public
