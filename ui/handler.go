@@ -137,23 +137,52 @@ func dashboardView(r *http.Request, data *dashboardData, source dataSource) dash
 	groups := consumerGroupViews(data.Groups, source.Thresholds())
 	total := len(groups)
 	shown := min(4, total)
+
 	return dashboardPage{
-		Navigation:     navigationFor(r, "dashboard"),
-		Connection:     connectionView{Status: "CONNECTED", Latency: strconv.FormatInt(data.Snapshot.Latency.Milliseconds(), 10) + "ms", Protocol: source.Protocol(), Mechanism: source.Authentication()},
-		Metrics:        []metricView{{Label: "Brokers", Value: int64(len(metadata.Brokers))}, {Label: "Topics", Value: int64(len(metadata.Topics))}, {Label: "Partitions", Value: int64(partitionCount)}, {Label: "Consumer Groups", Value: int64(total)}},
-		ConsumerGroups: groups[:shown], Health: healthViewFrom(data.Health),
+		Navigation: navigationFor(r, "dashboard"),
+		Connection: connectionView{
+			Status:    "CONNECTED",
+			Latency:   strconv.FormatInt(data.Snapshot.Latency.Milliseconds(), 10) + "ms",
+			Protocol:  source.Protocol(),
+			Mechanism: source.Authentication(),
+		},
+		Metrics: []metricView{
+			{Label: "Brokers", Value: int64(len(metadata.Brokers))},
+			{Label: "Topics", Value: int64(len(metadata.Topics))},
+			{Label: "Partitions", Value: int64(partitionCount)},
+			{Label: "Consumer Groups", Value: int64(total)},
+		},
+		ConsumerGroups: groups[:shown],
+		Health:         healthViewFrom(data.Health),
 		GroupCountText: strconv.Itoa(shown) + " of " + strconv.Itoa(total),
 	}
 }
 
-func consumerGroupViews(groups []kafkaesque_consumers.ConsumerGroupInformation, thresholds kafkaesque_consumers.LagThresholds) []consumerGroupView {
+func consumerGroupViews(
+	groups []kafkaesque_consumers.ConsumerGroupInformation,
+	thresholds kafkaesque_consumers.LagThresholds,
+) []consumerGroupView {
 	views := make([]consumerGroupView, 0, len(groups))
 	for _, group := range groups {
 		health, healthClass := lagStatusView(kafkaesque_consumers.ConsumerLagStatus(group.TotalLag, thresholds))
 		state := kafkaesque_consumers.GroupStateCategory(group.State)
-		views = append(views, consumerGroupView{Name: group.GroupName, URL: "/ui/consumer-groups/" + url.PathEscape(group.GroupName), Topics: group.TopicsCount, Members: group.MembersCount, State: state, StateClass: stateClass(state), TotalLag: group.TotalLag, Health: health, HealthClass: healthClass})
+		views = append(views, consumerGroupView{
+			Name:        group.GroupName,
+			URL:         "/ui/consumer-groups/" + url.PathEscape(group.GroupName),
+			Topics:      group.TopicsCount,
+			Members:     group.MembersCount,
+			State:       state,
+			StateClass:  stateClass(state),
+			TotalLag:    group.TotalLag,
+			Health:      health,
+			HealthClass: healthClass,
+		})
 	}
-	sort.Slice(views, func(i, j int) bool { return views[i].Name < views[j].Name })
+
+	sort.Slice(views, func(i, j int) bool {
+		return views[i].Name < views[j].Name
+	})
+
 	return views
 }
 
@@ -186,7 +215,16 @@ func healthViewFrom(info *kafkaesque_health.Information) healthView {
 	if info.Status != kafkaesque_health.StatusHealthy {
 		class = "warning"
 	}
-	return healthView{Status: info.Status, StatusClass: class, Offline: info.OfflinePartitionCount, UnderReplicated: info.UnderReplicatedCount, Rebalancing: info.RebalancingGroupCount, Dead: info.DeadGroupCount, Lagging: info.LaggingGroupCount}
+
+	return healthView{
+		Status:          info.Status,
+		StatusClass:     class,
+		Offline:         info.OfflinePartitionCount,
+		UnderReplicated: info.UnderReplicatedCount,
+		Rebalancing:     info.RebalancingGroupCount,
+		Dead:            info.DeadGroupCount,
+		Lagging:         info.LaggingGroupCount,
+	}
 }
 
 // NewHandler returns an authenticated embedded UI handler.
@@ -230,19 +268,43 @@ func newHandlerWithAuth(
 		if authentication == nil {
 			return handler
 		}
+
 		return authenticateUI(authentication, cookieSecure, logger, handler)
 	}
+
+	// Authentication routes.
 	if authentication != nil {
 		mux.HandleFunc("GET /ui/login", renderLogin)
 		mux.HandleFunc("POST /ui/login", loginUI(authentication, limiter, cookieSecure, logger))
 		mux.HandleFunc("POST /ui/logout", protect(logoutUI(authentication, cookieSecure, logger)))
-		mux.HandleFunc("GET /ui/users", protect(authorizeUI(kafkaesque_auth.PermissionUserView, renderUsers(authentication, logger))))
-		mux.HandleFunc("GET /ui/users/new", protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, renderNewUser(authentication))))
-		mux.HandleFunc("POST /ui/users", protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, createUserUI(authentication, logger))))
-		mux.HandleFunc("GET /ui/users/{id}/edit", protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, renderEditUser(authentication, logger))))
-		mux.HandleFunc("POST /ui/users/{id}", protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, updateUserUI(authentication, logger))))
-		mux.HandleFunc("POST /ui/users/{id}/delete", protect(authorizeUI(kafkaesque_auth.PermissionUserDelete, deleteUserUI(authentication, logger))))
 
+		// User account routes.
+		mux.HandleFunc(
+			"GET /ui/users",
+			protect(authorizeUI(kafkaesque_auth.PermissionUserView, renderUsers(authentication, logger))),
+		)
+		mux.HandleFunc(
+			"GET /ui/users/new",
+			protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, renderNewUser(authentication))),
+		)
+		mux.HandleFunc(
+			"POST /ui/users",
+			protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, createUserUI(authentication, logger))),
+		)
+		mux.HandleFunc(
+			"GET /ui/users/{id}/edit",
+			protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, renderEditUser(authentication, logger))),
+		)
+		mux.HandleFunc(
+			"POST /ui/users/{id}",
+			protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, updateUserUI(authentication, logger))),
+		)
+		mux.HandleFunc(
+			"POST /ui/users/{id}/delete",
+			protect(authorizeUI(kafkaesque_auth.PermissionUserDelete, deleteUserUI(authentication, logger))),
+		)
+
+		// Role routes.
 		mux.HandleFunc("GET /ui/roles", protect(superAdminUI(renderRoles(authentication, logger))))
 		mux.HandleFunc("GET /ui/roles/new", protect(superAdminUI(renderNewRole)))
 		mux.HandleFunc("POST /ui/roles", protect(superAdminUI(createRoleUI(authentication, logger))))
@@ -250,23 +312,33 @@ func newHandlerWithAuth(
 		mux.HandleFunc("POST /ui/roles/{id}", protect(superAdminUI(updateRoleUI(authentication, logger))))
 		mux.HandleFunc("POST /ui/roles/{id}/delete", protect(superAdminUI(deleteRoleUI(authentication, logger))))
 	}
+
+	// Observability pages.
 	mux.HandleFunc("GET /ui", protect(renderDashboard))
 	mux.HandleFunc("GET /ui/{$}", func(w http.ResponseWriter, r *http.Request) {
-		protect(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/ui", http.StatusPermanentRedirect) })(w, r)
+		redirect := func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/ui", http.StatusPermanentRedirect)
+		}
+		protect(redirect)(w, r)
 	})
 	mux.HandleFunc("GET /ui/consumer-groups", protect(renderConsumerGroups))
 	mux.HandleFunc("GET /ui/consumer-groups/{group}", protect(renderConsumerGroupDetail))
 	mux.HandleFunc("GET /ui/topics", protect(renderTopics))
 	mux.HandleFunc("GET /ui/brokers", protect(renderBrokers))
 	mux.HandleFunc("GET /ui/cluster-health", protect(renderClusterHealth))
+
+	// Static assets.
 	mux.Handle("GET /ui/assets/KafkaesqueLogo.png", http.StripPrefix("/ui/assets/", http.FileServerFS(imageassets.Files)))
 	mux.Handle("GET /ui/assets/", http.StripPrefix("/ui/assets/", http.FileServerFS(static)))
+
 	return withHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), dataSourceKey{}, source)))
 	}))
 }
 
-func sourceFrom(r *http.Request) dataSource { return r.Context().Value(dataSourceKey{}).(dataSource) }
+func sourceFrom(r *http.Request) dataSource {
+	return r.Context().Value(dataSourceKey{}).(dataSource)
+}
 
 func renderDashboard(w http.ResponseWriter, r *http.Request) {
 	data, err := sourceFrom(r).Dashboard(r.Context())
@@ -295,7 +367,14 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
 	if state != "" && !kafkaesque_consumers.IsGroupStateCategory(state) {
-		renderUIError(w, r, http.StatusBadRequest, "consumer-groups", "Invalid consumer group request", "state must be stable, rebalancing, empty, dead, or unknown")
+		renderUIError(
+			w,
+			r,
+			http.StatusBadRequest,
+			"consumer-groups",
+			"Invalid consumer group request",
+			"state must be stable, rebalancing, empty, dead, or unknown",
+		)
 		return
 	}
 	information, err := sourceFrom(r).ConsumerGroups(r.Context())
@@ -377,7 +456,11 @@ func paginateConsumerGroups(groups []consumerGroupView, query, state string, pag
 	end := min(start+pageSize, total)
 	pageLinks := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pageLinks = append(pageLinks, pageLink{Number: number, URL: consumerGroupsURL(query, state, number, pageSize), Active: number == page})
+		pageLinks = append(pageLinks, pageLink{
+			Number: number,
+			URL:    consumerGroupsURL(query, state, number, pageSize),
+			Active: number == page,
+		})
 	}
 	rangeText := "0 groups"
 	if start < end {
@@ -386,11 +469,18 @@ func paginateConsumerGroups(groups []consumerGroupView, query, state string, pag
 		rangeText = "0 of " + strconv.Itoa(total) + " groups"
 	}
 	results := consumerGroupsResults{
-		Groups: groups[start:end], Range: rangeText, Pages: pageLinks,
+		Groups:     groups[start:end],
+		Range:      rangeText,
+		Pages:      pageLinks,
 		HasFilters: query != "" || state != "",
 		ClearURL:   consumerGroupsURL("", "", 1, pageSize),
-		Pagination: newPageSizeControl("/ui/consumer-groups", "#consumer-groups-results", pageSize,
-			queryField{Name: "q", Value: query}, queryField{Name: "state", Value: state}),
+		Pagination: newPageSizeControl(
+			"/ui/consumer-groups",
+			"#consumer-groups-results",
+			pageSize,
+			queryField{Name: "q", Value: query},
+			queryField{Name: "state", Value: state},
+		),
 	}
 	if page > 1 && page <= totalPages {
 		results.PreviousURL = consumerGroupsURL(query, state, page-1, pageSize)
@@ -432,9 +522,13 @@ func consumerStateOptions(selected string) []stateOption {
 func withHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+		w.Header().Set(
+			"Content-Security-Policy",
+			"default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+		)
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+
 		next.ServeHTTP(w, r)
 	})
 }

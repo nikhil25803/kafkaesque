@@ -42,7 +42,14 @@ type liveDataSource struct {
 }
 
 func newLiveDataSource(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) *liveDataSource {
-	return &liveDataSource{conn: conn, config: cfg, thresholds: kafkaesque_consumers.LagThresholds{Warning: cfg.Lag.WarningThreshold, Unhealthy: cfg.Lag.UnhealthyThreshold}}
+	return &liveDataSource{
+		conn:   conn,
+		config: cfg,
+		thresholds: kafkaesque_consumers.LagThresholds{
+			Warning:   cfg.Lag.WarningThreshold,
+			Unhealthy: cfg.Lag.UnhealthyThreshold,
+		},
+	}
 }
 
 func (s *liveDataSource) snapshot(ctx context.Context) (*kafkaesque.MetadataSnapshot, error) {
@@ -58,10 +65,12 @@ func (s *liveDataSource) Dashboard(ctx context.Context) (*dashboardData, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	health, err := kafkaesque_health.BuildInformation(snapshot.Metadata, groups, s.thresholds)
 	if err != nil {
 		return nil, err
 	}
+
 	return &dashboardData{Snapshot: snapshot, Groups: groups, Health: health}, nil
 }
 
@@ -78,7 +87,14 @@ func (s *liveDataSource) ConsumerGroup(ctx context.Context, group, topic string)
 	if err != nil {
 		return nil, err
 	}
-	info, err := kafkaesque_consumers.GetConsumerGroupInformation(s.conn, ctx, snapshot.Metadata, group, s.thresholds, true)
+	info, err := kafkaesque_consumers.GetConsumerGroupInformation(
+		s.conn,
+		ctx,
+		snapshot.Metadata,
+		group,
+		s.thresholds,
+		true,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -86,10 +102,18 @@ func (s *liveDataSource) ConsumerGroup(ctx context.Context, group, topic string)
 	if selected == "" && len(info.Topics) > 0 {
 		selected = info.Topics[0].Topic
 	}
+
 	result := &groupDetailData{Group: info, SelectedTopic: selected}
 	if selected != "" {
-		result.Topic, err = kafkaesque_consumers.GetConsumerGroupTopicInformation(s.conn, ctx, snapshot.Metadata, group, selected)
+		result.Topic, err = kafkaesque_consumers.GetConsumerGroupTopicInformation(
+			s.conn,
+			ctx,
+			snapshot.Metadata,
+			group,
+			selected,
+		)
 	}
+
 	return result, err
 }
 
@@ -117,19 +141,28 @@ func (s *liveDataSource) Health(ctx context.Context) (*kafkaesque_health.Informa
 	return data.Health, nil
 }
 
-func (s *liveDataSource) Protocol() string                               { return kafkaesque.SecurityProtocol(s.config.Kafka) }
-func (s *liveDataSource) Thresholds() kafkaesque_consumers.LagThresholds { return s.thresholds }
+func (s *liveDataSource) Protocol() string {
+	return kafkaesque.SecurityProtocol(s.config.Kafka)
+}
+
+func (s *liveDataSource) Thresholds() kafkaesque_consumers.LagThresholds {
+	return s.thresholds
+}
+
 func (s *liveDataSource) Authentication() string {
 	sasl := s.config.Kafka.Security.SASL.Mechanism
 	mtls := s.config.Kafka.Security.TLS.ClientCertFile != ""
 	if sasl != "" && mtls {
 		return sasl + " + mTLS"
 	}
+
 	if sasl != "" {
 		return sasl
 	}
+
 	if mtls {
 		return "mTLS"
 	}
+
 	return "None"
 }

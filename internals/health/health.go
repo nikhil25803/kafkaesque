@@ -44,14 +44,20 @@ func GetInformation(
 }
 
 // BuildInformation derives health from an existing metadata and consumer-group snapshot.
-func BuildInformation(metadata *kafka.MetadataResponse, groups []kafkaesque_consumers.ConsumerGroupInformation, thresholds kafkaesque_consumers.LagThresholds) (*Information, error) {
+func BuildInformation(
+	metadata *kafka.MetadataResponse,
+	groups []kafkaesque_consumers.ConsumerGroupInformation,
+	thresholds kafkaesque_consumers.LagThresholds,
+) (*Information, error) {
 	info := &Information{Status: StatusHealthy, BrokerCount: len(metadata.Brokers), TopicCount: len(metadata.Topics)}
 	for _, topic := range metadata.Topics {
 		if topic.Error != nil {
 			return nil, fmt.Errorf("metadata for topic %s: %w", topic.Name, topic.Error)
 		}
 		for _, partition := range topic.Partitions {
-			if partition.Error != nil && !errors.Is(partition.Error, kafka.LeaderNotAvailable) && !errors.Is(partition.Error, kafka.ReplicaNotAvailable) {
+			availabilityError := errors.Is(partition.Error, kafka.LeaderNotAvailable) ||
+				errors.Is(partition.Error, kafka.ReplicaNotAvailable)
+			if partition.Error != nil && !availabilityError {
 				return nil, fmt.Errorf("metadata for topic %s partition %d: %w", topic.Name, partition.ID, partition.Error)
 			}
 			info.PartitionCount++
@@ -82,5 +88,6 @@ func BuildInformation(metadata *kafka.MetadataResponse, groups []kafkaesque_cons
 		info.RebalancingGroupCount > 0 || info.DeadGroupCount > 0 || info.LaggingGroupCount > 0 {
 		info.Status = StatusDegraded
 	}
+
 	return info, nil
 }

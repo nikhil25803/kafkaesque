@@ -107,7 +107,11 @@ func saveRoleUI(manager kafkaesque_auth.RoleManager, logger *slog.Logger, editin
 			logger.Warn("role_save_rejected", "actor_user_id", actor.ID, "reason", "invalid_or_forbidden")
 			status, message := roleUIError(err)
 			view := roleFormPage{
-				Role:    kafkaesque_auth.ManagedRole{ID: r.PathValue("id"), Name: strings.TrimSpace(input.Name), Permissions: input.Permissions},
+				Role: kafkaesque_auth.ManagedRole{
+					ID:          r.PathValue("id"),
+					Name:        strings.TrimSpace(input.Name),
+					Permissions: input.Permissions,
+				},
 				Editing: editing, Error: message,
 			}
 			renderRoleForm(w, r, status, view)

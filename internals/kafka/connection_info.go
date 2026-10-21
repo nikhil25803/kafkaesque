@@ -31,16 +31,22 @@ func ClassifyConnectionError(err error) (int, string) {
 	}
 	for _, securityError := range securityErrors {
 		if errors.Is(err, securityError) {
-			if errors.Is(err, kafkago.SASLAuthenticationFailed) || errors.Is(err, kafkago.UnsupportedSASLMechanism) || errors.Is(err, kafkago.IllegalSASLState) {
+			saslError := errors.Is(err, kafkago.SASLAuthenticationFailed) ||
+				errors.Is(err, kafkago.UnsupportedSASLMechanism) ||
+				errors.Is(err, kafkago.IllegalSASLState)
+			if saslError {
 				return 2, "SASL authentication failed"
 			}
+
 			return 2, "Kafka authorization failed"
 		}
 	}
+
 	lower := strings.ToLower(err.Error())
 	if strings.Contains(lower, "tls") || strings.Contains(lower, "x509") || strings.Contains(lower, "certificate") {
 		return 2, "TLS authentication failed"
 	}
+
 	return 1, "connection failed"
 }
 
@@ -50,10 +56,13 @@ func SecurityProtocol(cfg kafkaesque_config.KafkaConfig) string {
 		if cfg.Security.TLS.Enabled {
 			return "SASL_SSL"
 		}
+
 		return "SASL_PLAINTEXT"
 	}
+
 	if cfg.Security.TLS.Enabled {
 		return "SSL"
 	}
+
 	return "PLAINTEXT"
 }

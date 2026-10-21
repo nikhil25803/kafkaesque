@@ -53,7 +53,14 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	level := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("level")))
 	if level != "" && level != "internal" && level != "external" {
-		renderUIError(w, r, http.StatusBadRequest, "topics", "Invalid topics request", "level must be internal, external, or omitted")
+		renderUIError(
+			w,
+			r,
+			http.StatusBadRequest,
+			"topics",
+			"Invalid topics request",
+			"level must be internal, external, or omitted",
+		)
 		return
 	}
 	information, err := sourceFrom(r).Topics(r.Context())
@@ -63,7 +70,12 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 	}
 	topics := make([]topicView, 0, len(information))
 	for _, topic := range information {
-		topics = append(topics, topicView{Name: topic.Name, Level: topic.Level, Partitions: topic.PartitionCount, ReplicationFactor: topic.ReplicationFactor})
+		topics = append(topics, topicView{
+			Name:              topic.Name,
+			Level:             topic.Level,
+			Partitions:        topic.PartitionCount,
+			ReplicationFactor: topic.ReplicationFactor,
+		})
 	}
 	results := paginateTopics(filterTopics(topics, query, level), query, level, page, pageSize)
 
@@ -93,7 +105,10 @@ func filterTopics(topics []topicView, query, level string) []topicView {
 			filtered = append(filtered, topic)
 		}
 	}
-	sort.Slice(filtered, func(i, j int) bool { return filtered[i].Name < filtered[j].Name })
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Name < filtered[j].Name
+	})
+
 	return filtered
 }
 
@@ -107,7 +122,11 @@ func paginateTopics(topics []topicView, query, level string, page, pageSize int)
 	end := min(start+pageSize, total)
 	pages := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pages = append(pages, pageLink{Number: number, URL: topicsURL(query, level, number, pageSize), Active: number == page})
+		pages = append(pages, pageLink{
+			Number: number,
+			URL:    topicsURL(query, level, number, pageSize),
+			Active: number == page,
+		})
 	}
 	rangeText := "0 topics"
 	if start < end {
@@ -116,11 +135,18 @@ func paginateTopics(topics []topicView, query, level string, page, pageSize int)
 		rangeText = "0 of " + strconv.Itoa(total) + " topics"
 	}
 	results := topicsResults{
-		Topics: topics[start:end], Range: rangeText, Pages: pages,
+		Topics:     topics[start:end],
+		Range:      rangeText,
+		Pages:      pages,
 		HasFilters: query != "" || level != "",
 		ClearURL:   topicsURL("", "", 1, pageSize),
-		Pagination: newPageSizeControl("/ui/topics", "#topics-results", pageSize,
-			queryField{Name: "q", Value: query}, queryField{Name: "level", Value: level}),
+		Pagination: newPageSizeControl(
+			"/ui/topics",
+			"#topics-results",
+			pageSize,
+			queryField{Name: "q", Value: query},
+			queryField{Name: "level", Value: level},
+		),
 	}
 	if page > 1 && page <= totalPages {
 		results.PreviousURL = topicsURL(query, level, page-1, pageSize)

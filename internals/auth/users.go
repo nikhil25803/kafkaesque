@@ -150,7 +150,8 @@ func (s *Service) CreateUser(ctx context.Context, actor User, input CreateUserIn
 	defer tx.Rollback(ctx)
 
 	var roleID string
-	if err := tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", input.Role).Scan(&roleID); errors.Is(err, pgx.ErrNoRows) {
+	err = tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", input.Role).Scan(&roleID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ManagedUser{}, &ValidationError{Field: "role", Message: "does not exist"}
 	} else if err != nil {
 		return ManagedUser{}, fmt.Errorf("find user role: %w", err)
@@ -227,12 +228,19 @@ func (s *Service) UpdateUser(ctx context.Context, actor User, id string, input U
 		if next.Role == "super_admin" {
 			return ManagedUser{}, ErrForbidden
 		}
-		if err := tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", next.Role).Scan(&roleID); errors.Is(err, pgx.ErrNoRows) {
+
+		err = tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", next.Role).Scan(&roleID)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return ManagedUser{}, &ValidationError{Field: "role", Message: "does not exist"}
 		} else if err != nil {
 			return ManagedUser{}, fmt.Errorf("find user role: %w", err)
 		}
-		if _, err := tx.Exec(ctx, "UPDATE user_roles SET role_id=$1, assigned_at=now() WHERE user_id=$2", roleID, id); err != nil {
+
+		const updateRole = `
+			UPDATE user_roles
+			SET role_id=$1, assigned_at=now()
+			WHERE user_id=$2`
+		if _, err := tx.Exec(ctx, updateRole, roleID, id); err != nil {
 			return ManagedUser{}, fmt.Errorf("update user role: %w", err)
 		}
 	}
@@ -307,7 +315,10 @@ func validateUpdateUser(current ManagedUser, input UpdateUserInput) (ManagedUser
 	if input.Name != nil {
 		value, valid := credentials.NormalizeName(*input.Name)
 		if !valid {
-			return ManagedUser{}, false, &ValidationError{Field: "name", Message: "must contain 1-100 characters without line breaks"}
+			return ManagedUser{}, false, &ValidationError{
+				Field:   "name",
+				Message: "must contain 1-100 characters without line breaks",
+			}
 		}
 		next.Name = value
 	}
@@ -326,7 +337,10 @@ func validateUpdateUser(current ManagedUser, input UpdateUserInput) (ManagedUser
 		next.Email = value
 	}
 	if usernameEmail, isEmail := credentials.NormalizeEmail(next.Username); isEmail && usernameEmail != next.Email {
-		return ManagedUser{}, false, &ValidationError{Field: "username", Message: "must match email when it is an email address"}
+		return ManagedUser{}, false, &ValidationError{
+			Field:   "username",
+			Message: "must match email when it is an email address",
+		}
 	}
 	if input.Role != nil {
 		next.Role = strings.ToLower(strings.TrimSpace(*input.Role))
@@ -341,7 +355,10 @@ func validateCreateUser(input CreateUserInput) (CreateUserInput, error) {
 	var valid bool
 	input.Name, valid = credentials.NormalizeName(input.Name)
 	if !valid {
-		return CreateUserInput{}, &ValidationError{Field: "name", Message: "must contain 1-100 characters without line breaks"}
+		return CreateUserInput{}, &ValidationError{
+			Field:   "name",
+			Message: "must contain 1-100 characters without line breaks",
+		}
 	}
 
 	input.Username, valid = credentials.NormalizeUsername(input.Username)
@@ -354,7 +371,10 @@ func validateCreateUser(input CreateUserInput) (CreateUserInput, error) {
 		return CreateUserInput{}, &ValidationError{Field: "email", Message: "is invalid"}
 	}
 	if usernameEmail, isEmail := credentials.NormalizeEmail(input.Username); isEmail && usernameEmail != input.Email {
-		return CreateUserInput{}, &ValidationError{Field: "username", Message: "must match email when it is an email address"}
+		return CreateUserInput{}, &ValidationError{
+			Field:   "username",
+			Message: "must match email when it is an email address",
+		}
 	}
 
 	if err := credentials.ValidatePassword(input.Password); err != nil {

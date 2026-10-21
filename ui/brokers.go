@@ -51,7 +51,12 @@ func renderBrokers(w http.ResponseWriter, r *http.Request) {
 	}
 	brokers := make([]brokerView, 0, len(information))
 	for _, broker := range information {
-		brokers = append(brokers, brokerView{ID: broker.ID, Address: broker.Address, ConnectAddress: broker.ConnectAddress, Rack: broker.Rack})
+		brokers = append(brokers, brokerView{
+			ID:             broker.ID,
+			Address:        broker.Address,
+			ConnectAddress: broker.ConnectAddress,
+			Rack:           broker.Rack,
+		})
 	}
 	results := paginateBrokers(filterBrokers(brokers, query), query, page, pageSize)
 
@@ -83,7 +88,10 @@ func filterBrokers(brokers []brokerView, query string) []brokerView {
 			filtered = append(filtered, broker)
 		}
 	}
-	sort.Slice(filtered, func(i, j int) bool { return filtered[i].ID < filtered[j].ID })
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].ID < filtered[j].ID
+	})
+
 	return filtered
 }
 
@@ -97,7 +105,11 @@ func paginateBrokers(brokers []brokerView, query string, page, pageSize int) bro
 	end := min(start+pageSize, total)
 	pages := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pages = append(pages, pageLink{Number: number, URL: brokersURL(query, number, pageSize), Active: number == page})
+		pages = append(pages, pageLink{
+			Number: number,
+			URL:    brokersURL(query, number, pageSize),
+			Active: number == page,
+		})
 	}
 	rangeText := "0 brokers"
 	if start < end {
@@ -106,10 +118,17 @@ func paginateBrokers(brokers []brokerView, query string, page, pageSize int) bro
 		rangeText = "0 of " + strconv.Itoa(total) + " brokers"
 	}
 	results := brokersResults{
-		Brokers: brokers[start:end], Range: rangeText, Pages: pages, HasFilters: query != "",
-		ClearURL: brokersURL("", 1, pageSize),
-		Pagination: newPageSizeControl("/ui/brokers", "#brokers-results", pageSize,
-			queryField{Name: "q", Value: query}),
+		Brokers:    brokers[start:end],
+		Range:      rangeText,
+		Pages:      pages,
+		HasFilters: query != "",
+		ClearURL:   brokersURL("", 1, pageSize),
+		Pagination: newPageSizeControl(
+			"/ui/brokers",
+			"#brokers-results",
+			pageSize,
+			queryField{Name: "q", Value: query},
+		),
 	}
 	if page > 1 && page <= totalPages {
 		results.PreviousURL = brokersURL(query, page-1, pageSize)

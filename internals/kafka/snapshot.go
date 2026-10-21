@@ -22,15 +22,19 @@ func (c *KafkaesqueConn) GetMetadataSnapshot(ctx context.Context) (*MetadataSnap
 	if err != nil {
 		return nil, err
 	}
+
 	for _, topic := range metadata.Topics {
 		if topic.Error != nil {
 			return nil, fmt.Errorf("metadata for topic %s: %w", topic.Name, topic.Error)
 		}
 		for _, partition := range topic.Partitions {
-			if partition.Error != nil && !errors.Is(partition.Error, kafkago.LeaderNotAvailable) && !errors.Is(partition.Error, kafkago.ReplicaNotAvailable) {
+			availabilityError := errors.Is(partition.Error, kafkago.LeaderNotAvailable) ||
+				errors.Is(partition.Error, kafkago.ReplicaNotAvailable)
+			if partition.Error != nil && !availabilityError {
 				return nil, fmt.Errorf("metadata for topic %s partition %d: %w", topic.Name, partition.ID, partition.Error)
 			}
 		}
 	}
+
 	return &MetadataSnapshot{Metadata: metadata, Latency: time.Since(started)}, nil
 }

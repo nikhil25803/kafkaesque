@@ -49,13 +49,19 @@ func clusterHealthView(health *kafkaesque_health.Information, requests ...*http.
 	if len(requests) > 0 {
 		navigation = navigationFor(requests[0], "cluster-health")
 	}
+
 	return clusterHealthPage{
 		Navigation:  navigation,
 		Status:      health.Status,
 		StatusClass: statusClass,
 		Headline:    headline,
 		Message:     clusterHealthMessage(health),
-		Metrics:     []metricView{{Label: "Brokers", Value: int64(health.BrokerCount)}, {Label: "Topics", Value: int64(health.TopicCount)}, {Label: "Partitions", Value: int64(health.PartitionCount)}, {Label: "Consumer Groups", Value: int64(health.ConsumerGroupCount)}},
+		Metrics: []metricView{
+			{Label: "Brokers", Value: int64(health.BrokerCount)},
+			{Label: "Topics", Value: int64(health.TopicCount)},
+			{Label: "Partitions", Value: int64(health.PartitionCount)},
+			{Label: "Consumer Groups", Value: int64(health.ConsumerGroupCount)},
+		},
 		PartitionDiagnostics: []healthDiagnosticView{
 			diagnostic("Offline partitions", health.OfflinePartitionCount, true),
 			diagnostic("Under-replicated partitions", health.UnderReplicatedCount, false),
@@ -104,6 +110,7 @@ func clusterHealthMessage(health *kafkaesque_health.Information) string {
 	default:
 		summary = strings.Join(reasons[:len(reasons)-1], ", ") + ", and " + reasons[len(reasons)-1]
 	}
+
 	return "Detected " + summary + ". Review the diagnostics below."
 }
 
@@ -115,5 +122,6 @@ func diagnostic(label string, value int, critical bool) healthDiagnosticView {
 			status, class = "UNHEALTHY", "critical"
 		}
 	}
+
 	return healthDiagnosticView{Label: label, Value: value, Status: status, StatusClass: class}
 }

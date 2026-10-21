@@ -45,11 +45,28 @@ type presentationOptions struct {
 }
 
 func (r InformationRequest) any() bool {
-	return r.Metadata || r.Health || r.Topics || r.Brokers || r.Partitions || r.Consumers || r.Consumer || r.Member || r.Group != "" || r.Topic != ""
+	return r.Metadata ||
+		r.Health ||
+		r.Topics ||
+		r.Brokers ||
+		r.Partitions ||
+		r.Consumers ||
+		r.Consumer ||
+		r.Member ||
+		r.Group != "" ||
+		r.Topic != ""
 }
 
 func (r InformationRequest) healthIsStandalone() bool {
-	return !r.Metadata && !r.Topics && !r.Brokers && !r.Partitions && !r.Consumers && !r.Consumer && !r.Member && r.Group == "" && r.Topic == ""
+	return !r.Metadata &&
+		!r.Topics &&
+		!r.Brokers &&
+		!r.Partitions &&
+		!r.Consumers &&
+		!r.Consumer &&
+		!r.Member &&
+		r.Group == "" &&
+		r.Topic == ""
 }
 
 func newRootCommand() *cobra.Command {
@@ -82,7 +99,8 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runRootCommand(cmd, request, configPath, check, presentationOptions{
-				output: output, watchSeconds: watchSeconds,
+				output:        output,
+				watchSeconds:  watchSeconds,
 				outputChanged: cmd.Flags().Changed("output"),
 				watchChanged:  cmd.Flags().Changed("watch"),
 			}, checkConnection)
@@ -91,6 +109,7 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 
 	cmd.Flags().SortFlags = false
 
+	// Information flags.
 	cmd.Flags().BoolVarP(&request.Metadata, "metadata", "m", false, "Retrieve cluster metadata")
 	cmd.Flags().BoolVar(&request.Health, "health", false, "Show cluster health")
 	cmd.Flags().BoolVarP(&request.Brokers, "brokers", "b", false, "Retrieve broker information")
@@ -101,12 +120,19 @@ metadata, brokers, topics, partitions, and consumer groups.`,
 	cmd.Flags().BoolVar(&request.Consumer, "consumer", false, "Retrieve detailed information for one consumer group")
 	cmd.Flags().BoolVar(&request.Member, "member", false, "Include consumer group member assignments")
 	cmd.Flags().StringVar(&request.Group, "group", "", "Consumer group name")
+
+	// Configuration and checks.
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to the YAML configuration file")
 	cmd.Flags().StringVar(&check, "check", "", "Check configuration or Kafka connection (config|conn)")
 	cmd.Flags().Lookup("check").NoOptDefVal = "conn"
+
+	// Presentation flags.
 	cmd.Flags().StringVar(&output, "output", "text", "Output format (text|json)")
 	cmd.Flags().IntVar(&watchSeconds, "watch", 0, "Refresh information every N seconds")
+
+	// General flags.
 	cmd.Flags().BoolP("version", "v", false, "Show Kafkaesque version")
+
 	cmd.AddCommand(newServeCommand(serveAPI, initializeServer))
 
 	return cmd
@@ -196,7 +222,11 @@ func runRootCommand(
 
 	conn, err := kafkaesque.Connect(ctx, cfg.Kafka)
 	if err != nil {
-		return fmt.Errorf("failed to configure Kafka connection to %s: %w", strings.Join(cfg.Kafka.BootstrapServers, ", "), err)
+		return fmt.Errorf(
+			"failed to configure Kafka connection to %s: %w",
+			strings.Join(cfg.Kafka.BootstrapServers, ", "),
+			err,
+		)
 	}
 	defer conn.Close()
 
@@ -218,7 +248,12 @@ func runRootCommand(
 
 const clearScreen = "\x1b[2J\x1b[H"
 
-func refreshInformation(ctx context.Context, out io.Writer, ticks <-chan time.Time, render func(io.Writer) error) error {
+func refreshInformation(
+	ctx context.Context,
+	out io.Writer,
+	ticks <-chan time.Time,
+	render func(io.Writer) error,
+) error {
 	refresh := false
 	for {
 		var snapshot bytes.Buffer
@@ -257,8 +292,13 @@ func checkKafkaConnection(ctx context.Context, cfg kafkaesque_config.KafkaConfig
 
 type reportedExitError struct{ code int }
 
-func (e *reportedExitError) Error() string { return "Kafka connection check failed" }
-func (e *reportedExitError) ExitCode() int { return e.code }
+func (e *reportedExitError) Error() string {
+	return "Kafka connection check failed"
+}
+
+func (e *reportedExitError) ExitCode() int {
+	return e.code
+}
 
 // ExitCode returns the process exit code represented by err.
 func ExitCode(err error) int {
@@ -279,7 +319,11 @@ func classifyConnectionCheckError(err error) (int, string) {
 	return kafkaesque.ClassifyConnectionError(err)
 }
 
-func printConnectionCheckSuccess(cmd *cobra.Command, cfg kafkaesque_config.KafkaConfig, result *kafkaesque.CheckResult) {
+func printConnectionCheckSuccess(
+	cmd *cobra.Command,
+	cfg kafkaesque_config.KafkaConfig,
+	result *kafkaesque.CheckResult,
+) {
 	out := cmd.OutOrStdout()
 	printConnectionCheckHeader(out, cfg)
 	fmt.Fprintln(out, "Status: CONNECTED")
@@ -291,7 +335,13 @@ func printConnectionCheckSuccess(cmd *cobra.Command, cfg kafkaesque_config.Kafka
 	fmt.Fprintf(out, "Connection latency: %dms\n", result.Latency.Milliseconds())
 }
 
-func printConnectionCheckFailure(cmd *cobra.Command, cfg kafkaesque_config.KafkaConfig, reason string, err error, code int) {
+func printConnectionCheckFailure(
+	cmd *cobra.Command,
+	cfg kafkaesque_config.KafkaConfig,
+	reason string,
+	err error,
+	code int,
+) {
 	out := cmd.OutOrStdout()
 	printConnectionCheckHeader(out, cfg)
 	fmt.Fprintln(out, "Status: FAILED")

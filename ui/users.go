@@ -131,8 +131,10 @@ func createUserUI(manager kafkaesque_auth.RuntimeManager, logger *slog.Logger) h
 			return
 		}
 		form := userFormView{
-			Name: strings.TrimSpace(r.FormValue("name")), Username: strings.TrimSpace(r.FormValue("username")),
-			Email: strings.TrimSpace(r.FormValue("email")), Role: strings.ToLower(strings.TrimSpace(r.FormValue("role"))),
+			Name:               strings.TrimSpace(r.FormValue("name")),
+			Username:           strings.TrimSpace(r.FormValue("username")),
+			Email:              strings.TrimSpace(r.FormValue("email")),
+			Role:               strings.ToLower(strings.TrimSpace(r.FormValue("role"))),
 			UseEmailAsUsername: r.FormValue("use_email_as_username") == "true",
 		}
 		if form.Role == "" {
@@ -146,12 +148,18 @@ func createUserUI(manager kafkaesque_auth.RuntimeManager, logger *slog.Logger) h
 		}
 		actor, _ := kafkaesque_auth.UserFromContext(r.Context())
 		created, err := manager.CreateUser(r.Context(), actor, kafkaesque_auth.CreateUserInput{
-			Name: form.Name, Username: form.Username, Email: form.Email,
-			Password: r.FormValue("password"), Role: form.Role,
+			Name:     form.Name,
+			Username: form.Username,
+			Email:    form.Email,
+			Password: r.FormValue("password"),
+			Role:     form.Role,
 		})
 		if err != nil {
 			prepared, prepareErr := userForm(r, manager, kafkaesque_auth.ManagedUser{
-				Name: form.Name, Username: form.Username, Email: form.Email, Role: form.Role,
+				Name:     form.Name,
+				Username: form.Username,
+				Email:    form.Email,
+				Role:     form.Role,
 			})
 			if prepareErr == nil {
 				form.RoleOptions = prepared.RoleOptions
@@ -228,11 +236,19 @@ func deleteUserUI(manager kafkaesque_auth.UserManager, logger *slog.Logger) http
 	}
 }
 
-func userForm(r *http.Request, manager kafkaesque_auth.RuntimeManager, user kafkaesque_auth.ManagedUser) (userFormView, error) {
+func userForm(
+	r *http.Request,
+	manager kafkaesque_auth.RuntimeManager,
+	user kafkaesque_auth.ManagedUser,
+) (userFormView, error) {
 	actor, _ := kafkaesque_auth.UserFromContext(r.Context())
 	form := userFormView{
-		ID: user.ID, Name: user.Name, Username: user.Username, Email: user.Email,
-		Role: user.Role, CanManageRole: actor.Role == "super_admin",
+		ID:            user.ID,
+		Name:          user.Name,
+		Username:      user.Username,
+		Email:         user.Email,
+		Role:          user.Role,
+		CanManageRole: actor.Role == "super_admin",
 	}
 	if !form.CanManageRole {
 		form.RoleOptions = []roleOption{{Value: "user", Label: "User", Selected: true}}
@@ -245,14 +261,22 @@ func userForm(r *http.Request, manager kafkaesque_auth.RuntimeManager, user kafk
 	for _, role := range roles {
 		if role.Name != "super_admin" {
 			form.RoleOptions = append(form.RoleOptions, roleOption{
-				Value: role.Name, Label: roleLabel(role.Name), Selected: role.Name == form.Role,
+				Value:    role.Name,
+				Label:    roleLabel(role.Name),
+				Selected: role.Name == form.Role,
 			})
 		}
 	}
 	return form, nil
 }
 
-func handleUserCreationError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, form userFormView, err error) {
+func handleUserCreationError(
+	w http.ResponseWriter,
+	r *http.Request,
+	logger *slog.Logger,
+	form userFormView,
+	err error,
+) {
 	actor, _ := kafkaesque_auth.UserFromContext(r.Context())
 	var validationError *kafkaesque_auth.ValidationError
 	switch {
@@ -270,7 +294,14 @@ func handleUserCreationError(w http.ResponseWriter, r *http.Request, logger *slo
 		renderNewUserPage(w, r, http.StatusConflict, form)
 	default:
 		logger.Error("user_creation_failed", "actor_user_id", actor.ID, "reason", "database_unavailable")
-		renderUIError(w, r, http.StatusServiceUnavailable, "users", "User creation unavailable", "The user database is unavailable.")
+		renderUIError(
+			w,
+			r,
+			http.StatusServiceUnavailable,
+			"users",
+			"User creation unavailable",
+			"The user database is unavailable.",
+		)
 	}
 }
 
@@ -305,14 +336,23 @@ func loadUsers(r *http.Request, manager kafkaesque_auth.UserManager, page, pageS
 	views := make([]userView, 0, len(users))
 	for _, user := range users {
 		createdAt := user.CreatedAt.UTC()
+		canEdit := kafkaesque_auth.HasPermission(actor, kafkaesque_auth.PermissionUserEdit) &&
+			user.Role != "super_admin" &&
+			(actor.Role == "super_admin" || user.Role == "user")
+		canDelete := actor.Role == "super_admin" &&
+			kafkaesque_auth.HasPermission(actor, kafkaesque_auth.PermissionUserDelete) &&
+			user.Role != "super_admin"
+
 		views = append(views, userView{
-			ID: user.ID, Name: user.Name, Username: user.Username, Email: user.Email,
-			Role: roleLabel(user.Role), Added: createdAt.Format("02 Jan 2006, 15:04 UTC"),
-			AddedAt: createdAt.Format(time.RFC3339),
-			CanEdit: kafkaesque_auth.HasPermission(actor, kafkaesque_auth.PermissionUserEdit) &&
-				user.Role != "super_admin" && (actor.Role == "super_admin" || user.Role == "user"),
-			CanDelete: actor.Role == "super_admin" && kafkaesque_auth.HasPermission(actor, kafkaesque_auth.PermissionUserDelete) &&
-				user.Role != "super_admin",
+			ID:        user.ID,
+			Name:      user.Name,
+			Username:  user.Username,
+			Email:     user.Email,
+			Role:      roleLabel(user.Role),
+			Added:     createdAt.Format("02 Jan 2006, 15:04 UTC"),
+			AddedAt:   createdAt.Format(time.RFC3339),
+			CanEdit:   canEdit,
+			CanDelete: canDelete,
 		})
 	}
 	results := paginateUsers(views, total, page, pageSize)
@@ -326,7 +366,11 @@ func paginateUsers(users []userView, total, page, pageSize int) usersResults {
 	end := min(start+len(users), total)
 	pages := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pages = append(pages, pageLink{Number: number, URL: usersURL(number, pageSize), Active: number == page})
+		pages = append(pages, pageLink{
+			Number: number,
+			URL:    usersURL(number, pageSize),
+			Active: number == page,
+		})
 	}
 	rangeText := "0 users"
 	if len(users) > 0 {
@@ -335,7 +379,9 @@ func paginateUsers(users []userView, total, page, pageSize int) usersResults {
 		rangeText = "0 of " + strconv.Itoa(total) + " users"
 	}
 	results := usersResults{
-		Users: users, Range: rangeText, Pages: pages,
+		Users:      users,
+		Range:      rangeText,
+		Pages:      pages,
 		Pagination: newPageSizeControl("/ui/users", "#users-results", pageSize),
 	}
 	if page > 1 && page <= totalPages {

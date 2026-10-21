@@ -408,7 +408,11 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 	}
 
 	var roles int
-	if err := executor.QueryRow(ctx, "SELECT count(*) FROM roles WHERE system AND name IN ('super_admin', 'admin', 'user')").Scan(&roles); err != nil || roles != 3 {
+	const systemRolesQuery = `
+		SELECT count(*)
+		FROM roles
+		WHERE system AND name IN ('super_admin', 'admin', 'user')`
+	if err := executor.QueryRow(ctx, systemRolesQuery).Scan(&roles); err != nil || roles != 3 {
 		return schemaIntegrityError()
 	}
 	if err := executor.QueryRow(ctx, "SELECT count(*) FROM roles WHERE system").Scan(&roles); err != nil || roles != 3 {
@@ -427,7 +431,8 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 		return schemaIntegrityError()
 	}
 	var catalogPermissions, systemGrants int
-	if err := executor.QueryRow(ctx, "SELECT count(*) FROM permissions").Scan(&catalogPermissions); err != nil || catalogPermissions != 4 {
+	if err := executor.QueryRow(ctx, "SELECT count(*) FROM permissions").Scan(&catalogPermissions); err != nil ||
+		catalogPermissions != 4 {
 		return schemaIntegrityError()
 	}
 	const systemGrantsQuery = `

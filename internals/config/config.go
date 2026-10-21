@@ -470,7 +470,8 @@ func (c *Config) ValidateServe() error {
 	if err := credentials.ValidatePassword(c.Authentication.SuperAdminPassword); err != nil {
 		return fmt.Errorf("authentication.super_admin_password or %s %s", SuperAdminPasswordEnv, err)
 	}
-	if recovery := c.Authentication.SuperAdminRecovery; recovery != "verify" && recovery != "update" && recovery != "reinitialize" {
+	recovery := c.Authentication.SuperAdminRecovery
+	if recovery != "verify" && recovery != "update" && recovery != "reinitialize" {
 		return fmt.Errorf(
 			"authentication.super_admin_recovery or %s must be verify, update, or reinitialize",
 			SuperAdminRecoveryEnv,
@@ -559,7 +560,10 @@ func resolveConfigPath(configDir, path string) string {
 }
 
 func validateSecurity(security SecurityConfig) error {
-	tlsConfigured := security.TLS.CAFile != "" || security.TLS.ClientCertFile != "" || security.TLS.ClientKeyFile != "" || security.TLS.ServerName != ""
+	tlsConfigured := security.TLS.CAFile != "" ||
+		security.TLS.ClientCertFile != "" ||
+		security.TLS.ClientKeyFile != "" ||
+		security.TLS.ServerName != ""
 	if tlsConfigured && !security.TLS.Enabled {
 		return fmt.Errorf("kafka TLS settings require tls.enabled")
 	}

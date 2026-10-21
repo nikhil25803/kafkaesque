@@ -142,14 +142,30 @@ func newHandler(
 		mux.HandleFunc("GET /api/v1/auth/me", s.authenticate(s.me))
 	}
 
-	// User management.
+	// User accounts.
 	if authentication != nil {
-		mux.HandleFunc("GET /api/v1/users", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserView, s.listUsers)))
-		mux.HandleFunc("POST /api/v1/users", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserCreate, s.createUser)))
-		mux.HandleFunc("GET /api/v1/users/{id}", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserView, s.getUser)))
-		mux.HandleFunc("PATCH /api/v1/users/{id}", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserEdit, s.updateUser)))
-		mux.HandleFunc("DELETE /api/v1/users/{id}", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserDelete, s.deleteUser)))
+		mux.HandleFunc(
+			"GET /api/v1/users",
+			s.authenticate(s.authorize(kafkaesque_auth.PermissionUserView, s.listUsers)),
+		)
+		mux.HandleFunc(
+			"POST /api/v1/users",
+			s.authenticate(s.authorize(kafkaesque_auth.PermissionUserCreate, s.createUser)),
+		)
+		mux.HandleFunc(
+			"GET /api/v1/users/{id}",
+			s.authenticate(s.authorize(kafkaesque_auth.PermissionUserView, s.getUser)),
+		)
+		mux.HandleFunc(
+			"PATCH /api/v1/users/{id}",
+			s.authenticate(s.authorize(kafkaesque_auth.PermissionUserEdit, s.updateUser)),
+		)
+		mux.HandleFunc(
+			"DELETE /api/v1/users/{id}",
+			s.authenticate(s.authorize(kafkaesque_auth.PermissionUserDelete, s.deleteUser)),
+		)
 
+		// Roles and permissions.
 		mux.HandleFunc("GET /api/v1/roles", s.authenticate(s.superAdmin(s.listRoles)))
 		mux.HandleFunc("POST /api/v1/roles", s.authenticate(s.superAdmin(s.createRole)))
 		mux.HandleFunc("GET /api/v1/roles/{id}", s.authenticate(s.superAdmin(s.getRole)))
@@ -192,7 +208,10 @@ func newHandler(
 	// Brokers.
 	mux.HandleFunc("GET /api/v1/brokers", protect(s.withConnection(s.brokers)))
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeNotFound(w, "route", "") })
+	// Unknown routes.
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeNotFound(w, "route", "")
+	})
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -480,10 +499,15 @@ func containsFold(value, query string) bool {
 }
 
 func writeNamedError(w http.ResponseWriter, kind, name string, err error) {
-	if errors.Is(err, kafka.GroupIdNotFound) || strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(strings.ToLower(err.Error()), "no committed offsets") {
+	message := strings.ToLower(err.Error())
+	notFound := errors.Is(err, kafka.GroupIdNotFound) ||
+		strings.Contains(message, "not found") ||
+		strings.Contains(message, "no committed offsets")
+	if notFound {
 		writeNotFound(w, kind, name)
 		return
 	}
+
 	writeUpstreamError(w, err)
 }
 
@@ -498,9 +522,13 @@ func writeNotFound(w http.ResponseWriter, kind, name string) {
 func writeUpstreamError(w http.ResponseWriter, err error) {
 	status, code, message := http.StatusBadGateway, "upstream_error", "Kafka request failed"
 	var networkError net.Error
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, kafka.RequestTimedOut) || errors.As(err, &networkError) && networkError.Timeout() {
+	timedOut := errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, kafka.RequestTimedOut) ||
+		errors.As(err, &networkError) && networkError.Timeout()
+	if timedOut {
 		status, code, message = http.StatusGatewayTimeout, "timeout", "Kafka request timed out"
 	}
+
 	writeError(w, status, code, message)
 }
 

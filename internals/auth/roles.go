@@ -61,7 +61,15 @@ func (s *Service) ListRoles(ctx context.Context) ([]ManagedRole, error) {
 	roles := make([]ManagedRole, 0)
 	for rows.Next() {
 		var role ManagedRole
-		if err := rows.Scan(&role.ID, &role.Name, &role.System, &role.CreatedAt, &role.UpdatedAt, &role.UserCount, &role.Permissions); err != nil {
+		if err := rows.Scan(
+			&role.ID,
+			&role.Name,
+			&role.System,
+			&role.CreatedAt,
+			&role.UpdatedAt,
+			&role.UserCount,
+			&role.Permissions,
+		); err != nil {
 			return nil, fmt.Errorf("scan role: %w", err)
 		}
 		sort.Strings(role.Permissions)
@@ -152,7 +160,8 @@ func (s *Service) UpdateRole(ctx context.Context, actor User, id string, input R
 	defer tx.Rollback(ctx)
 
 	var system bool
-	if err := tx.QueryRow(ctx, "SELECT system FROM roles WHERE id::text=$1 FOR UPDATE", id).Scan(&system); errors.Is(err, pgx.ErrNoRows) {
+	err = tx.QueryRow(ctx, "SELECT system FROM roles WHERE id::text=$1 FOR UPDATE", id).Scan(&system)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ManagedRole{}, ErrNotFound
 	} else if err != nil {
 		return ManagedRole{}, fmt.Errorf("find role: %w", err)
@@ -205,7 +214,8 @@ func (s *Service) DeleteRole(ctx context.Context, actor User, id string) error {
 
 func validateRoleInput(input RoleInput) (RoleInput, error) {
 	input.Name = strings.ToLower(strings.TrimSpace(input.Name))
-	if !roleNamePattern.MatchString(input.Name) || input.Name == "super_admin" || input.Name == "admin" || input.Name == "user" {
+	reserved := input.Name == "super_admin" || input.Name == "admin" || input.Name == "user"
+	if !roleNamePattern.MatchString(input.Name) || reserved {
 		return RoleInput{}, &ValidationError{Field: "name", Message: "must be a unique lowercase role name"}
 	}
 
@@ -214,7 +224,10 @@ func validateRoleInput(input RoleInput) (RoleInput, error) {
 	for _, permission := range input.Permissions {
 		permission = strings.TrimSpace(permission)
 		if permission == PermissionUserDelete {
-			return RoleInput{}, &ValidationError{Field: "permissions", Message: "cannot include the Super Admin delete permission"}
+			return RoleInput{}, &ValidationError{
+				Field:   "permissions",
+				Message: "cannot include the Super Admin delete permission",
+			}
 		}
 		if permission != PermissionUserView && permission != PermissionUserCreate && permission != PermissionUserEdit {
 			return RoleInput{}, &ValidationError{Field: "permissions", Message: "contains an unsupported permission"}
@@ -225,7 +238,10 @@ func validateRoleInput(input RoleInput) (RoleInput, error) {
 		}
 	}
 	if (seen[PermissionUserCreate] || seen[PermissionUserEdit]) && !seen[PermissionUserView] {
-		return RoleInput{}, &ValidationError{Field: "permissions", Message: "must include user:account:view with mutation permissions"}
+		return RoleInput{}, &ValidationError{
+			Field:   "permissions",
+			Message: "must include user:account:view with mutation permissions",
+		}
 	}
 	sort.Strings(permissions)
 	input.Permissions = permissions

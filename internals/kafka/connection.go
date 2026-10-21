@@ -112,7 +112,10 @@ func (c *KafkaesqueConn) ResolveBrokerAddress(advertisedAddress string) string {
 	return advertisedAddress
 }
 
-func brokerDialer(overrides map[string]string, timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
+func brokerDialer(
+	overrides map[string]string,
+	timeout time.Duration,
+) func(context.Context, string, string) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: timeout}
 	return brokerDialerWithDial(overrides, dialer.DialContext)
 }
@@ -131,6 +134,7 @@ func brokerDialerWithDial(
 		if err != nil && connectAddress != advertisedAddress {
 			return nil, fmt.Errorf("dial Kafka broker advertised as %s via %s: %w", advertisedAddress, connectAddress, err)
 		}
+
 		return conn, err
 	}
 }

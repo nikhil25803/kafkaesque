@@ -148,7 +148,11 @@ func printConsumerGroupTopicInformation(out io.Writer, topic *kafkaesque_consume
 	fmt.Fprintf(out, "TOTAL %d\n", topic.TotalLag)
 }
 
-func printConsumerGroupInformation(out io.Writer, consumer *kafkaesque_consumers.ConsumerGroupInformation, showMembers bool) {
+func printConsumerGroupInformation(
+	out io.Writer,
+	consumer *kafkaesque_consumers.ConsumerGroupInformation,
+	showMembers bool,
+) {
 	fmt.Fprintf(out, "\nConsumer Group: %s\n", consumer.GroupName)
 	fmt.Fprintf(out, "State: %s\n", strings.ToUpper(consumer.State))
 	if showMembers {
@@ -191,7 +195,10 @@ func printConsumerGroupMembers(out io.Writer, members []kafkaesque_consumers.Con
 	)
 }
 
-func formatMemberAssignments(assignments []kafkaesque_consumers.ConsumerGroupMemberAssignment, qualifyTopics bool) (string, int) {
+func formatMemberAssignments(
+	assignments []kafkaesque_consumers.ConsumerGroupMemberAssignment,
+	qualifyTopics bool,
+) (string, int) {
 	if len(assignments) == 0 {
 		return "-", 0
 	}
@@ -296,7 +303,11 @@ func printTopicsInformation(out io.Writer, topics []kafkaesque_topic.TopicInform
 	fmt.Fprintf(out, "\n%d %s available\n", len(topics), noun)
 }
 
-func printPartitionsInformation(out io.Writer, topic string, partitions []kafkaesque_partition.PartitionTopicInformation) {
+func printPartitionsInformation(
+	out io.Writer,
+	topic string,
+	partitions []kafkaesque_partition.PartitionTopicInformation,
+) {
 	fmt.Fprintln(out, "\nTopic: "+topic)
 	fmt.Fprintln(out, strings.Repeat("=", 80))
 
@@ -334,7 +345,16 @@ func plural(count int, singular, plural string) string {
 func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.ConsumerGroups) {
 	fmt.Fprintln(out, "\nKafka Consumers")
 	fmt.Fprintln(out, strings.Repeat("=", 117))
-	fmt.Fprintf(out, "%-32s %-12s %-16s %-20s %-16s %-16s\n", "GROUP NAME", "TYPE", "COORDINATOR", "STATE", "MEMBERS COUNT", "TOPICS")
+	fmt.Fprintf(
+		out,
+		"%-32s %-12s %-16s %-20s %-16s %-16s\n",
+		"GROUP NAME",
+		"TYPE",
+		"COORDINATOR",
+		"STATE",
+		"MEMBERS COUNT",
+		"TOPICS",
+	)
 
 	totalMembers := 0
 	totalTopics := 0
@@ -363,5 +383,14 @@ func printConsumersInformation(out io.Writer, consumers []kafkaesque_consumers.C
 	if totalMembers == 1 {
 		memberNoun = "member"
 	}
-	fmt.Fprintf(out, "\n%d %s · %d %s · %d %s\n", len(consumers), groupNoun, totalTopics, topicNoun, totalMembers, memberNoun)
+	fmt.Fprintf(
+		out,
+		"\n%d %s · %d %s · %d %s\n",
+		len(consumers),
+		groupNoun,
+		totalTopics,
+		topicNoun,
+		totalMembers,
+		memberNoun,
+	)
 }
