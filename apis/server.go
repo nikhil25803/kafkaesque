@@ -31,6 +31,7 @@ type server struct {
 	config     *kafkaesque_config.Config
 	thresholds kafkaesque_consumers.LagThresholds
 	auth       kafkaesque_auth.Manager
+	users      kafkaesque_auth.UserManager
 	limiter    *kafkaesque_auth.Limiter
 	logger     *slog.Logger
 }
@@ -96,7 +97,7 @@ type consumerGroupDetail struct {
 func NewHandler(
 	conn *kafkaesque.KafkaesqueConn,
 	cfg *kafkaesque_config.Config,
-	authentication kafkaesque_auth.Manager,
+	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 ) http.Handler {
 	if authentication == nil {
@@ -108,7 +109,7 @@ func NewHandler(
 func newHandler(
 	conn *kafkaesque.KafkaesqueConn,
 	cfg *kafkaesque_config.Config,
-	authentication kafkaesque_auth.Manager,
+	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 ) http.Handler {
 	if logger == nil {
@@ -118,6 +119,7 @@ func newHandler(
 		conn:    conn,
 		config:  cfg,
 		auth:    authentication,
+		users:   authentication,
 		limiter: kafkaesque_auth.NewLimiter(),
 		logger:  logger,
 		thresholds: kafkaesque_consumers.LagThresholds{
@@ -136,6 +138,12 @@ func newHandler(
 		mux.HandleFunc("POST /api/v1/auth/refresh", s.refresh)
 		mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
 		mux.HandleFunc("GET /api/v1/auth/me", s.authenticate(s.me))
+	}
+
+	// User management.
+	if authentication != nil {
+		mux.HandleFunc("GET /api/v1/users", s.authenticate(s.listUsers))
+		mux.HandleFunc("POST /api/v1/users", s.authenticate(s.createUser))
 	}
 
 	// Protect every Kafka-backed endpoint.

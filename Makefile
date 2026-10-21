@@ -10,8 +10,11 @@ KAFKA_CI_SIMULATOR_COMPOSE := $(KAFKA_CI_COMPOSE) --profile simulator
 KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
 POSTGRES_COMPOSE := docker compose -f postgres-env/compose.yaml
+KAFKAESQUE_POSTGRES_PORT ?= 5434
+POSTGRES_TEST_DATABASE := kafkaesque_auth_test
+POSTGRES_TEST_URL := postgres://kafkaesque:kafkaesque-dev-only@127.0.0.1:$(KAFKAESQUE_POSTGRES_PORT)/$(POSTGRES_TEST_DATABASE)?sslmode=disable
 
-.PHONY: check fmt-check lint build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
+.PHONY: check fmt-check lint build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs postgres-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
 
 check: fmt-check lint test build
 
@@ -56,6 +59,10 @@ postgres-reset:
 
 postgres-logs:
 	$(POSTGRES_COMPOSE) logs --follow postgres
+
+postgres-test: postgres-up
+	@$(POSTGRES_COMPOSE) exec -T postgres sh -ec 'if [ "$$(psql -U kafkaesque -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='"'"'$(POSTGRES_TEST_DATABASE)'"'"'")" != "1" ]; then createdb -U kafkaesque $(POSTGRES_TEST_DATABASE); fi'
+	KAFKAESQUE_TEST_DATABASE_URL='$(POSTGRES_TEST_URL)' go test -race ./internals/auth
 
 kafka-up:
 	$(KAFKA_COMPOSE) up -d --wait $(KAFKA_BROKERS)

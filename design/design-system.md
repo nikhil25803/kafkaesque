@@ -125,10 +125,11 @@ Initial navigation contains, in this order:
 3. Topics
 4. Brokers
 5. Cluster Health
+6. Users
 
 Do not show Alerts or Settings until those features exist. The shared shell
-anchors the authenticated Super Admin role and logout control at the bottom of
-the sidebar.
+anchors the authenticated account role and logout control at the bottom of the
+sidebar.
 
 | State | Surface | Text and icon | Additional requirement |
 | --- | --- | --- | --- |
@@ -274,12 +275,25 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 
 ## Login
 
-- Use a 50/50 desktop split with the Super Admin form on the left and branding
+- Use a 50/50 desktop split with the sign-in form on the left and branding
   on the right.
 - Match the logo's dotted and orbital background with subdued CSS decoration.
 - Stack the form before the branding panel on smaller screens.
 - Keep generic errors, visible labels, browser autocomplete, and a full-width
   submit button below the credentials.
+
+## User Management
+
+- Keep the user list as the primary `/ui/users` content, with Add user in the
+  page header.
+- Render account creation on `/ui/users/new` in a centered panel and stack form
+  fields on narrow screens.
+- Keep roles neutral; they are authorization labels rather than health states.
+- Show a five-segment red/green password meter and keep the detailed ×/✓ rules
+  collapsed by default. Update both after a 250ms input debounce.
+- Preserve safe form fields after validation failures, but never render a
+  submitted password.
+- State clearly that new accounts can sign in immediately.
 
 ## Initial Boundaries
 
@@ -291,6 +305,6 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
 - Topic Detail remains deferred until it is explicitly approved.
-- PostgreSQL-backed Super Admin login and logout are implemented. Additional
-  users, password management, MFA, charts, alerts, settings, and new logo assets
-  remain deferred.
+- PostgreSQL-backed account login, logout, user listing, and Admin/User
+  provisioning are implemented. Role-based permissions, password management,
+  MFA, charts, alerts, settings, and new logo assets remain deferred.

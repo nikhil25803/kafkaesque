@@ -293,6 +293,8 @@ tbody tr:hover { background: var(--elevated); }
 .topics-panel table { min-width: 650px; }
 .brokers-panel { margin-bottom: 24px; }
 .brokers-panel table { min-width: 780px; }
+.users-panel { margin-bottom: 24px; }
+.users-table { min-width: 880px; }
 .topic-name { color: var(--text); }
 .muted-value { color: var(--text-muted); }
 .level-label {
@@ -403,6 +405,45 @@ tbody tr:hover { background: var(--elevated); }
 }
 .toast-dismiss:hover { background: var(--surface); color: var(--text); }
 
+.user-create-shell { width: min(100%, 620px); margin: 0 auto; }
+.user-create-panel { margin-bottom: 18px; }
+.user-form { padding: 18px; }
+.user-form-grid { display: grid; gap: 16px; }
+.username-field-group { display: grid; gap: 10px; }
+.checkbox-field { display: inline-flex; width: fit-content; align-items: center; gap: 8px; color: var(--text-secondary); cursor: pointer; }
+.checkbox-field input { width: 16px; height: 16px; accent-color: var(--text); }
+.password-meter { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: -8px; }
+.password-meter-segment { height: 5px; border-radius: 999px; background: var(--critical); }
+.password-meter-segment.healthy { background: var(--healthy); }
+.password-policy {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--canvas);
+}
+.password-policy summary { color: var(--text-secondary); font-size: 12px; font-weight: 650; cursor: pointer; }
+.password-policy summary:hover { color: var(--text); }
+.password-policy ul { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.password-policy li { display: flex; justify-content: space-between; gap: 12px; color: var(--text-secondary); font-size: 12px; }
+.password-policy [data-rule-icon] { color: var(--critical); font-size: 15px; font-weight: 750; line-height: 1; }
+.password-policy li.healthy [data-rule-icon] { color: var(--healthy); }
+.user-form-actions { display: flex; gap: 10px; margin-top: 18px; }
+.form-message { margin-bottom: 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; }
+.form-message.success { border-color: color-mix(in srgb, var(--healthy) 52%, var(--border)); color: var(--healthy); }
+.form-message.error { border-color: color-mix(in srgb, var(--critical) 52%, var(--border)); color: var(--critical); }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .icon-button {
   display: inline-grid;
   width: 40px;
@@ -458,6 +499,7 @@ tbody tr:hover { background: var(--elevated); }
   body.nav-open { overflow: hidden; }
   .main-content { margin-left: 0; padding: 18px 16px 36px; }
   .page-header { align-items: center; }
+  .users-page-header { align-items: stretch; flex-direction: column; }
   .detail-header { align-items: stretch; flex-direction: column; }
   .refresh-settings { justify-items: stretch; }
   .auto-refresh-control { width: 100%; }
@@ -480,6 +522,8 @@ tbody tr:hover { background: var(--elevated); }
   .partition-controls .field { width: 100%; min-width: 0; }
   .diagnostic-list > div { align-items: flex-start; flex-direction: column; }
   .toast-region { right: 16px; bottom: 16px; }
+  .user-form { padding: 16px; }
+  .user-form-actions { flex-direction: column; }
 }
 
 @media (max-width: 430px) {

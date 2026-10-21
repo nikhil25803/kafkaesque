@@ -31,6 +31,14 @@ type fakeAuthManager struct {
 	authCalls     int
 	refreshCalls  int
 	logoutCalls   int
+	listedUsers   []kafkaesque_auth.ManagedUser
+	usersTotal    int
+	listUsersErr  error
+	createdUser   kafkaesque_auth.ManagedUser
+	createUserErr error
+	createInput   kafkaesque_auth.CreateUserInput
+	listCalls     int
+	createCalls   int
 }
 
 func (f *fakeAuthManager) Login(context.Context, string, string) (kafkaesque_auth.Tokens, error) {
@@ -61,7 +69,18 @@ func (f *fakeAuthManager) ValidateRefreshCSRF(context.Context, string, string) (
 	return f.csrfValid, f.csrfErr
 }
 
-func authenticatedTestHandler(authentication kafkaesque_auth.Manager, logger *slog.Logger) (http.Handler, *apiTransport) {
+func (f *fakeAuthManager) ListUsers(context.Context, int, int) ([]kafkaesque_auth.ManagedUser, int, error) {
+	f.listCalls++
+	return f.listedUsers, f.usersTotal, f.listUsersErr
+}
+
+func (f *fakeAuthManager) CreateUser(_ context.Context, input kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	f.createCalls++
+	f.createInput = input
+	return f.createdUser, f.createUserErr
+}
+
+func authenticatedTestHandler(authentication kafkaesque_auth.RuntimeManager, logger *slog.Logger) (http.Handler, *apiTransport) {
 	transport := &apiTransport{}
 	cfg := &kafkaesque_config.Config{
 		Kafka: kafkaesque_config.KafkaConfig{

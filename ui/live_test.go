@@ -474,6 +474,11 @@ func TestUIAssetsAndRedirect(t *testing.T) {
 		"resolvedOptions().timeZone",
 		"timestamp.dataset.utcFallback",
 		"toast-region",
+		"initializeUserForm",
+		"use-email-as-username",
+		"window.setTimeout(updatePasswordPolicy, 250)",
+		"uppercase: /[A-Z]/",
+		"special: /[!@#$%^&*()_]/",
 		"event.key === 'Escape'",
 	)
 }

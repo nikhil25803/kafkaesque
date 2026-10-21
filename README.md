@@ -127,7 +127,8 @@ docker run --rm -p 8085:8085 \
   -e KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092 \
   -e KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:password@postgres:5432/kafkaesque?sslmode=require' \
   -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
-  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='replace-with-a-long-secret' \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='Replace1_with_a_long_secret' \
   -e KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false \
   ghcr.io/nikhil25803/kafkaesque:v0.6.0
 ```
@@ -165,7 +166,8 @@ docker run --rm -p 8085:8085 \
   -e KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=kafka.example.com:9093 \
   -e KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:password@postgres:5432/kafkaesque?sslmode=require' \
   -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
-  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='replace-with-a-long-secret' \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com \
+  -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='Replace1_with_a_long_secret' \
   -e KAFKAESQUE_KAFKA_SECURITY_TLS_ENABLED=true \
   -e KAFKAESQUE_KAFKA_SECURITY_TLS_CA_FILE=/etc/kafka/certificates/ca.pem \
   ghcr.io/nikhil25803/kafkaesque:v0.6.0
@@ -372,7 +374,9 @@ environment variable. Environment variables always override YAML values.
 | `lag.warning_threshold` | `KAFKAESQUE_LAG_WARNING_THRESHOLD` | Non-negative integer. |
 | `lag.unhealthy_threshold` | `KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD` | Non-negative integer greater than the warning threshold. |
 | `authentication.super_admin_username` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME` | Super Admin name required by `serve`. |
-| `authentication.super_admin_password` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD` | Super Admin password containing 15–128 characters. |
+| `authentication.super_admin_email` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL` | Normalized Super Admin email required by `serve`. |
+| `authentication.super_admin_password` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD` | Password containing 8–99 characters, uppercase, lowercase, a number, and an allowed special character. |
+| `authentication.super_admin_recovery` | `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY` | Recovery policy: `verify` (default), `update`, or destructive `reinitialize`. |
 | `authentication.access_ttl` | `KAFKAESQUE_AUTHENTICATION_ACCESS_TTL` | Access-token lifetime; defaults to `15m`. |
 | `authentication.refresh_ttl` | `KAFKAESQUE_AUTHENTICATION_REFRESH_TTL` | Refresh-token lifetime; defaults to `168h`. |
 | `authentication.cookie_secure` | `KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE` | Require HTTPS for browser cookies; defaults to `true`. |
@@ -390,6 +394,17 @@ The singular and plural bootstrap environment variables cannot be set together.
 Environment certificate paths are used as supplied; use absolute paths inside
 containers. Environment values pass through the same validation as YAML and
 always take precedence.
+
+On startup, the default `verify` recovery policy compares the configured Super
+Admin username, email, and password with PostgreSQL and stops on a mismatch.
+Use `update` to reconcile that account and revoke its sessions while preserving
+other data, but only when one valid Super Admin assignment exists. Use
+`reinitialize` only for deliberate recovery: when credentials, migration
+checksums, schema integrity, or the Super Admin assignment differ, it atomically
+drops the complete `public` schema, reapplies embedded migrations, and creates
+one fresh Super Admin. Every table and record in that schema is permanently
+deleted, so the PostgreSQL database must be dedicated to Kafkaesque. After a
+successful recovery, change the policy back to `verify`.
 
 `bootstrap_server` remains supported for existing configurations. New
 configurations can use `bootstrap_servers` for multiple seed brokers; setting
@@ -466,14 +481,15 @@ Super Admin values can come from YAML or environment variables:
 ```sh
 KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:password@db:5432/kafkaesque?sslmode=require' \
 KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
-KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='replace-with-a-long-secret' \
+KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com \
+KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='Replace1_with_a_long_secret' \
 kafkaesque serve --config kafkaesque.yaml --port 8085
 ```
 
 The API defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` values
 override the YAML `api` section. It serves the read-only API and web UI, and
 keeps one authenticated Kafka connection for the server lifetime. PostgreSQL
-18 or newer and the three required effective database/Super Admin values must be
+18 or newer and the required effective database/Super Admin values must be
 available at startup. Browser users sign in at `/ui/login`; API clients obtain
 opaque access and refresh tokens from `/api/v1/auth/login`.
 
@@ -491,15 +507,21 @@ GET /ui
 ```
 
 It contains responsive Dashboard, Consumer Groups, Consumer Lag, Topics,
-Brokers, and Cluster Health pages backed by live Kafka data collected for each
-request. Filtering and pagination use a locally vendored HTMX runtime and
-continue to work as ordinary links and forms without JavaScript. Consumer Lag
-includes topic and partition offsets, lag sorting, member grouping, and
-assignments.
+Brokers, Cluster Health, and User Management pages. Kafka
+pages use live request-time data; User Management uses PostgreSQL directly.
+Filtering and pagination use a locally vendored HTMX runtime and continue to
+work as ordinary links and forms without JavaScript. Consumer Lag includes
+topic and partition offsets, lag sorting, member grouping, and assignments.
+New Admin and User accounts use the shared password policy and can sign in
+immediately. Until RBAC is introduced, every authenticated role has equal
+access to the existing API and UI.
 
 For local authentication development, start the PostgreSQL 18 fixture with
 `make postgres-up`. `make postgres-down` preserves its data;
 `make postgres-reset` removes and recreates the development volume.
+Run destructive authentication integration tests with `make postgres-test`.
+That target creates and uses the separate `kafkaesque_auth_test` database; the
+test suite rejects the normal development database.
 
 ## Local Kafka environment
 

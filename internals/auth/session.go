@@ -27,8 +27,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (Tokens,
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id
 		JOIN roles r ON r.id = ur.role_id
-		WHERE u.username = $1
-			AND r.name = 'super_admin'`
+		WHERE u.username = $1`
 	err := s.pool.QueryRow(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
@@ -108,8 +107,7 @@ func (s *Service) AuthenticateAccess(ctx context.Context, token string) (User, e
 		WHERE s.access_token_hash = $1
 			AND s.revoked_at IS NULL
 			AND s.access_expires_at > now()
-			AND u.active
-			AND r.name = 'super_admin'`
+			AND u.active`
 	err := s.pool.QueryRow(ctx, query, tokenHash(token)).Scan(
 		&user.ID,
 		&user.Username,
@@ -147,7 +145,6 @@ func (s *Service) Refresh(ctx context.Context, token string) (Tokens, error) {
 			AND s.revoked_at IS NULL
 			AND s.refresh_expires_at > now()
 			AND u.active
-			AND r.name = 'super_admin'
 		FOR UPDATE OF s`
 	err = tx.QueryRow(ctx, findSession, tokenHash(token)).Scan(
 		&sessionID,

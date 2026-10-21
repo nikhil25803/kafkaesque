@@ -33,6 +33,7 @@ func TestLoadUsesDefaultsWithoutOptionalFile(t *testing.T) {
 	}
 	if cfg.Authentication.AccessTTL != DefaultAuthAccessTTL ||
 		cfg.Authentication.RefreshTTL != DefaultAuthRefreshTTL ||
+		cfg.Authentication.SuperAdminRecovery != DefaultSuperAdminRecovery ||
 		!cfg.Authentication.CookieSecure {
 		t.Fatalf("authentication defaults = %+v", cfg.Authentication)
 	}
@@ -55,7 +56,9 @@ func TestEnvironmentNamesMirrorYAML(t *testing.T) {
 		"lag.warning_threshold":               LagWarningThresholdEnv,
 		"lag.unhealthy_threshold":             LagUnhealthyThresholdEnv,
 		"authentication.super_admin_username": SuperAdminUsernameEnv,
+		"authentication.super_admin_email":    SuperAdminEmailEnv,
 		"authentication.super_admin_password": SuperAdminPasswordEnv,
+		"authentication.super_admin_recovery": SuperAdminRecoveryEnv,
 		"authentication.access_ttl":           AuthAccessTTLEnv,
 		"authentication.refresh_ttl":          AuthRefreshTTLEnv,
 		"authentication.cookie_secure":        AuthCookieSecureEnv,
@@ -372,7 +375,8 @@ func unsetConfigEnvironment(t *testing.T) {
 		TLSEnabledEnv, TLSCAFileEnv, TLSClientCertFileEnv, TLSClientKeyFileEnv, TLSServerNameEnv,
 		SASLMechanismEnv, SASLUsernameEnv, SASLPasswordEnv,
 		LagWarningThresholdEnv, LagUnhealthyThresholdEnv, APIHostEnv, APIPortEnv,
-		DatabaseURLEnv, SuperAdminUsernameEnv, SuperAdminPasswordEnv, AuthAccessTTLEnv, AuthRefreshTTLEnv, AuthCookieSecureEnv,
+		DatabaseURLEnv, SuperAdminUsernameEnv, SuperAdminEmailEnv, SuperAdminPasswordEnv, SuperAdminRecoveryEnv,
+		AuthAccessTTLEnv, AuthRefreshTTLEnv, AuthCookieSecureEnv,
 	} {
 		unsetEnvironment(t, key)
 	}

@@ -192,6 +192,83 @@
     scheduleRefresh();
   });
 
+  const initializeUserForm = () => {
+    const form = document.querySelector('[data-user-form]');
+    if (!form) return;
+
+    const email = form.querySelector('#user-email');
+    const username = form.querySelector('#user-username');
+    const useEmail = form.querySelector('#use-email-as-username');
+    const password = form.querySelector('#new-user-password');
+    const policy = form.querySelector('[data-password-policy]');
+    const meter = form.querySelector('[data-password-meter]');
+    const summary = form.querySelector('[data-password-summary]');
+    let manualUsername = username.value;
+    let passwordTimer;
+
+    const syncUsername = () => {
+      if (!useEmail.checked) return;
+      username.value = email.value.trim().toLowerCase();
+    };
+
+    useEmail.addEventListener('change', () => {
+      if (useEmail.checked) {
+        manualUsername = username.value;
+        username.readOnly = true;
+        syncUsername();
+        return;
+      }
+
+      username.readOnly = false;
+      username.value = manualUsername;
+      username.focus();
+    });
+
+    email.addEventListener('input', syncUsername);
+    username.addEventListener('input', () => {
+      if (!useEmail.checked) manualUsername = username.value;
+    });
+
+    const updatePasswordPolicy = () => {
+      const value = password.value;
+      const length = [...value].length;
+      const checks = {
+        length: length >= 8 && length <= 99,
+        uppercase: /[A-Z]/.test(value),
+        lowercase: /[a-z]/.test(value),
+        number: /[0-9]/.test(value),
+        special: /[!@#$%^&*()_]/.test(value),
+      };
+
+      let metCount = 0;
+      policy.querySelectorAll('[data-password-rule]').forEach((item) => {
+        const met = checks[item.dataset.passwordRule];
+        if (met) metCount += 1;
+
+        item.classList.toggle('healthy', met);
+        item.classList.toggle('critical', !met);
+        item.querySelector('[data-rule-icon]').textContent = met ? '✓' : '×';
+        item.querySelector('[data-rule-status]').textContent = met ? 'Met' : 'Not met';
+
+        const segment = meter.querySelector(`[data-password-segment="${item.dataset.passwordRule}"]`);
+        segment.classList.toggle('healthy', met);
+        segment.classList.toggle('critical', !met);
+      });
+
+      const progress = `${metCount} of 5 password requirements met`;
+      meter.setAttribute('aria-valuenow', String(metCount));
+      meter.setAttribute('aria-valuetext', progress);
+      summary.textContent = progress;
+    };
+
+    password.addEventListener('input', () => {
+      window.clearTimeout(passwordTimer);
+      passwordTimer = window.setTimeout(updatePasswordPolicy, 250);
+    });
+
+    syncUsername();
+  };
+
   const sidebar = document.querySelector('#sidebar');
   const closeButton = document.querySelector('#drawer-close');
   const overlay = document.querySelector('#drawer-overlay');
@@ -249,4 +326,5 @@
   }
 
   initializeRefreshControl();
+  initializeUserForm();
 })();

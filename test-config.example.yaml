@@ -17,7 +17,9 @@ lag:
 authentication:
   # Fill these values only in the ignored test-config.yaml copy.
   super_admin_username: super_admin
+  super_admin_email: ""
   super_admin_password: ""
+  super_admin_recovery: verify
   access_ttl: 15m
   refresh_ttl: 168h
 

@@ -41,6 +41,7 @@ type navigationView struct {
 	Username  string
 	Role      string
 	CSRFToken string
+	ShowUsers bool
 }
 
 type connectionView struct {
@@ -169,7 +170,7 @@ func healthViewFrom(info *kafkaesque_health.Information) healthView {
 func NewHandler(
 	conn *kafkaesque.KafkaesqueConn,
 	cfg *kafkaesque_config.Config,
-	authentication kafkaesque_auth.Manager,
+	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 ) http.Handler {
 	if authentication == nil {
@@ -191,7 +192,7 @@ func newHandler(source dataSource) http.Handler {
 
 func newHandlerWithAuth(
 	source dataSource,
-	authentication kafkaesque_auth.Manager,
+	authentication kafkaesque_auth.RuntimeManager,
 	cookieSecure bool,
 	logger *slog.Logger,
 ) http.Handler {
@@ -212,6 +213,9 @@ func newHandlerWithAuth(
 		mux.HandleFunc("GET /ui/login", renderLogin)
 		mux.HandleFunc("POST /ui/login", loginUI(authentication, limiter, cookieSecure, logger))
 		mux.HandleFunc("POST /ui/logout", protect(logoutUI(authentication, cookieSecure, logger)))
+		mux.HandleFunc("GET /ui/users", protect(renderUsers(authentication, logger)))
+		mux.HandleFunc("GET /ui/users/new", protect(renderNewUser))
+		mux.HandleFunc("POST /ui/users", protect(createUserUI(authentication, logger)))
 	}
 	mux.HandleFunc("GET /ui", protect(renderDashboard))
 	mux.HandleFunc("GET /ui/{$}", func(w http.ResponseWriter, r *http.Request) {

@@ -23,14 +23,21 @@ func navigationFor(r *http.Request, active string) navigationView {
 		Username:  user.Username,
 		Role:      roleLabel(user.Role),
 		CSRFToken: kafkaesque_auth.CookieValue(r, kafkaesque_auth.CSRFCookie),
+		ShowUsers: user.ID != "",
 	}
 }
 
 func roleLabel(role string) string {
-	if role == "super_admin" {
+	switch role {
+	case "super_admin":
 		return "Super Admin"
+	case "admin":
+		return "Admin"
+	case "user":
+		return "User"
+	default:
+		return role
 	}
-	return role
 }
 
 // authenticateUI validates browser sessions before rendering protected pages.
@@ -99,7 +106,7 @@ func renderLogin(w http.ResponseWriter, r *http.Request) {
 	_ = dashboardTemplate.ExecuteTemplate(w, "login", loginPage{Next: safeNext(r.URL.Query().Get("next"))})
 }
 
-// loginUI validates the Super Admin and starts a browser session.
+// loginUI validates an account and starts a browser session.
 func loginUI(service kafkaesque_auth.Manager, limiter *kafkaesque_auth.Limiter, secure bool, logger *slog.Logger) http.HandlerFunc {
 	logger = uiLogger(logger)
 	return func(w http.ResponseWriter, r *http.Request) {

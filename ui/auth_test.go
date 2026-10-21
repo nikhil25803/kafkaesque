@@ -14,13 +14,23 @@ import (
 )
 
 type fakeAuthManager struct {
-	user       kafkaesque_auth.User
-	tokens     kafkaesque_auth.Tokens
-	loginErr   error
-	authErr    error
-	refreshErr error
-	logoutErr  error
-	csrfValid  bool
+	user        kafkaesque_auth.User
+	tokens      kafkaesque_auth.Tokens
+	loginErr    error
+	authErr     error
+	refreshErr  error
+	logoutErr   error
+	csrfValid   bool
+	users       []kafkaesque_auth.ManagedUser
+	usersTotal  int
+	listErr     error
+	createErr   error
+	created     kafkaesque_auth.ManagedUser
+	createInput kafkaesque_auth.CreateUserInput
+	listCalls   int
+	createCalls int
+	listPage    int
+	listSize    int
 }
 
 func (f *fakeAuthManager) Login(context.Context, string, string) (kafkaesque_auth.Tokens, error) {
@@ -43,6 +53,19 @@ func (f *fakeAuthManager) ValidateCSRF(context.Context, string, string) (bool, e
 
 func (f *fakeAuthManager) ValidateRefreshCSRF(context.Context, string, string) (bool, error) {
 	return f.csrfValid, nil
+}
+
+func (f *fakeAuthManager) ListUsers(_ context.Context, page, pageSize int) ([]kafkaesque_auth.ManagedUser, int, error) {
+	f.listCalls++
+	f.listPage = page
+	f.listSize = pageSize
+	return f.users, f.usersTotal, f.listErr
+}
+
+func (f *fakeAuthManager) CreateUser(_ context.Context, input kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	f.createCalls++
+	f.createInput = input
+	return f.created, f.createErr
 }
 
 func TestSafeNext(t *testing.T) {
@@ -70,7 +93,7 @@ func TestLoginPageAndGenericFailure(t *testing.T) {
 	requireContains(
 		t,
 		response.Body.String(),
-		"Super Admin sign in",
+		"Sign in to Kafkaesque",
 		"Read. Understand. Monitor. Alert.",
 		"A lightweight, read-only Kafka observability tool",
 		"/ui/assets/KafkaesqueLogo.png",
@@ -140,7 +163,7 @@ func TestProtectedUIRedirectsAndHTMXExpiry(t *testing.T) {
 }
 
 func TestAuthenticatedShellAndLogout(t *testing.T) {
-	user := kafkaesque_auth.User{ID: "user-1", Username: "super_admin", Role: "super_admin"}
+	user := kafkaesque_auth.User{ID: "user-1", Username: "viewer", Role: "user"}
 	authentication := &fakeAuthManager{user: user, csrfValid: true}
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/ui", nil)
@@ -151,7 +174,7 @@ func TestAuthenticatedShellAndLogout(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("dashboard status = %d", response.Code)
 	}
-	requireContains(t, response.Body.String(), "Logged in as", "Role: Super Admin", "Log out")
+	requireContains(t, response.Body.String(), "Logged in as", "Role: User", ">Users</span>", "Log out")
 
 	form := url.Values{"csrf_token": {"csrf"}}
 	request = httptest.NewRequest(http.MethodPost, "/ui/logout", strings.NewReader(form.Encode()))

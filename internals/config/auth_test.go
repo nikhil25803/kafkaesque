@@ -12,7 +12,9 @@ func TestLoadReadsServeYAML(t *testing.T) {
 	password := testPassword("y")
 	path := writeConfig(t, `authentication:
   super_admin_username: Admin.User
+  super_admin_email: Admin.User@Example.COM
   super_admin_password: `+password+`
+  super_admin_recovery: update
   access_ttl: 20m
   refresh_ttl: 48h
   cookie_secure: false
@@ -29,7 +31,9 @@ database:
 	}
 	want := AuthenticationConfig{
 		SuperAdminUsername: "admin.user",
+		SuperAdminEmail:    "admin.user@example.com",
 		SuperAdminPassword: password,
+		SuperAdminRecovery: "update",
 		AccessTTL:          20 * time.Minute,
 		RefreshTTL:         48 * time.Hour,
 		CookieSecure:       false,
@@ -46,7 +50,9 @@ func TestServeAuthenticationEnvironment(t *testing.T) {
 	unsetConfigEnvironment(t)
 	t.Setenv(DatabaseURLEnv, "postgres://example.invalid/kafkaesque")
 	t.Setenv(SuperAdminUsernameEnv, "Admin.User")
+	t.Setenv(SuperAdminEmailEnv, "Admin.User@Example.COM")
 	t.Setenv(SuperAdminPasswordEnv, testPassword("e"))
+	t.Setenv(SuperAdminRecoveryEnv, "reinitialize")
 	t.Setenv(AuthAccessTTLEnv, "20m")
 	t.Setenv(AuthRefreshTTLEnv, "48h")
 	t.Setenv(AuthCookieSecureEnv, "false")
@@ -55,6 +61,8 @@ func TestServeAuthenticationEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.Authentication.SuperAdminUsername != "admin.user" ||
+		cfg.Authentication.SuperAdminEmail != "admin.user@example.com" ||
+		cfg.Authentication.SuperAdminRecovery != "reinitialize" ||
 		cfg.Authentication.AccessTTL != 20*time.Minute ||
 		cfg.Authentication.RefreshTTL != 48*time.Hour ||
 		cfg.Authentication.CookieSecure {
@@ -71,7 +79,9 @@ func TestServeEnvironmentOverridesYAML(t *testing.T) {
 	environmentPassword := testPassword("e")
 	path := writeConfig(t, `authentication:
   super_admin_username: yaml-admin
+  super_admin_email: yaml-admin@example.com
   super_admin_password: `+yamlPassword+`
+  super_admin_recovery: verify
   access_ttl: 30m
   refresh_ttl: 72h
   cookie_secure: true
@@ -80,7 +90,9 @@ database:
 `)
 	t.Setenv(DatabaseURLEnv, "postgres://env.example/kafkaesque")
 	t.Setenv(SuperAdminUsernameEnv, "ENV.ADMIN")
+	t.Setenv(SuperAdminEmailEnv, "ENV.ADMIN@EXAMPLE.COM")
 	t.Setenv(SuperAdminPasswordEnv, environmentPassword)
+	t.Setenv(SuperAdminRecoveryEnv, "update")
 	t.Setenv(AuthAccessTTLEnv, "10m")
 	t.Setenv(AuthRefreshTTLEnv, "24h")
 	t.Setenv(AuthCookieSecureEnv, "false")
@@ -93,7 +105,9 @@ database:
 		t.Fatalf("database URL = %q", cfg.Database.URL)
 	}
 	if cfg.Authentication.SuperAdminUsername != "env.admin" ||
+		cfg.Authentication.SuperAdminEmail != "env.admin@example.com" ||
 		cfg.Authentication.SuperAdminPassword != environmentPassword ||
+		cfg.Authentication.SuperAdminRecovery != "update" ||
 		cfg.Authentication.AccessTTL != 10*time.Minute ||
 		cfg.Authentication.RefreshTTL != 24*time.Hour ||
 		cfg.Authentication.CookieSecure {
@@ -107,6 +121,7 @@ func TestServeCombinesYAMLAndEnvironment(t *testing.T) {
   url: postgres://yaml.example/kafkaesque
 `)
 	t.Setenv(SuperAdminUsernameEnv, "admin")
+	t.Setenv(SuperAdminEmailEnv, "admin@example.com")
 	t.Setenv(SuperAdminPasswordEnv, testPassword("e"))
 
 	cfg, err := Load(path)
@@ -162,6 +177,15 @@ func TestValidateServe(t *testing.T) {
 		"password": func(config *Config) {
 			config.Authentication.SuperAdminPassword = "short"
 		},
+		"email": func(config *Config) {
+			config.Authentication.SuperAdminEmail = "invalid"
+		},
+		"email username mismatch": func(config *Config) {
+			config.Authentication.SuperAdminUsername = "different@example.com"
+		},
+		"recovery": func(config *Config) {
+			config.Authentication.SuperAdminRecovery = "replace"
+		},
 		"ttl": func(config *Config) {
 			config.Authentication.RefreshTTL = config.Authentication.AccessTTL
 		},
@@ -180,6 +204,12 @@ func TestValidateServe(t *testing.T) {
 	if err := validServeConfig().ValidateServe(); err != nil {
 		t.Fatal(err)
 	}
+
+	emailUsername := validServeConfig()
+	emailUsername.Authentication.SuperAdminUsername = emailUsername.Authentication.SuperAdminEmail
+	if err := emailUsername.ValidateServe(); err != nil {
+		t.Fatalf("matching email username was rejected: %v", err)
+	}
 }
 
 func TestSuperAdminPasswordBoundaries(t *testing.T) {
@@ -187,15 +217,15 @@ func TestSuperAdminPasswordBoundaries(t *testing.T) {
 		length int
 		valid  bool
 	}{
-		{length: 14, valid: false},
-		{length: 15, valid: true},
-		{length: 128, valid: true},
-		{length: 129, valid: false},
+		{length: 7, valid: false},
+		{length: 8, valid: true},
+		{length: 99, valid: true},
+		{length: 100, valid: false},
 	}
 
 	for _, test := range tests {
 		cfg := validServeConfig()
-		cfg.Authentication.SuperAdminPassword = strings.Repeat("a", test.length)
+		cfg.Authentication.SuperAdminPassword = passwordWithLength(test.length)
 		err := cfg.ValidateServe()
 		if (err == nil) != test.valid {
 			t.Errorf("password length %d: error = %v, valid = %v", test.length, err, test.valid)
@@ -246,7 +276,9 @@ func validServeConfig() *Config {
 		Database: DatabaseConfig{URL: "postgres://db"},
 		Authentication: AuthenticationConfig{
 			SuperAdminUsername: "admin",
+			SuperAdminEmail:    "admin@example.com",
 			SuperAdminPassword: testPassword("p"),
+			SuperAdminRecovery: "verify",
 			AccessTTL:          time.Minute,
 			RefreshTTL:         time.Hour,
 			CookieSecure:       true,
@@ -255,5 +287,12 @@ func validServeConfig() *Config {
 }
 
 func testPassword(character string) string {
-	return strings.Repeat(character, 20)
+	return string([]rune{'A', 'a', '1', '_'}) + strings.Repeat(character, 16)
+}
+
+func passwordWithLength(length int) string {
+	if length < 4 {
+		return strings.Repeat("a", length)
+	}
+	return string([]rune{'A', 'a', '1', '_'}) + strings.Repeat("x", length-4)
 }

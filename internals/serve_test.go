@@ -50,6 +50,14 @@ func (serveAuth) ValidateRefreshCSRF(context.Context, string, string) (bool, err
 	return true, nil
 }
 
+func (serveAuth) ListUsers(context.Context, int, int) ([]kafkaesque_auth.ManagedUser, int, error) {
+	return []kafkaesque_auth.ManagedUser{}, 0, nil
+}
+
+func (serveAuth) CreateUser(context.Context, kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	return kafkaesque_auth.ManagedUser{}, nil
+}
+
 func testServerInitializer(_ context.Context, cfg *kafkaesque_config.Config, _ *slog.Logger) (*serverRuntime, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)

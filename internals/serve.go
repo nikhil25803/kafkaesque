@@ -35,7 +35,7 @@ func serveAPI(ctx context.Context, address string, handler http.Handler) error {
 func newApplicationHandler(
 	conn *kafkaesque.KafkaesqueConn,
 	cfg *kafkaesque_config.Config,
-	authentication kafkaesque_auth.Manager,
+	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()

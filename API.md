@@ -8,7 +8,7 @@ kafkaesque serve --config kafkaesque.yaml --port 8085
 ```
 
 The listener defaults to `0.0.0.0:8085`. Explicit `--host` and `--port` flags
-override `api.host` and `api.port` from YAML. PostgreSQL 18-backed Super Admin
+override `api.host` and `api.port` from YAML. PostgreSQL 18-backed account
 authentication protects every Kafka endpoint.
 
 ## Discovery
@@ -52,10 +52,10 @@ metadata request and reuses that validated snapshot. Connection failures return
 
 | Method | Path | Query Params | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/v1/auth/login` | — | Validate Super Admin credentials and issue opaque access and refresh tokens. |
+| `POST` | `/api/v1/auth/login` | — | Validate account credentials and issue opaque access and refresh tokens. |
 | `POST` | `/api/v1/auth/refresh` | — | Rotate a valid refresh token and its session token pair. |
 | `POST` | `/api/v1/auth/logout` | — | Revoke the current access or refresh session. |
-| `GET` | `/api/v1/auth/me` | — | Return the authenticated Super Admin identity. |
+| `GET` | `/api/v1/auth/me` | — | Return the authenticated account identity and role. |
 
 Send API access tokens as `Authorization: Bearer <access-token>`. Browser
 sessions use host-only `HttpOnly`, `SameSite=Strict` cookies and CSRF protection.
@@ -71,9 +71,30 @@ Content-Type: application/json
 ```
 
 The response `data` contains `access_token`, `refresh_token`, `csrf_token`,
-their expiration timestamps, and the Super Admin identity with
-`"role":"super_admin"`. Refresh tokens are single-use and rotate the complete
-token pair.
+their expiration timestamps, and the account identity and role. Refresh tokens
+are single-use and rotate the complete token pair.
+
+## Users
+
+| Method | Path | Query Params | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/users` | `page`, `page_size` | List all accounts, including the configured Super Admin, newest first. |
+| `POST` | `/api/v1/users` | — | Create an active Admin or User account. |
+
+Both endpoints require authentication. Until RBAC is introduced, every active
+account has equal access and newly created accounts can sign in immediately.
+
+```http
+POST /api/v1/users
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{"name":"Jane Doe","username":"jane","email":"jane@example.com","password":"your-valid-password","role":"user"}
+```
+
+The role defaults to `user` and accepts only `admin` or `user`. An email-style
+username must match the normalized email field. Successful creation returns
+`201`; responses never include password hashes.
 
 ## Metadata
 
@@ -132,7 +153,7 @@ Search matches broker IDs, addresses, and racks.
 
 | Parameter | Applies to | Rules |
 | --- | --- | --- |
-| `q` | List endpoints | Case-insensitive name or address search. |
+| `q` | Kafka list endpoints | Case-insensitive name or address search. |
 | `page` | List and partition endpoints | Positive integer; default `1`. |
 | `page_size` | List and partition endpoints | Integer from `1` through `100`; default `25`. |
 | `state` | Consumer-group list | `stable`, `rebalancing`, `empty`, `dead`, or `unknown`; case-insensitive. |
@@ -148,7 +169,13 @@ ID.
 | Status | Meaning |
 | --- | --- |
 | `200` | Snapshot returned, including degraded health. |
-| `400` | Invalid query parameter. |
+| `201` | User created. |
+| `400` | Invalid query parameter or request body. |
+| `401` | Authentication is missing or expired. |
+| `403` | The authenticated account lacks the required role or CSRF validation failed. |
 | `404` | Requested group or topic does not exist. |
+| `409` | Username or email already exists. |
+| `429` | Login attempts were throttled. |
 | `502` | Kafka rejected or could not complete the request. |
+| `503` | PostgreSQL authentication or user management is unavailable. |
 | `504` | Kafka request timed out. |
