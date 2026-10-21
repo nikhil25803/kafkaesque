@@ -1,135 +1,60 @@
 # Contributing to Kafkaesque
 
-Thanks for helping improve Kafkaesque. The project is intentionally read-only:
-features may inspect Kafka, but they must not mutate cluster state.
+Thanks for helping improve Kafkaesque. Kafka inspection must remain read-only;
+account and session management may write only to PostgreSQL.
 
-## Prerequisites
+## Before you start
 
-- Git
-- Make
-- The Go version declared in [`go.mod`](go.mod)
-- Docker with Docker Compose for Kafka integration work
-- GoReleaser v2 only when testing release artifacts
+Read the [architecture](docs/architecture.md) for component boundaries and the
+[development guide](docs/development.md) for local fixtures, commands, and
+integration tests.
 
-## Clone and build
+For substantial behavior or API changes, open an issue or discussion first so
+the intended scope is clear.
 
-```sh
-git clone https://github.com/nikhil25803/kafkaesque.git
-cd kafkaesque
-go mod download
-make build
-./bin/kafkaesque --help
-```
+## Development workflow
 
-## Run the checks
+1. Fork the repository and create a focused branch.
+2. Make the smallest complete change.
+3. Add or update tests for changed behavior.
+4. Update the relevant documentation and the `Unreleased` section of
+   [CHANGELOG.md](CHANGELOG.md) for user-facing changes.
+5. Run:
 
-Run the same core checks used by CI:
+   ```sh
+   make check
+   go test -race ./...
+   git diff --check
+   ```
 
-```sh
-go test ./...
-go vet ./...
-git diff --check
-```
+6. Run the relevant Kafka, PostgreSQL, Docker, or release integration checks
+   described in the [development guide](docs/development.md).
 
-`make test` is available as a shorter local test command. Release-related
-changes should also run:
+## Code standards
 
-```sh
-make release-test
-```
+- Prefer readable, conventional Go over compressed code.
+- Run `gofmt`; `make check` verifies formatting.
+- Keep exported and security-sensitive behavior documented in plain language.
+- Preserve request cancellation, error handling, secret redaction, and
+  accessibility behavior.
+- Do not add credentials, tokens, certificates, database URLs, or realistic
+  secrets to source, tests, examples, logs, or image layers.
+- Use placeholders in documentation and generate test credentials at runtime.
+- Keep API response envelopes, CLI output contracts, and migrations compatible
+  unless the change explicitly documents a breaking change.
 
-## Local Kafka development
+## Pull requests
 
-Start and seed the disposable five-broker fixture:
+A pull request should:
 
-```sh
-make kafka-up
-make build
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --metadata
-```
+- Explain the problem and the chosen solution.
+- Stay focused; unrelated cleanup belongs in another change.
+- List the checks that were run.
+- Include screenshots for visible UI changes.
+- Call out migrations, breaking changes, security effects, and operational
+  risks.
+- Avoid rewriting shared branch history after review has started unless needed
+  to remove sensitive material.
 
-Start the activity simulator when working on consumer groups or lag:
-
-```sh
-make kafka-simulator-start
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumers
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --member --group order-processor
-```
-
-Inspect the simulator and stop it without stopping Kafka:
-
-```sh
-make kafka-simulator-status
-make kafka-simulator-logs
-make kafka-simulator-stop
-```
-
-Reset or remove the complete environment:
-
-```sh
-make kafka-reset
-make kafka-down
-```
-
-See [`kafka-env/README.md`](kafka-env/README.md) for the fixture matrix and
-direct Compose commands.
-
-## How the CLI works
-
-### Command execution
-
-```mermaid
-flowchart TD
-    A[cmd/kafkaesque/main.go] --> B[internals.Execute]
-    B --> C[newRootCommand]
-    C --> D[Validate flags]
-    D --> E[config.Load]
-    E --> F[kafka.Connect]
-    F --> S[serve: APIs]
-    F --> G[GetKafkaInformation]
-    G --> H[printKafkaInformation]
-    H --> I[Cobra configured writer]
-```
-
-`root.go` owns Cobra, validation, configuration, and connection lifecycle.
-`information.go` collects structured results. `output.go` renders those results
-without performing Kafka requests.
-
-### Information collection
-
-```mermaid
-flowchart TD
-    A[information.go: GetKafkaInformation] --> B[One Kafka metadata response]
-    B --> C[metadata]
-    B --> D[brokers]
-    B --> E[topics]
-    B --> F[partitions]
-    B --> G[consumers]
-    G --> H[Group coordinator and description]
-    H --> I[Committed offsets]
-    I --> J[Leader-routed log-end offsets]
-    J --> K[Reusable partition lag]
-    K --> L[Group summary]
-    K --> M[Topic partition detail]
-```
-
-Combined information flags reuse the native metadata response. Consumer lag
-uses committed offsets from the group coordinator and log-end offsets from each
-partition leader.
-
-## Project layout
-
-| Path                                                       | Responsibility                                           |
-| ---------------------------------------------------------- | -------------------------------------------------------- |
-| `cmd/kafkaesque`                                           | Process entry point.                                     |
-| `apis`                                                     | Read-only HTTP routes, envelopes, and pagination.        |
-| `internals/root.go`                                        | CLI flags, validation, config, and connection lifecycle. |
-| `internals/information.go`                                 | Shared collection and request coordination.              |
-| `internals/output.go`                                      | Writer-based terminal rendering.                         |
-| `internals/config`                                         | YAML, environment precedence, and validation.            |
-| `internals/kafka`                                          | Kafka connection and native metadata access.             |
-| `internals/{metadata,brokers,topics,partitions,consumers}` | Domain-specific structured results.                      |
-| `ui`                                                       | Embedded Go templates and assets for the web interface.  |
-| `kafka-env`                                                | Local Kafka fixture and activity simulator.              |
-| `.github/workflows`                                        | Build, tests, integration, and release automation.       |
+Report vulnerabilities privately according to [SECURITY.md](SECURITY.md), not
+through a public issue or pull request.
