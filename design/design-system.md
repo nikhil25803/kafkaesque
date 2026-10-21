@@ -187,6 +187,11 @@ the initial interface.
 - Use tabular numbers or the monospace stack for comparable numeric columns.
 - Preserve deterministic row ordering and never encode status by color alone.
 - On narrow screens, use horizontal scrolling; do not silently hide columns.
+- Put row-level actions behind an accessible vertical three-dot popover. Render
+  it in the browser top layer so tables and panels cannot clip its contents.
+  Show no action control when the row has no available actions.
+- Collapse long permission lists behind a labelled disclosure such as
+  `View permissions (3)` and group expanded permissions by module.
 
 ### Search and Filters
 
@@ -196,6 +201,8 @@ the initial interface.
 - Keep search, state filters, and pagination separate so each can be changed or
   cleared independently.
 - Display active filters and provide a clear action when any are applied.
+- Paginated lists offer 10, 25, 50, and 100 rows per page. Preserve filters
+  when changing size and reset to the first page.
 
 ### Buttons
 
@@ -310,6 +317,6 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
 - Topic Detail remains deferred until it is explicitly approved.
-- PostgreSQL-backed account login, logout, user listing, and Admin/User
-  provisioning are implemented. Role-based permissions, password management,
+- PostgreSQL-backed account login, logout, user lifecycle management, and
+  custom account roles are implemented. Password management,
   MFA, charts, alerts, settings, and new logo assets remain deferred.

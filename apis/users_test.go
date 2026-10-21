@@ -33,6 +33,50 @@ func TestUserRoutesAllowEveryRoleWithoutCheckingKafka(t *testing.T) {
 	}
 }
 
+func TestUserPermissionsAndRoleAdministration(t *testing.T) {
+	tests := []struct {
+		name   string
+		user   kafkaesque_auth.User
+		method string
+		path   string
+		want   int
+	}{
+		{
+			name: "missing view", user: kafkaesque_auth.User{ID: "custom-1", Role: "custom"},
+			method: http.MethodGet, path: "/api/v1/users", want: http.StatusForbidden,
+		},
+		{
+			name: "admin cannot delete", user: kafkaesque_auth.User{ID: "admin-1", Role: "admin"},
+			method: http.MethodDelete, path: "/api/v1/users/user-1", want: http.StatusForbidden,
+		},
+		{
+			name: "user cannot manage roles", user: kafkaesque_auth.User{ID: "user-1", Role: "user"},
+			method: http.MethodGet, path: "/api/v1/roles", want: http.StatusForbidden,
+		},
+		{
+			name: "super admin lists roles", user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"},
+			method: http.MethodGet, path: "/api/v1/roles", want: http.StatusOK,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			authentication := &fakeAuthManager{user: test.user}
+			handler, transport := authenticatedTestHandler(authentication, nil)
+			request := httptest.NewRequest(test.method, test.path, nil)
+			request.Header.Set("Authorization", "Bearer token")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.want {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if transport.metadataRequests != 0 {
+				t.Fatalf("metadata requests=%d", transport.metadataRequests)
+			}
+		})
+	}
+}
+
 func TestUserRoutesRequireAuthenticationAndCookieCSRF(t *testing.T) {
 	authentication := &fakeAuthManager{
 		user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"},
@@ -64,7 +108,7 @@ func TestListUsersReturnsPaginatedAccounts(t *testing.T) {
 		user: kafkaesque_auth.User{ID: "user-1", Username: "viewer", Role: "user"},
 		listedUsers: []kafkaesque_auth.ManagedUser{{
 			ID: "user-1", Name: "Jane Doe", Username: "jane", Email: "jane@example.com",
-			Role: "user", Active: true, CreatedAt: createdAt, UpdatedAt: createdAt,
+			Role: "user", CreatedAt: createdAt, UpdatedAt: createdAt,
 		}},
 		usersTotal: 26,
 	}
@@ -89,6 +133,9 @@ func TestListUsersReturnsPaginatedAccounts(t *testing.T) {
 			t.Fatalf("response missing %s: %s", expected, body)
 		}
 	}
+	if strings.Contains(body, `"active"`) {
+		t.Fatalf("response exposes inactive-account state: %s", body)
+	}
 	if transport.metadataRequests != 0 || authentication.listCalls != 1 {
 		t.Fatalf("metadata=%d list=%d", transport.metadataRequests, authentication.listCalls)
 	}
@@ -101,7 +148,7 @@ func TestCreateUserReturnsCreatedAccountAndSafeLog(t *testing.T) {
 		user: kafkaesque_auth.User{ID: "admin-1", Username: "admin", Role: "admin"},
 		createdUser: kafkaesque_auth.ManagedUser{
 			ID: "user-1", Name: "Jane Doe", Username: "jane", Email: "jane@example.com",
-			Role: "user", Active: true, CreatedAt: createdAt, UpdatedAt: createdAt,
+			Role: "user", CreatedAt: createdAt, UpdatedAt: createdAt,
 		},
 	}
 	handler, transport := authenticatedTestHandler(
@@ -153,6 +200,21 @@ func TestCreateUserRejectsInvalidJSON(t *testing.T) {
 	}
 	if authentication.createCalls != 0 {
 		t.Fatalf("create calls = %d", authentication.createCalls)
+	}
+}
+
+func TestUpdateUserRejectsInactiveState(t *testing.T) {
+	authentication := &fakeAuthManager{
+		user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"},
+	}
+	handler, _ := authenticatedTestHandler(authentication, nil)
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/users/user-1", strings.NewReader(`{"active":false}`))
+	request.Header.Set("Authorization", "Bearer token")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"invalid_request"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
 

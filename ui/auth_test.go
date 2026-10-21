@@ -38,6 +38,16 @@ func (f *fakeAuthManager) Login(context.Context, string, string) (kafkaesque_aut
 }
 
 func (f *fakeAuthManager) AuthenticateAccess(context.Context, string) (kafkaesque_auth.User, error) {
+	if len(f.user.Permissions) == 0 {
+		switch f.user.Role {
+		case "super_admin":
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}
+		case "admin":
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}
+		case "user":
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView}
+		}
+	}
 	return f.user, f.authErr
 }
 
@@ -62,10 +72,47 @@ func (f *fakeAuthManager) ListUsers(_ context.Context, page, pageSize int) ([]ka
 	return f.users, f.usersTotal, f.listErr
 }
 
-func (f *fakeAuthManager) CreateUser(_ context.Context, input kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+func (f *fakeAuthManager) GetUser(context.Context, string) (kafkaesque_auth.ManagedUser, error) {
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) CreateUser(_ context.Context, _ kafkaesque_auth.User, input kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
 	f.createCalls++
 	f.createInput = input
 	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) UpdateUser(context.Context, kafkaesque_auth.User, string, kafkaesque_auth.UpdateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) DeleteUser(context.Context, kafkaesque_auth.User, string) (kafkaesque_auth.ManagedUser, error) {
+	return f.created, f.createErr
+}
+
+func (f *fakeAuthManager) ListRoles(context.Context) ([]kafkaesque_auth.ManagedRole, error) {
+	return []kafkaesque_auth.ManagedRole{
+		{Name: "admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}},
+		{Name: "super_admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}},
+		{Name: "user", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView}},
+		{ID: "support-role", Name: "support", Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate}},
+	}, nil
+}
+
+func (f *fakeAuthManager) GetRole(context.Context, string) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, kafkaesque_auth.ErrNotFound
+}
+
+func (f *fakeAuthManager) CreateRole(context.Context, kafkaesque_auth.User, kafkaesque_auth.RoleInput) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+
+func (f *fakeAuthManager) UpdateRole(context.Context, kafkaesque_auth.User, string, kafkaesque_auth.RoleInput) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+
+func (f *fakeAuthManager) DeleteRole(context.Context, kafkaesque_auth.User, string) error {
+	return nil
 }
 
 func TestSafeNext(t *testing.T) {

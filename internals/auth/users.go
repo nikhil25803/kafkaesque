@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/nikhil25803/kafkaesque/internals/credentials"
 )
@@ -24,7 +25,6 @@ type ManagedUser struct {
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
-	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -36,6 +36,14 @@ type CreateUserInput struct {
 	Email    string
 	Password string
 	Role     string
+}
+
+// UpdateUserInput contains optional fields accepted when updating an account.
+type UpdateUserInput struct {
+	Name     *string
+	Username *string
+	Email    *string
+	Role     *string
 }
 
 // ValidationError identifies an invalid user field without exposing its value.
@@ -57,7 +65,7 @@ func (s *Service) ListUsers(ctx context.Context, page, pageSize int) ([]ManagedU
 
 	offset := int64(page-1) * int64(pageSize)
 	const query = `
-		SELECT u.id, u.name, u.username, u.email, r.name, u.active, u.created_at, u.updated_at
+		SELECT u.id, u.name, u.username, u.email, r.name, u.created_at, u.updated_at
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id
 		JOIN roles r ON r.id = ur.role_id
@@ -78,7 +86,6 @@ func (s *Service) ListUsers(ctx context.Context, page, pageSize int) ([]ManagedU
 			&user.Username,
 			&user.Email,
 			&user.Role,
-			&user.Active,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		); err != nil {
@@ -93,11 +100,42 @@ func (s *Service) ListUsers(ctx context.Context, page, pageSize int) ([]ManagedU
 	return users, total, nil
 }
 
-// CreateUser validates and creates one active Admin or User account.
-func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (ManagedUser, error) {
+// GetUser returns one managed account by ID.
+func (s *Service) GetUser(ctx context.Context, id string) (ManagedUser, error) {
+	const query = `
+		SELECT u.id, u.name, u.username, u.email, r.name, u.created_at, u.updated_at
+		FROM users u
+		JOIN user_roles ur ON ur.user_id = u.id
+		JOIN roles r ON r.id = ur.role_id
+		WHERE u.id::text = $1`
+	var user ManagedUser
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&user.ID, &user.Name, &user.Username, &user.Email, &user.Role,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ManagedUser{}, ErrNotFound
+	}
+	if err != nil {
+		return ManagedUser{}, fmt.Errorf("get user: %w", err)
+	}
+	return user, nil
+}
+
+// CreateUser validates and creates one active account within the actor's scope.
+func (s *Service) CreateUser(ctx context.Context, actor User, input CreateUserInput) (ManagedUser, error) {
 	input, err := validateCreateUser(input)
 	if err != nil {
 		return ManagedUser{}, err
+	}
+	if !HasPermission(actor, PermissionUserCreate) {
+		return ManagedUser{}, ErrForbidden
+	}
+	if !isSuperAdmin(actor) && input.Role != "user" {
+		return ManagedUser{}, ErrForbidden
+	}
+	if input.Role == "super_admin" {
+		return ManagedUser{}, ErrForbidden
 	}
 
 	passwordHash, err := HashPassword(input.Password)
@@ -112,7 +150,9 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (Manage
 	defer tx.Rollback(ctx)
 
 	var roleID string
-	if err := tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", input.Role).Scan(&roleID); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", input.Role).Scan(&roleID); errors.Is(err, pgx.ErrNoRows) {
+		return ManagedUser{}, &ValidationError{Field: "role", Message: "does not exist"}
+	} else if err != nil {
 		return ManagedUser{}, fmt.Errorf("find user role: %w", err)
 	}
 
@@ -125,7 +165,7 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (Manage
 	const insertUser = `
 		INSERT INTO users(name, username, email, password_hash)
 		VALUES($1, $2, $3, $4)
-		RETURNING id, active, created_at, updated_at`
+		RETURNING id, created_at, updated_at`
 	err = tx.QueryRow(
 		ctx,
 		insertUser,
@@ -133,7 +173,7 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (Manage
 		input.Username,
 		input.Email,
 		passwordHash,
-	).Scan(&user.ID, &user.Active, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return ManagedUser{}, classifyUserConflict(err)
 	}
@@ -151,6 +191,150 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (Manage
 	}
 
 	return user, nil
+}
+
+// UpdateUser changes an account within the actor's management scope.
+func (s *Service) UpdateUser(ctx context.Context, actor User, id string, input UpdateUserInput) (ManagedUser, error) {
+	if !HasPermission(actor, PermissionUserEdit) {
+		return ManagedUser{}, ErrForbidden
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ManagedUser{}, fmt.Errorf("begin user update: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	current, err := getUserForUpdate(ctx, tx, id)
+	if err != nil {
+		return ManagedUser{}, err
+	}
+	if current.Role == "super_admin" {
+		return ManagedUser{}, ErrForbidden
+	}
+	if !isSuperAdmin(actor) {
+		if current.Role != "user" || input.Role != nil {
+			return ManagedUser{}, ErrForbidden
+		}
+	}
+
+	next, roleChanged, err := validateUpdateUser(current, input)
+	if err != nil {
+		return ManagedUser{}, err
+	}
+	if roleChanged {
+		var roleID string
+		if next.Role == "super_admin" {
+			return ManagedUser{}, ErrForbidden
+		}
+		if err := tx.QueryRow(ctx, "SELECT id FROM roles WHERE name=$1", next.Role).Scan(&roleID); errors.Is(err, pgx.ErrNoRows) {
+			return ManagedUser{}, &ValidationError{Field: "role", Message: "does not exist"}
+		} else if err != nil {
+			return ManagedUser{}, fmt.Errorf("find user role: %w", err)
+		}
+		if _, err := tx.Exec(ctx, "UPDATE user_roles SET role_id=$1, assigned_at=now() WHERE user_id=$2", roleID, id); err != nil {
+			return ManagedUser{}, fmt.Errorf("update user role: %w", err)
+		}
+	}
+
+	const update = `
+		UPDATE users
+		SET name=$1, username=$2, email=$3, updated_at=now()
+		WHERE id=$4
+		RETURNING updated_at`
+	err = tx.QueryRow(ctx, update, next.Name, next.Username, next.Email, id).Scan(&next.UpdatedAt)
+	if err != nil {
+		return ManagedUser{}, classifyUserConflict(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ManagedUser{}, fmt.Errorf("commit user update: %w", err)
+	}
+	return next, nil
+}
+
+// DeleteUser permanently removes an account and its sessions.
+func (s *Service) DeleteUser(ctx context.Context, actor User, id string) (ManagedUser, error) {
+	if !isSuperAdmin(actor) || !HasPermission(actor, PermissionUserDelete) {
+		return ManagedUser{}, ErrForbidden
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ManagedUser{}, fmt.Errorf("begin user deletion: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	user, err := getUserForUpdate(ctx, tx, id)
+	if err != nil {
+		return ManagedUser{}, err
+	}
+	if user.Role == "super_admin" {
+		return ManagedUser{}, ErrForbidden
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM users WHERE id=$1", id); err != nil {
+		return ManagedUser{}, fmt.Errorf("delete user: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ManagedUser{}, fmt.Errorf("commit user deletion: %w", err)
+	}
+	return user, nil
+}
+
+func getUserForUpdate(ctx context.Context, tx pgx.Tx, id string) (ManagedUser, error) {
+	const query = `
+		SELECT u.id, u.name, u.username, u.email, r.name, u.created_at, u.updated_at
+		FROM users u
+		JOIN user_roles ur ON ur.user_id = u.id
+		JOIN roles r ON r.id = ur.role_id
+		WHERE u.id::text=$1
+		FOR UPDATE OF u, ur`
+	var user ManagedUser
+	err := tx.QueryRow(ctx, query, id).Scan(
+		&user.ID, &user.Name, &user.Username, &user.Email, &user.Role,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ManagedUser{}, ErrNotFound
+	}
+	if err != nil {
+		return ManagedUser{}, fmt.Errorf("get user for update: %w", err)
+	}
+	return user, nil
+}
+
+func validateUpdateUser(current ManagedUser, input UpdateUserInput) (ManagedUser, bool, error) {
+	next := current
+	if input.Name != nil {
+		value, valid := credentials.NormalizeName(*input.Name)
+		if !valid {
+			return ManagedUser{}, false, &ValidationError{Field: "name", Message: "must contain 1-100 characters without line breaks"}
+		}
+		next.Name = value
+	}
+	if input.Username != nil {
+		value, valid := credentials.NormalizeUsername(*input.Username)
+		if !valid {
+			return ManagedUser{}, false, &ValidationError{Field: "username", Message: "is invalid"}
+		}
+		next.Username = value
+	}
+	if input.Email != nil {
+		value, valid := credentials.NormalizeEmail(*input.Email)
+		if !valid {
+			return ManagedUser{}, false, &ValidationError{Field: "email", Message: "is invalid"}
+		}
+		next.Email = value
+	}
+	if usernameEmail, isEmail := credentials.NormalizeEmail(next.Username); isEmail && usernameEmail != next.Email {
+		return ManagedUser{}, false, &ValidationError{Field: "username", Message: "must match email when it is an email address"}
+	}
+	if input.Role != nil {
+		next.Role = strings.ToLower(strings.TrimSpace(*input.Role))
+		if next.Role == "" {
+			return ManagedUser{}, false, &ValidationError{Field: "role", Message: "is required"}
+		}
+	}
+	return next, next.Role != current.Role, nil
 }
 
 func validateCreateUser(input CreateUserInput) (CreateUserInput, error) {
@@ -181,8 +365,8 @@ func validateCreateUser(input CreateUserInput) (CreateUserInput, error) {
 	if input.Role == "" {
 		input.Role = "user"
 	}
-	if input.Role != "admin" && input.Role != "user" {
-		return CreateUserInput{}, &ValidationError{Field: "role", Message: "must be admin or user"}
+	if input.Role == "super_admin" {
+		return CreateUserInput{}, &ValidationError{Field: "role", Message: "cannot be super_admin"}
 	}
 
 	return input, nil

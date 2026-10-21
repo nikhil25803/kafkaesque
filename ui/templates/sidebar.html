@@ -32,6 +32,10 @@
       <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.3-6 5.5-6s5 2 5.5 6M16 8h5M18.5 5.5v5"/></svg>
       <span>Users</span>
     </a>{{end}}
+    {{if .ShowRoles}}<a class="nav-item{{if eq .Active "roles"}} active{{end}}" href="/ui/roles"{{if eq .Active "roles"}} aria-current="page"{{end}} aria-label="Roles and permissions">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 4.5 2.7 7.5 8 9 5.3-1.5 8-4.5 8-9V7l-8-4Z"/><path d="M9 12h6M12 9v6"/></svg>
+      <span>Roles</span>
+    </a>{{end}}
   </nav>
 
   <div class="sidebar-footer">

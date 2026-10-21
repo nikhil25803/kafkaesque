@@ -33,9 +33,10 @@ const pendingBootstrapEmail = "bootstrap-pending@invalid.local"
 var migrations embed.FS
 
 type User struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	ID          string   `json:"id"`
+	Username    string   `json:"username"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
 }
 
 type Tokens struct {
@@ -60,13 +61,26 @@ type Manager interface {
 // UserManager provides user administration operations.
 type UserManager interface {
 	ListUsers(context.Context, int, int) ([]ManagedUser, int, error)
-	CreateUser(context.Context, CreateUserInput) (ManagedUser, error)
+	GetUser(context.Context, string) (ManagedUser, error)
+	CreateUser(context.Context, User, CreateUserInput) (ManagedUser, error)
+	UpdateUser(context.Context, User, string, UpdateUserInput) (ManagedUser, error)
+	DeleteUser(context.Context, User, string) (ManagedUser, error)
+}
+
+// RoleManager provides custom-role administration operations.
+type RoleManager interface {
+	ListRoles(context.Context) ([]ManagedRole, error)
+	GetRole(context.Context, string) (ManagedRole, error)
+	CreateRole(context.Context, User, RoleInput) (ManagedRole, error)
+	UpdateRole(context.Context, User, string, RoleInput) (ManagedRole, error)
+	DeleteRole(context.Context, User, string) error
 }
 
 // RuntimeManager provides every operation required by the API server.
 type RuntimeManager interface {
 	Manager
 	UserManager
+	RoleManager
 }
 
 type Service struct {
@@ -349,9 +363,19 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 			('roles', 'name'),
 			('roles', 'created_at'),
 			('roles', 'updated_at'),
+			('roles', 'system'),
 			('user_roles', 'user_id'),
 			('user_roles', 'role_id'),
 			('user_roles', 'assigned_at'),
+			('permissions', 'id'),
+			('permissions', 'module'),
+			('permissions', 'resource'),
+			('permissions', 'action'),
+			('permissions', 'created_at'),
+			('permissions', 'updated_at'),
+			('role_permissions', 'role_id'),
+			('role_permissions', 'permission_id'),
+			('role_permissions', 'assigned_at'),
 			('auth_sessions', 'id'),
 			('auth_sessions', 'user_id'),
 			('auth_sessions', 'access_token_hash'),
@@ -369,7 +393,7 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 			ON c.table_schema = 'public'
 			AND c.table_name = r.table_name
 			AND c.column_name = r.column_name`
-	if err := executor.QueryRow(ctx, query).Scan(&count); err != nil || count != 26 {
+	if err := executor.QueryRow(ctx, query).Scan(&count); err != nil || count != 36 {
 		return schemaIntegrityError()
 	}
 	var obsoleteRoleColumn int
@@ -384,7 +408,48 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 	}
 
 	var roles int
-	if err := executor.QueryRow(ctx, "SELECT count(*) FROM roles WHERE name IN ('super_admin', 'admin', 'user')").Scan(&roles); err != nil || roles != 3 {
+	if err := executor.QueryRow(ctx, "SELECT count(*) FROM roles WHERE system AND name IN ('super_admin', 'admin', 'user')").Scan(&roles); err != nil || roles != 3 {
+		return schemaIntegrityError()
+	}
+	if err := executor.QueryRow(ctx, "SELECT count(*) FROM roles WHERE system").Scan(&roles); err != nil || roles != 3 {
+		return schemaIntegrityError()
+	}
+	var grants int
+	const grantsQuery = `
+		SELECT count(*)
+		FROM role_permissions rp
+		JOIN roles r ON r.id = rp.role_id
+		JOIN permissions p ON p.id = rp.permission_id
+		WHERE (r.name = 'super_admin' AND p.module = 'user' AND p.resource = 'account' AND p.action IN ('view', 'create', 'edit', 'delete'))
+		   OR (r.name = 'admin' AND p.module = 'user' AND p.resource = 'account' AND p.action IN ('view', 'create', 'edit'))
+		   OR (r.name = 'user' AND p.module = 'user' AND p.resource = 'account' AND p.action = 'view')`
+	if err := executor.QueryRow(ctx, grantsQuery).Scan(&grants); err != nil || grants != 8 {
+		return schemaIntegrityError()
+	}
+	var catalogPermissions, systemGrants int
+	if err := executor.QueryRow(ctx, "SELECT count(*) FROM permissions").Scan(&catalogPermissions); err != nil || catalogPermissions != 4 {
+		return schemaIntegrityError()
+	}
+	const systemGrantsQuery = `
+		SELECT count(*)
+		FROM role_permissions rp
+		JOIN roles r ON r.id = rp.role_id
+		WHERE r.system`
+	if err := executor.QueryRow(ctx, systemGrantsQuery).Scan(&systemGrants); err != nil || systemGrants != 8 {
+		return schemaIntegrityError()
+	}
+	var guards int
+	const guardsQuery = `
+		SELECT count(*)
+		FROM pg_trigger
+		WHERE NOT tgisinternal
+			AND tgenabled <> 'D'
+			AND tgname IN (
+				'protect_system_role_update',
+				'protect_system_role_permission_changes',
+				'protect_permission_catalog_changes'
+			)`
+	if err := executor.QueryRow(ctx, guardsQuery).Scan(&guards); err != nil || guards != 3 {
 		return schemaIntegrityError()
 	}
 

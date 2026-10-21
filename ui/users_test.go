@@ -20,10 +20,14 @@ func TestUsersPageRendersAccountsAndNavigation(t *testing.T) {
 		user: kafkaesque_auth.User{ID: "super-1", Username: "super_admin", Role: "super_admin"},
 		users: []kafkaesque_auth.ManagedUser{{
 			ID: "super-1", Name: "Super Admin", Username: "super_admin",
-			Email: "super-admin@example.com", Role: "super_admin", Active: true,
+			Email: "super-admin@example.com", Role: "super_admin",
+			CreatedAt: createdAt, UpdatedAt: createdAt,
+		}, {
+			ID: "user-1", Name: "Jane Doe", Username: "jane",
+			Email: "jane@example.com", Role: "user",
 			CreatedAt: createdAt, UpdatedAt: createdAt,
 		}},
-		usersTotal: 1,
+		usersTotal: 2,
 	}
 	source := &fakeDataSource{}
 	handler := newHandlerWithAuth(source, authentication, false, nil)
@@ -47,12 +51,17 @@ func TestUsersPageRendersAccountsAndNavigation(t *testing.T) {
 		"super-admin@example.com",
 		`datetime="2026-10-21T01:02:03Z"`,
 		"21 Oct 2026, 01:02 UTC",
+		`<span class="visually-hidden">Actions</span>`,
+		`class="action-menu-trigger"`,
+		`popover="auto"`,
+		`aria-label="Actions for Jane Doe"`,
+		"Permanently delete this user?",
 	)
+	if strings.Contains(response.Body.String(), `<th scope="col">Status</th>`) || strings.Contains(response.Body.String(), "Active account") {
+		t.Fatal("users page exposes inactive-account controls")
+	}
 	if strings.Contains(response.Body.String(), `data-user-form`) || strings.Contains(response.Body.String(), "Accounts are provisioned only") {
 		t.Fatal("users list unexpectedly contains the creation form")
-	}
-	if strings.Contains(response.Body.String(), "<th scope=\"col\">Status</th>") {
-		t.Fatal("users table unexpectedly contains a status column")
 	}
 	if authentication.listPage != 1 || authentication.listSize != usersPageSize {
 		t.Fatalf("page=%d size=%d", authentication.listPage, authentication.listSize)
@@ -145,6 +154,27 @@ func TestUserPasswordFeedbackUpdatesEveryRuleAndProgress(t *testing.T) {
 	)
 }
 
+func TestActionMenusSupportDismissal(t *testing.T) {
+	script, err := assets.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requireContains(
+		t,
+		string(script),
+		"const initializeActionMenus",
+		"event.target.matches('.action-menu-items[popover]')",
+		"event.newState !== 'open'",
+		"trigger.getBoundingClientRect()",
+		"window.innerHeight - padding",
+		"window.innerWidth - menuBounds.width - padding",
+		".action-menu-items:popover-open",
+		"function syncFilterPageSize",
+		`.filter-form input[name="page_size"]`,
+	)
+}
+
 func TestUsersPagePaginationAndFragment(t *testing.T) {
 	authentication := &fakeAuthManager{
 		user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"},
@@ -174,6 +204,30 @@ func TestUsersPagePaginationAndFragment(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "0 of 26 users") {
 		t.Fatalf("out-of-range response=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestUsersPageSize(t *testing.T) {
+	authentication := &fakeAuthManager{
+		user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"},
+		users: []kafkaesque_auth.ManagedUser{{
+			ID: "user-1", Name: "Jane Doe", Username: "jane", Email: "jane@example.com", Role: "user",
+		}},
+		usersTotal: 1,
+	}
+	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users?page_size=50", nil))
+	if response.Code != http.StatusOK || authentication.listSize != 50 {
+		t.Fatalf("status=%d page size=%d body=%s", response.Code, authentication.listSize, response.Body.String())
+	}
+	requireContains(t, response.Body.String(), `name="page_size"`, `<option value="50" selected>50</option>`, `name="page" value="1"`)
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users?page_size=20", nil))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid page size status=%d", response.Code)
 	}
 }
 
@@ -216,7 +270,11 @@ func TestUsersPageRejectsInvalidPageAndAllowsEveryRole(t *testing.T) {
 
 			response = httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users/new", nil))
-			if response.Code != http.StatusOK || authentication.listCalls != 1 {
+			want := http.StatusOK
+			if role == "user" {
+				want = http.StatusForbidden
+			}
+			if response.Code != want || authentication.listCalls != 1 {
 				t.Fatalf("new page role=%s status=%d list calls=%d", role, response.Code, authentication.listCalls)
 			}
 		})
@@ -226,7 +284,7 @@ func TestUsersPageRejectsInvalidPageAndAllowsEveryRole(t *testing.T) {
 func TestCreateUserRedirectsAndSupportsEmailUsername(t *testing.T) {
 	var logs bytes.Buffer
 	authentication := &fakeAuthManager{
-		user:      kafkaesque_auth.User{ID: "user-1", Role: "user"},
+		user:      kafkaesque_auth.User{ID: "admin-1", Role: "admin"},
 		csrfValid: true,
 		created:   kafkaesque_auth.ManagedUser{ID: "user-1", Role: "user"},
 	}
@@ -267,6 +325,7 @@ func TestCreateUserRedirectsAndSupportsEmailUsername(t *testing.T) {
 		"csrf_token": {"csrf"}, "name": {"Admin User"}, "username": {"admin-user"},
 		"email": {"admin@example.com"}, "password": {password}, "role": {"admin"},
 	}
+	authentication.user = kafkaesque_auth.User{ID: "super-1", Role: "super_admin"}
 	request = authenticatedUIRequest(http.MethodPost, "/ui/users", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response = httptest.NewRecorder()

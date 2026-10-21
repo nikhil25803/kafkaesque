@@ -196,3 +196,29 @@ func (s *server) authenticate(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r.WithContext(kafkaesque_auth.WithUser(r.Context(), user)))
 	}
 }
+
+// authorize requires one account-management permission.
+func (s *server) authorize(permission string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := kafkaesque_auth.UserFromContext(r.Context())
+		if !ok || !kafkaesque_auth.HasPermission(user, permission) {
+			s.logger.Warn("authorization_rejected", "user_id", user.ID, "permission", permission)
+			writeError(w, http.StatusForbidden, "forbidden", "permission denied")
+			return
+		}
+		next(w, r)
+	}
+}
+
+// superAdmin restricts system-role administration to the configured Super Admin.
+func (s *server) superAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := kafkaesque_auth.UserFromContext(r.Context())
+		if !ok || user.Role != "super_admin" {
+			s.logger.Warn("authorization_rejected", "user_id", user.ID, "scope", "role_management")
+			writeError(w, http.StatusForbidden, "forbidden", "permission denied")
+			return
+		}
+		next(w, r)
+	}
+}

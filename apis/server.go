@@ -32,6 +32,7 @@ type server struct {
 	thresholds kafkaesque_consumers.LagThresholds
 	auth       kafkaesque_auth.Manager
 	users      kafkaesque_auth.UserManager
+	roles      kafkaesque_auth.RoleManager
 	limiter    *kafkaesque_auth.Limiter
 	logger     *slog.Logger
 }
@@ -120,6 +121,7 @@ func newHandler(
 		config:  cfg,
 		auth:    authentication,
 		users:   authentication,
+		roles:   authentication,
 		limiter: kafkaesque_auth.NewLimiter(),
 		logger:  logger,
 		thresholds: kafkaesque_consumers.LagThresholds{
@@ -142,8 +144,17 @@ func newHandler(
 
 	// User management.
 	if authentication != nil {
-		mux.HandleFunc("GET /api/v1/users", s.authenticate(s.listUsers))
-		mux.HandleFunc("POST /api/v1/users", s.authenticate(s.createUser))
+		mux.HandleFunc("GET /api/v1/users", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserView, s.listUsers)))
+		mux.HandleFunc("POST /api/v1/users", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserCreate, s.createUser)))
+		mux.HandleFunc("GET /api/v1/users/{id}", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserView, s.getUser)))
+		mux.HandleFunc("PATCH /api/v1/users/{id}", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserEdit, s.updateUser)))
+		mux.HandleFunc("DELETE /api/v1/users/{id}", s.authenticate(s.authorize(kafkaesque_auth.PermissionUserDelete, s.deleteUser)))
+
+		mux.HandleFunc("GET /api/v1/roles", s.authenticate(s.superAdmin(s.listRoles)))
+		mux.HandleFunc("POST /api/v1/roles", s.authenticate(s.superAdmin(s.createRole)))
+		mux.HandleFunc("GET /api/v1/roles/{id}", s.authenticate(s.superAdmin(s.getRole)))
+		mux.HandleFunc("PATCH /api/v1/roles/{id}", s.authenticate(s.superAdmin(s.updateRole)))
+		mux.HandleFunc("DELETE /api/v1/roles/{id}", s.authenticate(s.superAdmin(s.deleteRole)))
 	}
 
 	// Protect every Kafka-backed endpoint.

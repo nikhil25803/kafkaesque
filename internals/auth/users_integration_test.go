@@ -15,14 +15,14 @@ func TestPostgreSQLUserManagement(t *testing.T) {
 	service := openTestService(t, ctx, cfg)
 	defer service.Close()
 
-	created, err := service.CreateUser(ctx, CreateUserInput{
+	created, err := service.CreateUser(ctx, integrationSuperAdmin(), CreateUserInput{
 		Name: "Jane Doe", Username: "JANE", Email: "JANE@EXAMPLE.COM",
 		Password: integrationPassword("jane"), Role: "admin",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Username != "jane" || created.Email != "jane@example.com" || created.Role != "admin" || !created.Active {
+	if created.Username != "jane" || created.Email != "jane@example.com" || created.Role != "admin" {
 		t.Fatalf("created user = %+v", created)
 	}
 
@@ -63,13 +63,13 @@ func TestPostgreSQLUserManagement(t *testing.T) {
 		t.Fatalf("users=%+v total=%d", users, total)
 	}
 
-	if _, err := service.CreateUser(ctx, CreateUserInput{
+	if _, err := service.CreateUser(ctx, integrationSuperAdmin(), CreateUserInput{
 		Name: "Duplicate Username", Username: "JANE", Email: "other@example.com",
 		Password: integrationPassword("duplicate"),
 	}); !errors.Is(err, ErrUsernameExists) {
 		t.Fatalf("duplicate username error = %v", err)
 	}
-	if _, err := service.CreateUser(ctx, CreateUserInput{
+	if _, err := service.CreateUser(ctx, integrationSuperAdmin(), CreateUserInput{
 		Name: "Duplicate Email", Username: "other", Email: "JANE@EXAMPLE.COM",
 		Password: integrationPassword("duplicate"),
 	}); !errors.Is(err, ErrEmailExists) {
@@ -81,7 +81,7 @@ func TestPostgreSQLUserManagement(t *testing.T) {
 		t.Fatalf("second page users=%+v total=%d err=%v", users, total, err)
 	}
 
-	createdUser, err := service.CreateUser(ctx, CreateUserInput{
+	createdUser, err := service.CreateUser(ctx, integrationSuperAdmin(), CreateUserInput{
 		Name: "John Doe", Username: "john", Email: "john@example.com",
 		Password: integrationPassword("john"), Role: "user",
 	})
@@ -112,7 +112,7 @@ func TestPostgreSQLConcurrentUserConflict(t *testing.T) {
 		go func(email string) {
 			defer wait.Done()
 			<-start
-			_, err := service.CreateUser(ctx, CreateUserInput{
+			_, err := service.CreateUser(ctx, integrationSuperAdmin(), CreateUserInput{
 				Name: "Concurrent User", Username: "concurrent", Email: email,
 				Password: integrationPassword("concurrent"),
 			})
@@ -146,12 +146,9 @@ func TestPostgreSQLUserCreationRollsBackWithoutRole(t *testing.T) {
 	service := openTestService(t, ctx, testAuthenticationConfig(databaseURL))
 	defer service.Close()
 
-	if _, err := service.pool.Exec(ctx, "DELETE FROM roles WHERE name='admin'"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.CreateUser(ctx, CreateUserInput{
+	if _, err := service.CreateUser(ctx, integrationSuperAdmin(), CreateUserInput{
 		Name: "Missing Role", Username: "missing-role", Email: "missing-role@example.com",
-		Password: integrationPassword("missing-role"), Role: "admin",
+		Password: integrationPassword("missing-role"), Role: "missing_role",
 	}); err == nil {
 		t.Fatal("creation succeeded without the requested role")
 	}
@@ -162,5 +159,12 @@ func TestPostgreSQLUserCreationRollsBackWithoutRole(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("partial users = %d", count)
+	}
+}
+
+func integrationSuperAdmin() User {
+	return User{
+		ID: "integration-super-admin", Role: "super_admin",
+		Permissions: append([]string(nil), accountPermissions...),
 	}
 }

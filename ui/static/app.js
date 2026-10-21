@@ -175,7 +175,10 @@
   document.addEventListener('htmx:afterRequest', () => {
     if (!automaticRefreshPending) scheduleRefresh();
   });
-  document.addEventListener('htmx:afterSwap', initializeRefreshControl);
+  document.addEventListener('htmx:afterSwap', () => {
+    initializeRefreshControl();
+    syncFilterPageSize();
+  });
 
   document.addEventListener('change', (event) => {
     if (event.target.id !== 'consumer-lag-refresh') return;
@@ -269,6 +272,48 @@
     syncUsername();
   };
 
+  const initializeActionMenus = () => {
+    const positionMenu = (menu) => {
+      const trigger = document.querySelector(`[popovertarget="${menu.id}"]`);
+      if (!trigger) return;
+
+      const gap = 6;
+      const padding = 8;
+      const triggerBounds = trigger.getBoundingClientRect();
+      const menuBounds = menu.getBoundingClientRect();
+      let top = triggerBounds.bottom + gap;
+      if (top + menuBounds.height > window.innerHeight - padding) {
+        top = triggerBounds.top - menuBounds.height - gap;
+      }
+      const left = Math.min(
+        Math.max(padding, triggerBounds.right - menuBounds.width),
+        window.innerWidth - menuBounds.width - padding,
+      );
+      menu.style.top = `${Math.max(padding, top)}px`;
+      menu.style.left = `${left}px`;
+    };
+
+    document.addEventListener('beforetoggle', (event) => {
+      if (!event.target.matches('.action-menu-items[popover]') || event.newState !== 'open') return;
+      window.requestAnimationFrame(() => positionMenu(event.target));
+    }, true);
+
+    const repositionOpenMenus = () => {
+      document.querySelectorAll('.action-menu-items:popover-open').forEach(positionMenu);
+    };
+    window.addEventListener('resize', repositionOpenMenus);
+    document.addEventListener('scroll', repositionOpenMenus, true);
+  };
+
+  function syncFilterPageSize() {
+    const selected = document.querySelector('.page-size-form select[name="page_size"]')?.value;
+    if (!selected) return;
+
+    document.querySelectorAll('.filter-form input[name="page_size"]').forEach((input) => {
+      input.value = selected;
+    });
+  }
+
   const sidebar = document.querySelector('#sidebar');
   const closeButton = document.querySelector('#drawer-close');
   const overlay = document.querySelector('#drawer-overlay');
@@ -327,4 +372,6 @@
 
   initializeRefreshControl();
   initializeUserForm();
+  initializeActionMenus();
+  syncFilterPageSize();
 })();

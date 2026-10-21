@@ -35,10 +35,17 @@ type topicsResults struct {
 	PreviousURL string
 	NextURL     string
 	HasFilters  bool
+	ClearURL    string
+	Pagination  pageSizeControl
 }
 
 func renderTopics(w http.ResponseWriter, r *http.Request) {
 	page, err := positivePage(r.URL.Query().Get("page"))
+	if err != nil {
+		renderUIError(w, r, http.StatusBadRequest, "topics", "Invalid topics request", err.Error())
+		return
+	}
+	pageSize, err := parsePageSize(r.URL.Query().Get("page_size"), 10)
 	if err != nil {
 		renderUIError(w, r, http.StatusBadRequest, "topics", "Invalid topics request", err.Error())
 		return
@@ -58,7 +65,7 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 	for _, topic := range information {
 		topics = append(topics, topicView{Name: topic.Name, Level: topic.Level, Partitions: topic.PartitionCount, ReplicationFactor: topic.ReplicationFactor})
 	}
-	results := paginateTopics(filterTopics(topics, query, level), query, level, page)
+	results := paginateTopics(filterTopics(topics, query, level), query, level, page, pageSize)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -90,8 +97,7 @@ func filterTopics(topics []topicView, query, level string) []topicView {
 	return filtered
 }
 
-func paginateTopics(topics []topicView, query, level string, page int) topicsResults {
-	const pageSize = 10
+func paginateTopics(topics []topicView, query, level string, page, pageSize int) topicsResults {
 	total := len(topics)
 	totalPages := (total + pageSize - 1) / pageSize
 	start := (page - 1) * pageSize
@@ -101,7 +107,7 @@ func paginateTopics(topics []topicView, query, level string, page int) topicsRes
 	end := min(start+pageSize, total)
 	pages := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pages = append(pages, pageLink{Number: number, URL: topicsURL(query, level, number), Active: number == page})
+		pages = append(pages, pageLink{Number: number, URL: topicsURL(query, level, number, pageSize), Active: number == page})
 	}
 	rangeText := "0 topics"
 	if start < end {
@@ -112,17 +118,20 @@ func paginateTopics(topics []topicView, query, level string, page int) topicsRes
 	results := topicsResults{
 		Topics: topics[start:end], Range: rangeText, Pages: pages,
 		HasFilters: query != "" || level != "",
+		ClearURL:   topicsURL("", "", 1, pageSize),
+		Pagination: newPageSizeControl("/ui/topics", "#topics-results", pageSize,
+			queryField{Name: "q", Value: query}, queryField{Name: "level", Value: level}),
 	}
 	if page > 1 && page <= totalPages {
-		results.PreviousURL = topicsURL(query, level, page-1)
+		results.PreviousURL = topicsURL(query, level, page-1, pageSize)
 	}
 	if page < totalPages {
-		results.NextURL = topicsURL(query, level, page+1)
+		results.NextURL = topicsURL(query, level, page+1, pageSize)
 	}
 	return results
 }
 
-func topicsURL(query, level string, page int) string {
+func topicsURL(query, level string, page, pageSize int) string {
 	values := url.Values{}
 	if query != "" {
 		values.Set("q", query)
@@ -131,6 +140,7 @@ func topicsURL(query, level string, page int) string {
 		values.Set("level", level)
 	}
 	values.Set("page", strconv.Itoa(page))
+	values.Set("page_size", strconv.Itoa(pageSize))
 	return "/ui/topics?" + values.Encode()
 }
 

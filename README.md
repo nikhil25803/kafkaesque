@@ -512,9 +512,10 @@ pages use live request-time data; User Management uses PostgreSQL directly.
 Filtering and pagination use a locally vendored HTMX runtime and continue to
 work as ordinary links and forms without JavaScript. Consumer Lag includes
 topic and partition offsets, lag sorting, member grouping, and assignments.
-New Admin and User accounts use the shared password policy and can sign in
-immediately. Until RBAC is introduced, every authenticated role has equal
-access to the existing API and UI.
+New accounts use the shared password policy and can sign in immediately. Every
+authenticated role can inspect Kafka. Account management uses the built-in
+Super Admin, Admin, and User permission matrix plus optional custom roles; see
+[Account RBAC](RBAC.md).
 
 For local authentication development, start the PostgreSQL 18 fixture with
 `make postgres-up`. `make postgres-down` preserves its data;

@@ -471,8 +471,8 @@ func TestPostgreSQLMigrationChecksumMismatch(t *testing.T) {
 	if err := service.pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&migrationsApplied); err != nil {
 		t.Fatal(err)
 	}
-	if migrationsApplied != 3 {
-		t.Fatalf("migrations = %d, want 3", migrationsApplied)
+	if migrationsApplied != 5 {
+		t.Fatalf("migrations = %d, want 5", migrationsApplied)
 	}
 }
 
@@ -572,7 +572,11 @@ func TestPostgreSQLReinitializeRepairsSuperAdminIntegrity(t *testing.T) {
 			insertOrdinaryUser(t, pool, "duplicate", "duplicate@example.com", "super_admin")
 		},
 		"missing role": func(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
-			if _, err := pool.Exec(ctx, "DELETE FROM user_roles; DELETE FROM roles WHERE name='super_admin'"); err != nil {
+			const corrupt = `
+				ALTER TABLE roles DISABLE TRIGGER protect_system_role_update;
+				DELETE FROM user_roles;
+				DELETE FROM roles WHERE name='super_admin'`
+			if _, err := pool.Exec(ctx, corrupt); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -702,7 +706,7 @@ func resetAuthenticationDatabase(t *testing.T, databaseURL string) {
 	defer pool.Close()
 	_, err := pool.Exec(
 		context.Background(),
-		"DROP TABLE IF EXISTS auth_sessions, user_roles, roles, users, schema_migrations, unrelated_data, rollback_marker CASCADE",
+		"DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION CURRENT_USER",
 	)
 	if err != nil {
 		t.Fatal(err)

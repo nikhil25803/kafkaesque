@@ -25,7 +25,7 @@
             <p>Manage Kafkaesque accounts</p>
           </div>
         </div>
-        <a class="primary-button" href="/ui/users/new">+ Add user</a>
+        {{if .CanCreate}}<a class="primary-button" href="/ui/users/new">+ Add user</a>{{end}}
       </header>
 
       {{if .Success}}<div class="form-message success" role="status">{{.Success}}</div>{{end}}
@@ -43,7 +43,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Add user · Kafkaesque</title>
+  <title>{{if .Form.Editing}}Edit user{{else}}Add user{{end}} · Kafkaesque</title>
   <link rel="stylesheet" href="/ui/assets/app.css">
   <script src="/ui/assets/app.js" defer></script>
 </head>
@@ -55,7 +55,7 @@
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <a href="/ui/users">Users</a>
         <span aria-hidden="true">/</span>
-        <span>Add user</span>
+        <span>{{if .Form.Editing}}Edit user{{else}}Add user{{end}}</span>
       </nav>
 
       <header class="page-header">
@@ -64,8 +64,8 @@
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
           <div>
-            <h1>Add user</h1>
-            <p>Create an account that can sign in immediately</p>
+            <h1>{{if .Form.Editing}}Edit user{{else}}Add user{{end}}</h1>
+            <p>{{if .Form.Editing}}Update this Kafkaesque account{{else}}Create an account that can sign in immediately{{end}}</p>
           </div>
         </div>
       </header>
@@ -74,12 +74,12 @@
         <section class="panel user-create-panel" aria-labelledby="create-user-title">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Account provisioning</p>
+              <p class="eyebrow">Account management</p>
               <h2 id="create-user-title">User details</h2>
             </div>
           </div>
 
-          <form class="user-form" method="post" action="/ui/users" data-user-form>
+          <form class="user-form" method="post" action="{{if .Form.Editing}}/ui/users/{{.Form.ID}}{{else}}/ui/users{{end}}" data-user-form>
             <input type="hidden" name="csrf_token" value="{{.Navigation.CSRFToken}}">
             {{if .Form.Error}}<div class="form-message error" role="alert">{{.Form.Error}}</div>{{end}}
 
@@ -105,7 +105,7 @@
                 </label>
               </div>
 
-              <label class="field user-password-field">
+              {{if not .Form.Editing}}<label class="field user-password-field">
                 <span>Password</span>
                 <input id="new-user-password" name="password" type="password" minlength="8" maxlength="99" autocomplete="new-password" aria-describedby="password-progress password-policy" required>
               </label>
@@ -128,19 +128,19 @@
                   <li class="critical" data-password-rule="number"><span>One number</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
                   <li class="critical" data-password-rule="special"><span>One of !@#$%^&amp;*()_</span><span><span data-rule-icon aria-hidden="true">×</span><span class="visually-hidden" data-rule-status>Not met</span></span></li>
                 </ul>
-              </details>
+              </details>{{end}}
 
               <label class="field">
                 <span>Role</span>
-                <select name="role">
-                  <option value="user"{{if eq .Form.Role "user"}} selected{{end}}>User</option>
-                  <option value="admin"{{if eq .Form.Role "admin"}} selected{{end}}>Admin</option>
+                <select name="role"{{if not .Form.CanManageRole}} disabled{{end}}>
+                  {{range .Form.RoleOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
                 </select>
               </label>
+
             </div>
 
             <div class="user-form-actions">
-              <button class="primary-button" type="submit">Create user</button>
+              <button class="primary-button" type="submit">{{if .Form.Editing}}Save changes{{else}}Create user{{end}}</button>
               <a class="secondary-button" href="/ui/users">Cancel</a>
             </div>
           </form>
@@ -165,7 +165,7 @@
   {{if .Users}}
   <div class="table-scroll" tabindex="0" aria-label="Users table, horizontally scrollable">
     <table class="users-table">
-      <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Added</th></tr></thead>
+      <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Added</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
       <tbody>
         {{range .Users}}<tr>
           <th scope="row">{{.Name}}</th>
@@ -173,6 +173,16 @@
           <td>{{.Email}}</td>
           <td><span class="level-label">{{.Role}}</span></td>
           <td><time datetime="{{.AddedAt}}">{{.Added}}</time></td>
+          <td class="actions-cell">{{if or .CanEdit .CanDelete}}
+            <button class="action-menu-trigger" type="button" popovertarget="user-actions-{{.ID}}" aria-label="Actions for {{.Name}}"><span aria-hidden="true">&#8942;</span></button>
+            <div class="action-menu-items" id="user-actions-{{.ID}}" popover="auto" aria-label="Actions for {{.Name}}">
+              {{if .CanEdit}}<a href="/ui/users/{{.ID}}/edit">Edit</a>{{end}}
+              {{if .CanDelete}}<form method="post" action="/ui/users/{{.ID}}/delete" onsubmit="return confirm('Permanently delete this user?')">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button class="critical" type="submit">Delete</button>
+              </form>{{end}}
+            </div>
+          {{end}}</td>
         </tr>{{end}}
       </tbody>
     </table>
@@ -186,11 +196,14 @@
 
   {{if .Pages}}
   <nav class="pagination" aria-label="User pages">
+    <div class="pagination-links">
     {{if .PreviousURL}}<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="#users-results" hx-swap="outerHTML" hx-push-url="true">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
     <div class="page-links">
       {{range .Pages}}{{if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#users-results" hx-swap="outerHTML" hx-push-url="true">{{.Number}}</a>{{end}}{{end}}
     </div>
     {{if .NextURL}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="#users-results" hx-swap="outerHTML" hx-push-url="true">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+    </div>
+    {{template "page-size-control" .Pagination}}
   </nav>
   {{end}}
 </section>

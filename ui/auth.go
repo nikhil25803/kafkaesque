@@ -23,7 +23,32 @@ func navigationFor(r *http.Request, active string) navigationView {
 		Username:  user.Username,
 		Role:      roleLabel(user.Role),
 		CSRFToken: kafkaesque_auth.CookieValue(r, kafkaesque_auth.CSRFCookie),
-		ShowUsers: user.ID != "",
+		ShowUsers: kafkaesque_auth.HasPermission(user, kafkaesque_auth.PermissionUserView),
+		ShowRoles: user.Role == "super_admin",
+	}
+}
+
+// authorizeUI requires one account-management permission.
+func authorizeUI(permission string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := kafkaesque_auth.UserFromContext(r.Context())
+		if !ok || !kafkaesque_auth.HasPermission(user, permission) {
+			renderUIError(w, r, http.StatusForbidden, "", "Permission denied", "You do not have permission to access this page.")
+			return
+		}
+		next(w, r)
+	}
+}
+
+// superAdminUI restricts role administration to the configured Super Admin.
+func superAdminUI(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := kafkaesque_auth.UserFromContext(r.Context())
+		if !ok || user.Role != "super_admin" {
+			renderUIError(w, r, http.StatusForbidden, "", "Permission denied", "Only the Super Admin can manage roles.")
+			return
+		}
+		next(w, r)
 	}
 }
 

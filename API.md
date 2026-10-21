@@ -71,18 +71,25 @@ Content-Type: application/json
 ```
 
 The response `data` contains `access_token`, `refresh_token`, `csrf_token`,
-their expiration timestamps, and the account identity and role. Refresh tokens
-are single-use and rotate the complete token pair.
+their expiration timestamps, and the account identity, role, and sorted
+permission keys. Refresh tokens are single-use and rotate the complete token
+pair. Current permissions are resolved from PostgreSQL on every authenticated
+request.
 
 ## Users
 
 | Method | Path | Query Params | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/users` | `page`, `page_size` | List all accounts, including the configured Super Admin, newest first. |
-| `POST` | `/api/v1/users` | — | Create an active Admin or User account. |
+| `GET` | `/api/v1/users` | `page`, `page_size` | List accounts when granted `user:account:view`. |
+| `POST` | `/api/v1/users` | — | Create an account when granted `user:account:create`. |
+| `GET` | `/api/v1/users/{id}` | — | Get one account when granted `user:account:view`. |
+| `PATCH` | `/api/v1/users/{id}` | — | Edit an account when granted `user:account:edit`. |
+| `DELETE` | `/api/v1/users/{id}` | — | Permanently delete an account; reserved for Super Admin. |
 
-Both endpoints require authentication. Until RBAC is introduced, every active
-account has equal access and newly created accounts can sign in immediately.
+Every endpoint requires authentication. User can list accounts, Admin can list,
+create, and edit User accounts, and Super Admin can also assign roles and
+permanently delete accounts. The configured Super Admin cannot be changed or
+deleted through these endpoints.
 
 ```http
 POST /api/v1/users
@@ -92,9 +99,27 @@ Content-Type: application/json
 {"name":"Jane Doe","username":"jane","email":"jane@example.com","password":"your-valid-password","role":"user"}
 ```
 
-The role defaults to `user` and accepts only `admin` or `user`. An email-style
-username must match the normalized email field. Successful creation returns
-`201`; responses never include password hashes.
+The role defaults to `user`. Only Super Admin can assign Admin or custom roles;
+other permitted callers create User accounts. An email-style username must
+match the normalized email field. Successful creation returns `201`; responses
+never include password hashes. Deletion permanently removes the account, its
+role assignment, and all sessions. Custom roles remain available for reuse.
+
+## Roles
+
+| Method | Path | Query Params | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/roles` | — | List system and custom roles. |
+| `POST` | `/api/v1/roles` | — | Create a custom role. |
+| `GET` | `/api/v1/roles/{id}` | — | Get one role and its permissions. |
+| `PATCH` | `/api/v1/roles/{id}` | — | Rename a custom role or replace its permissions. |
+| `DELETE` | `/api/v1/roles/{id}` | — | Delete an unused custom role. |
+
+Role administration is restricted to Super Admin. Custom roles may contain
+`user:account:view`, `user:account:create`, and `user:account:edit`; mutation
+permissions require View. `user:account:delete` is reserved for Super Admin.
+System roles are immutable and assigned custom roles must be reassigned before
+deletion. See [RBAC.md](RBAC.md) for the complete matrix.
 
 ## Metadata
 

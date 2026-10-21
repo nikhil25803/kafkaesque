@@ -25,7 +25,9 @@ import (
 //go:embed templates/*.html static/*
 var assets embed.FS
 
-var dashboardTemplate = template.Must(template.ParseFS(assets, "templates/*.html"))
+var dashboardTemplate = template.Must(template.New("ui").Funcs(template.FuncMap{
+	"permissionChecked": permissionChecked,
+}).ParseFS(assets, "templates/*.html"))
 
 type dashboardPage struct {
 	Navigation     navigationView
@@ -42,6 +44,7 @@ type navigationView struct {
 	Role      string
 	CSRFToken string
 	ShowUsers bool
+	ShowRoles bool
 }
 
 type connectionView struct {
@@ -87,12 +90,32 @@ type consumerGroupsResults struct {
 	PreviousURL string
 	NextURL     string
 	HasFilters  bool
+	ClearURL    string
+	Pagination  pageSizeControl
 }
 
 type pageLink struct {
 	Number int
 	URL    string
 	Active bool
+}
+
+type pageSizeOption struct {
+	Value    int
+	Selected bool
+}
+
+type queryField struct {
+	Name  string
+	Value string
+}
+
+type pageSizeControl struct {
+	Action   string
+	Target   string
+	Selected int
+	Options  []pageSizeOption
+	Filters  []queryField
 }
 
 type healthView struct {
@@ -213,9 +236,19 @@ func newHandlerWithAuth(
 		mux.HandleFunc("GET /ui/login", renderLogin)
 		mux.HandleFunc("POST /ui/login", loginUI(authentication, limiter, cookieSecure, logger))
 		mux.HandleFunc("POST /ui/logout", protect(logoutUI(authentication, cookieSecure, logger)))
-		mux.HandleFunc("GET /ui/users", protect(renderUsers(authentication, logger)))
-		mux.HandleFunc("GET /ui/users/new", protect(renderNewUser))
-		mux.HandleFunc("POST /ui/users", protect(createUserUI(authentication, logger)))
+		mux.HandleFunc("GET /ui/users", protect(authorizeUI(kafkaesque_auth.PermissionUserView, renderUsers(authentication, logger))))
+		mux.HandleFunc("GET /ui/users/new", protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, renderNewUser(authentication))))
+		mux.HandleFunc("POST /ui/users", protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, createUserUI(authentication, logger))))
+		mux.HandleFunc("GET /ui/users/{id}/edit", protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, renderEditUser(authentication, logger))))
+		mux.HandleFunc("POST /ui/users/{id}", protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, updateUserUI(authentication, logger))))
+		mux.HandleFunc("POST /ui/users/{id}/delete", protect(authorizeUI(kafkaesque_auth.PermissionUserDelete, deleteUserUI(authentication, logger))))
+
+		mux.HandleFunc("GET /ui/roles", protect(superAdminUI(renderRoles(authentication, logger))))
+		mux.HandleFunc("GET /ui/roles/new", protect(superAdminUI(renderNewRole)))
+		mux.HandleFunc("POST /ui/roles", protect(superAdminUI(createRoleUI(authentication, logger))))
+		mux.HandleFunc("GET /ui/roles/{id}/edit", protect(superAdminUI(renderEditRole(authentication, logger))))
+		mux.HandleFunc("POST /ui/roles/{id}", protect(superAdminUI(updateRoleUI(authentication, logger))))
+		mux.HandleFunc("POST /ui/roles/{id}/delete", protect(superAdminUI(deleteRoleUI(authentication, logger))))
 	}
 	mux.HandleFunc("GET /ui", protect(renderDashboard))
 	mux.HandleFunc("GET /ui/{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +287,11 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 		renderUIError(w, r, http.StatusBadRequest, "consumer-groups", "Invalid consumer group request", err.Error())
 		return
 	}
+	pageSize, err := parsePageSize(r.URL.Query().Get("page_size"), 10)
+	if err != nil {
+		renderUIError(w, r, http.StatusBadRequest, "consumer-groups", "Invalid consumer group request", err.Error())
+		return
+	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
 	if state != "" && !kafkaesque_consumers.IsGroupStateCategory(state) {
@@ -266,7 +304,7 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	groups := filterConsumerGroups(consumerGroupViews(information, sourceFrom(r).Thresholds()), query, state)
-	results := paginateConsumerGroups(groups, query, state, page)
+	results := paginateConsumerGroups(groups, query, state, page, pageSize)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -297,6 +335,26 @@ func positivePage(raw string) (int, error) {
 	return page, nil
 }
 
+func parsePageSize(raw string, defaultValue int) (int, error) {
+	if raw == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || (value != 10 && value != 25 && value != 50 && value != 100) {
+		return 0, errors.New("page_size must be 10, 25, 50, or 100")
+	}
+	return value, nil
+}
+
+func newPageSizeControl(action, target string, selected int, filters ...queryField) pageSizeControl {
+	values := []int{10, 25, 50, 100}
+	options := make([]pageSizeOption, 0, len(values))
+	for _, value := range values {
+		options = append(options, pageSizeOption{Value: value, Selected: value == selected})
+	}
+	return pageSizeControl{Action: action, Target: target, Selected: selected, Options: options, Filters: filters}
+}
+
 func filterConsumerGroups(groups []consumerGroupView, query, state string) []consumerGroupView {
 	filtered := make([]consumerGroupView, 0, len(groups))
 	for _, group := range groups {
@@ -309,8 +367,7 @@ func filterConsumerGroups(groups []consumerGroupView, query, state string) []con
 	return filtered
 }
 
-func paginateConsumerGroups(groups []consumerGroupView, query, state string, page int) consumerGroupsResults {
-	const pageSize = 10
+func paginateConsumerGroups(groups []consumerGroupView, query, state string, page, pageSize int) consumerGroupsResults {
 	total := len(groups)
 	totalPages := (total + pageSize - 1) / pageSize
 	start := (page - 1) * pageSize
@@ -320,7 +377,7 @@ func paginateConsumerGroups(groups []consumerGroupView, query, state string, pag
 	end := min(start+pageSize, total)
 	pageLinks := make([]pageLink, 0, totalPages)
 	for number := 1; number <= totalPages; number++ {
-		pageLinks = append(pageLinks, pageLink{Number: number, URL: consumerGroupsURL(query, state, number), Active: number == page})
+		pageLinks = append(pageLinks, pageLink{Number: number, URL: consumerGroupsURL(query, state, number, pageSize), Active: number == page})
 	}
 	rangeText := "0 groups"
 	if start < end {
@@ -331,17 +388,20 @@ func paginateConsumerGroups(groups []consumerGroupView, query, state string, pag
 	results := consumerGroupsResults{
 		Groups: groups[start:end], Range: rangeText, Pages: pageLinks,
 		HasFilters: query != "" || state != "",
+		ClearURL:   consumerGroupsURL("", "", 1, pageSize),
+		Pagination: newPageSizeControl("/ui/consumer-groups", "#consumer-groups-results", pageSize,
+			queryField{Name: "q", Value: query}, queryField{Name: "state", Value: state}),
 	}
 	if page > 1 && page <= totalPages {
-		results.PreviousURL = consumerGroupsURL(query, state, page-1)
+		results.PreviousURL = consumerGroupsURL(query, state, page-1, pageSize)
 	}
 	if page < totalPages {
-		results.NextURL = consumerGroupsURL(query, state, page+1)
+		results.NextURL = consumerGroupsURL(query, state, page+1, pageSize)
 	}
 	return results
 }
 
-func consumerGroupsURL(query, state string, page int) string {
+func consumerGroupsURL(query, state string, page, pageSize int) string {
 	values := url.Values{}
 	if query != "" {
 		values.Set("q", query)
@@ -350,6 +410,7 @@ func consumerGroupsURL(query, state string, page int) string {
 		values.Set("state", state)
 	}
 	values.Set("page", strconv.Itoa(page))
+	values.Set("page_size", strconv.Itoa(pageSize))
 	return "/ui/consumer-groups?" + values.Encode()
 }
 

@@ -33,7 +33,10 @@ func (serveAuth) Login(context.Context, string, string) (kafkaesque_auth.Tokens,
 }
 
 func (serveAuth) AuthenticateAccess(context.Context, string) (kafkaesque_auth.User, error) {
-	return kafkaesque_auth.User{ID: "user-1", Username: "super_admin", Role: "super_admin"}, nil
+	return kafkaesque_auth.User{
+		ID: "user-1", Username: "super_admin", Role: "super_admin",
+		Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete},
+	}, nil
 }
 
 func (serveAuth) Refresh(context.Context, string) (kafkaesque_auth.Tokens, error) {
@@ -54,9 +57,33 @@ func (serveAuth) ListUsers(context.Context, int, int) ([]kafkaesque_auth.Managed
 	return []kafkaesque_auth.ManagedUser{}, 0, nil
 }
 
-func (serveAuth) CreateUser(context.Context, kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+func (serveAuth) GetUser(context.Context, string) (kafkaesque_auth.ManagedUser, error) {
 	return kafkaesque_auth.ManagedUser{}, nil
 }
+
+func (serveAuth) CreateUser(context.Context, kafkaesque_auth.User, kafkaesque_auth.CreateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	return kafkaesque_auth.ManagedUser{}, nil
+}
+
+func (serveAuth) UpdateUser(context.Context, kafkaesque_auth.User, string, kafkaesque_auth.UpdateUserInput) (kafkaesque_auth.ManagedUser, error) {
+	return kafkaesque_auth.ManagedUser{}, nil
+}
+
+func (serveAuth) DeleteUser(context.Context, kafkaesque_auth.User, string) (kafkaesque_auth.ManagedUser, error) {
+	return kafkaesque_auth.ManagedUser{}, nil
+}
+
+func (serveAuth) ListRoles(context.Context) ([]kafkaesque_auth.ManagedRole, error) { return nil, nil }
+func (serveAuth) GetRole(context.Context, string) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+func (serveAuth) CreateRole(context.Context, kafkaesque_auth.User, kafkaesque_auth.RoleInput) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+func (serveAuth) UpdateRole(context.Context, kafkaesque_auth.User, string, kafkaesque_auth.RoleInput) (kafkaesque_auth.ManagedRole, error) {
+	return kafkaesque_auth.ManagedRole{}, nil
+}
+func (serveAuth) DeleteRole(context.Context, kafkaesque_auth.User, string) error { return nil }
 
 func testServerInitializer(_ context.Context, cfg *kafkaesque_config.Config, _ *slog.Logger) (*serverRuntime, error) {
 	if err := cfg.Validate(); err != nil {

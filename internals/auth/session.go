@@ -23,7 +23,14 @@ func (s *Service) Login(ctx context.Context, username, password string) (Tokens,
 		return Tokens{}, ErrInvalidCredentials
 	}
 	const query = `
-		SELECT u.id, u.username, r.name, u.password_hash, u.active
+		SELECT u.id, u.username, r.name, u.password_hash, u.active,
+			ARRAY(
+				SELECT p.module || ':' || p.resource || ':' || p.action
+				FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id
+				WHERE rp.role_id = r.id
+				ORDER BY p.module, p.resource, p.action
+			)
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id
 		JOIN roles r ON r.id = ur.role_id
@@ -34,6 +41,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (Tokens,
 		&user.Role,
 		&hash,
 		&active,
+		&user.Permissions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		VerifyPassword(password, s.dummyPasswordHash)
@@ -99,7 +107,14 @@ func (s *Service) createSession(ctx context.Context, user User) (Tokens, error) 
 func (s *Service) AuthenticateAccess(ctx context.Context, token string) (User, error) {
 	var user User
 	const query = `
-		SELECT u.id, u.username, r.name
+		SELECT u.id, u.username, r.name,
+			ARRAY(
+				SELECT p.module || ':' || p.resource || ':' || p.action
+				FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id
+				WHERE rp.role_id = r.id
+				ORDER BY p.module, p.resource, p.action
+			)
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		JOIN user_roles ur ON ur.user_id = u.id
@@ -112,6 +127,7 @@ func (s *Service) AuthenticateAccess(ctx context.Context, token string) (User, e
 		&user.ID,
 		&user.Username,
 		&user.Role,
+		&user.Permissions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrInvalidToken
@@ -136,7 +152,14 @@ func (s *Service) Refresh(ctx context.Context, token string) (Tokens, error) {
 	var user User
 	var sessionID string
 	const findSession = `
-		SELECT s.id, u.id, u.username, r.name
+		SELECT s.id, u.id, u.username, r.name,
+			ARRAY(
+				SELECT p.module || ':' || p.resource || ':' || p.action
+				FROM role_permissions rp
+				JOIN permissions p ON p.id = rp.permission_id
+				WHERE rp.role_id = r.id
+				ORDER BY p.module, p.resource, p.action
+			)
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		JOIN user_roles ur ON ur.user_id = u.id
@@ -151,6 +174,7 @@ func (s *Service) Refresh(ctx context.Context, token string) (Tokens, error) {
 		&user.ID,
 		&user.Username,
 		&user.Role,
+		&user.Permissions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tokens{}, ErrInvalidToken
