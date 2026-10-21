@@ -758,6 +758,7 @@ tbody tr:hover { background: var(--elevated); }
   place-items: center;
   border: 1px solid transparent;
   border-radius: 6px;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 24px;
