@@ -93,7 +93,8 @@ func TestLoginPageAndGenericFailure(t *testing.T) {
 	requireContains(
 		t,
 		response.Body.String(),
-		"Sign in to Kafkaesque",
+		`class="wordmark login-wordmark"`,
+		`id="login-title">Sign in</h1>`,
 		"Read. Understand. Monitor. Alert.",
 		"A lightweight, read-only Kafka observability tool",
 		"/ui/assets/KafkaesqueLogo.png",
@@ -110,6 +111,21 @@ func TestLoginPageAndGenericFailure(t *testing.T) {
 	requireContains(t, response.Body.String(), "Invalid username or password")
 	if strings.Contains(response.Body.String(), "unknown") {
 		t.Fatal("login failure exposed the submitted username")
+	}
+}
+
+func TestLoginAndSidebarWordmarksUseSeparateResponsiveStyles(t *testing.T) {
+	handler := newHandlerWithAuth(&fakeDataSource{}, &fakeAuthManager{}, false, nil)
+	response := requestUI(t, handler, "/ui/assets/app.css", false)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("stylesheet status = %d", response.Code)
+	}
+
+	stylesheet := response.Body.String()
+	requireContains(t, stylesheet, ".sidebar .wordmark {", ".login-wordmark {")
+	if strings.Contains(stylesheet, "  .wordmark { width: 36px;") {
+		t.Fatal("tablet sidebar rule also affects the login wordmark")
 	}
 }
 

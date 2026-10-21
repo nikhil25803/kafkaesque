@@ -63,10 +63,15 @@ button:focus-visible, a:focus-visible, [tabindex="0"]:focus-visible {
 }
 
 .wordmark {
-  font-size: 18px;
-  font-weight: 750;
+  font-weight: 800;
   letter-spacing: -.02em;
   text-decoration: none;
+}
+
+.sidebar .wordmark {
+  width: 100%;
+  flex: 1;
+  font-size: 26px;
 }
 
 .nav-list { display: grid; gap: 6px; }
@@ -464,8 +469,8 @@ tbody tr:hover { background: var(--elevated); }
   :root { --sidebar-width: 72px; }
   .sidebar { padding-inline: 10px; }
   .sidebar-header { justify-content: center; padding-inline: 0; }
-  .wordmark { width: 36px; overflow: hidden; font-size: 0; text-align: center; white-space: nowrap; }
-  .wordmark::first-letter { font-size: 20px; }
+  .sidebar .wordmark { width: 36px; flex: none; overflow: hidden; font-size: 0; text-align: center; white-space: nowrap; }
+  .sidebar .wordmark::first-letter { font-size: 24px; }
   .nav-item { justify-content: center; padding: 0; }
   .nav-item span, .sidebar-note { display: none; }
   .sidebar-footer { gap: 0; }
@@ -555,18 +560,20 @@ tbody tr:hover { background: var(--elevated); }
 
 .login-form-content {
   width: 100%;
-  max-width: 420px;
+  max-width: 360px;
   min-width: 0;
 }
 
 .login-wordmark {
   display: inline-block;
   margin-bottom: 56px;
+  font-size: clamp(40px, 5vw, 56px);
+  line-height: 1;
 }
 
 .login-form-content h1 {
   margin: 0 0 8px;
-  font-size: clamp(28px, 3vw, 38px);
+  font-size: clamp(22px, 2vw, 26px);
   line-height: 1.15;
 }
 

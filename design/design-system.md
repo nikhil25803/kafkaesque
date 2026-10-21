@@ -94,7 +94,8 @@ Use a four-pixel base scale: `4`, `8`, `12`, `16`, `24`, `32`, and `48px`.
 ### Desktop — 1024px and wider
 
 - Use a fixed `240px` sidebar spanning the viewport height.
-- Place a text-only **Kafkaesque** wordmark at the top of the sidebar.
+- Place a full-width, prominent text-only **Kafkaesque** wordmark at the top of
+  the sidebar. Use approximately `26px` type with a heavy weight.
 - Put the page title at the top-left of the main content area.
 - Let the main content column fill the remaining width with a sensible maximum
   width for dense tables rather than centering a narrow marketing layout.
@@ -103,6 +104,8 @@ Use a four-pixel base scale: `4`, `8`, `12`, `16`, `24`, `32`, and `48px`.
 ### Tablet — 768px through 1023px
 
 - Collapse the sidebar to a `72px` icon rail.
+- Reduce only the sidebar wordmark to a visible `K`; login-page branding must
+  remain complete at this width.
 - Preserve the active state and expose each label through an accessible name.
 - Show the visible label in a tooltip on hover and keyboard focus.
 - Keep the page title in the main content header.
@@ -277,6 +280,8 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 
 - Use a 50/50 desktop split with the sign-in form on the left and branding
   on the right.
+- Make **Kafkaesque** the dominant `40–56px` form-panel wordmark and keep the
+  **Sign in** heading smaller at approximately `24px`.
 - Match the logo's dotted and orbital background with subdued CSS decoration.
 - Stack the form before the branding panel on smaller screens.
 - Keep generic errors, visible labels, browser autocomplete, and a full-width
