@@ -65,9 +65,15 @@ make kafka-lag-simulate GROUP=order-processor TOPIC=orders COUNT=10
 `COUNT` defaults to `10`. The command validates the relationship, stops the
 activity simulator, produces that many unconsumed records, and verifies the
 total group/topic lag increased by the requested amount. It intentionally
-leaves the simulator stopped so the alert monitor can observe the breach. Run
-`make kafka-simulator-start` afterward to consume the records and exercise the
-resolution notification.
+leaves the simulator stopped so the alert monitor can observe the breach. Drain
+the records without restarting producers to exercise the resolution notification:
+
+```sh
+make kafka-lag-resolve GROUP=order-processor TOPIC=orders
+```
+
+The resolve command verifies total lag reached zero and leaves the activity
+simulator stopped. Start it separately when continuous fixture traffic is wanted.
 
 The equivalent direct Compose commands are:
 

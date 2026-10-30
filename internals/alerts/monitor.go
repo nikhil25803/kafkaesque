@@ -11,7 +11,7 @@ import (
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 )
 
-const monitorInterval = time.Minute
+const monitorInterval = 5 * time.Second
 
 type deliverySubscription struct {
 	Subscription
@@ -68,10 +68,8 @@ func (m *Monitor) run(ctx context.Context, ticks <-chan time.Time) {
 }
 
 type lagResult struct {
-	partitions  []kafkaesque_consumers.ConsumerGroupPartitionLag
-	members     []kafkaesque_consumers.ConsumerGroupMember
-	memberCount int
-	err         error
+	partitions []kafkaesque_consumers.ConsumerGroupPartitionLag
+	err        error
 }
 
 func (m *Monitor) evaluate(ctx context.Context) {
@@ -98,15 +96,13 @@ func (m *Monitor) evaluate(ctx context.Context) {
 		key := subscription.ConsumerGroup + "\x00" + subscription.Topic
 		result, ok := results[key]
 		if !ok {
-			details, fetchErr := kafkaesque_consumers.GetConsumerGroupTopicDetails(
+			details, fetchErr := kafkaesque_consumers.GetConsumerGroupTopicInformation(
 				m.conn, ctx, metadata.Metadata, subscription.ConsumerGroup, subscription.Topic,
 			)
 			if fetchErr != nil {
 				result.err = fetchErr
 			} else {
-				result.partitions = details.Topic.Partitions
-				result.members = details.Members
-				result.memberCount = details.MembersCount
+				result.partitions = details.Partitions
 			}
 			results[key] = result
 		}
@@ -114,7 +110,7 @@ func (m *Monitor) evaluate(ctx context.Context) {
 			m.logger.Warn("alert_lag_evaluation_failed", "alert_id", subscription.ID, "error_type", fmt.Sprintf("%T", result.err))
 			continue
 		}
-		m.evaluateSubscription(ctx, subscription, result.partitions, result.members, result.memberCount)
+		m.evaluateSubscription(ctx, subscription, result.partitions)
 	}
 }
 
@@ -122,8 +118,6 @@ func (m *Monitor) evaluateSubscription(
 	ctx context.Context,
 	subscription deliverySubscription,
 	partitions []kafkaesque_consumers.ConsumerGroupPartitionLag,
-	members []kafkaesque_consumers.ConsumerGroupMember,
-	memberCount int,
 ) {
 	now := m.now().UTC()
 	value, worst, worstLag, breached := alertValue(subscription, partitions)
@@ -131,15 +125,11 @@ func (m *Monitor) evaluateSubscription(
 	state, send, resolved := nextAction(subscription, isBreached)
 	update := evaluationUpdate{ID: subscription.ID, State: state, Value: value, EvaluatedAt: now}
 	if send {
-		member := memberForPartition(members, subscription.Topic, worst)
 		err := m.sender.Send(ctx, subscription.WebhookURL, BuildSlackPayload(Notification{
 			Resolved: resolved, ConsumerGroup: subscription.ConsumerGroup,
-			Topic: subscription.Topic, Metric: subscription.Metric, Value: value,
-			Threshold: subscription.LagThreshold, WorstPartition: worst,
+			Topic: subscription.Topic, WorstPartition: worst,
 			WorstPartitionLag: worstLag, PartitionCount: len(partitions),
-			BreachedPartitions: breached, ActiveMembers: memberCount,
-			MemberID: member.MemberID, ClientID: member.ClientID, Host: member.Host,
-			OccurredAt: now,
+			BreachedPartitions: breached,
 		}))
 		if err == nil {
 			update.Notified = true
@@ -196,22 +186,6 @@ func nextAction(subscription deliverySubscription, breached bool) (string, bool,
 		return StateResolving, true, true
 	}
 	return subscription.State, false, false
-}
-
-func memberForPartition(members []kafkaesque_consumers.ConsumerGroupMember, topic string, partition int) kafkaesque_consumers.ConsumerGroupMember {
-	for _, member := range members {
-		for _, assignment := range member.Assignments {
-			if assignment.Topic != topic {
-				continue
-			}
-			for _, assignedPartition := range assignment.Partitions {
-				if assignedPartition == partition {
-					return member
-				}
-			}
-		}
-	}
-	return kafkaesque_consumers.ConsumerGroupMember{}
 }
 
 func (s *Service) listForDelivery(ctx context.Context) ([]deliverySubscription, error) {

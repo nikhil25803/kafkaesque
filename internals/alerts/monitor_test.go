@@ -3,11 +3,19 @@ package alerts
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
+	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafka "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/protocol/describegroups"
+	"github.com/segmentio/kafka-go/protocol/findcoordinator"
+	"github.com/segmentio/kafka-go/protocol/listoffsets"
+	"github.com/segmentio/kafka-go/protocol/metadata"
+	"github.com/segmentio/kafka-go/protocol/offsetfetch"
 )
 
 type fakeAlertStore struct {
@@ -61,27 +69,27 @@ func TestMonitorFiresOnceResolvesAndRearms(t *testing.T) {
 	monitor := NewMonitor(store, nil, sender, nil)
 	monitor.now = func() time.Time { return started }
 	breached := []kafkaesque_consumers.ConsumerGroupPartitionLag{{Partition: 0, Lag: 50}, {Partition: 1, Lag: 250}}
-	monitor.evaluateSubscription(context.Background(), store.sub, breached, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, breached)
 	if len(sender.payloads) != 1 || !store.updates[0].Notified || store.updates[0].State != StateFiring {
 		t.Fatalf("first breach payloads=%d update=%+v", len(sender.payloads), store.updates[0])
 	}
 
 	monitor.now = func() time.Time { return started.Add(time.Minute) }
-	monitor.evaluateSubscription(context.Background(), store.sub, breached, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, breached)
 	if len(sender.payloads) != 1 {
 		t.Fatal("a firing alert was repeated")
 	}
 
 	monitor.now = func() time.Time { return started.Add(2 * time.Minute) }
 	resolved := []kafkaesque_consumers.ConsumerGroupPartitionLag{{Partition: 0, Lag: 10}, {Partition: 1, Lag: 20}}
-	monitor.evaluateSubscription(context.Background(), store.sub, resolved, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, resolved)
 	last := store.updates[len(store.updates)-1]
 	if len(sender.payloads) != 2 || last.State != StateHealthy || !last.Notified {
 		t.Fatalf("resolution payloads=%d update=%+v", len(sender.payloads), last)
 	}
 
 	monitor.now = func() time.Time { return started.Add(3 * time.Minute) }
-	monitor.evaluateSubscription(context.Background(), store.sub, breached, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, breached)
 	if len(sender.payloads) != 3 || store.sub.State != StateFiring {
 		t.Fatalf("rearmed payloads=%d state=%s", len(sender.payloads), store.sub.State)
 	}
@@ -99,12 +107,12 @@ func TestMonitorRetriesFailedFiringNextEvaluation(t *testing.T) {
 	monitor := NewMonitor(store, nil, sender, nil)
 	monitor.now = func() time.Time { return now }
 	partitions := []kafkaesque_consumers.ConsumerGroupPartitionLag{{Lag: 200}}
-	monitor.evaluateSubscription(context.Background(), store.sub, partitions, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, partitions)
 	if store.sub.State != StateHealthy || len(sender.payloads) != 1 {
 		t.Fatalf("state=%s payloads=%d", store.sub.State, len(sender.payloads))
 	}
 	monitor.now = func() time.Time { return now.Add(time.Minute) }
-	monitor.evaluateSubscription(context.Background(), store.sub, partitions, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, partitions)
 	if len(sender.payloads) != 2 {
 		t.Fatal("failed firing alert was not retried on the next evaluation")
 	}
@@ -120,9 +128,9 @@ func TestMonitorRetriesFailedResolutionNextEvaluation(t *testing.T) {
 	monitor := NewMonitor(store, nil, sender, nil)
 	monitor.now = func() time.Time { return now }
 	partitions := []kafkaesque_consumers.ConsumerGroupPartitionLag{{Lag: 0}}
-	monitor.evaluateSubscription(context.Background(), store.sub, partitions, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, partitions)
 	monitor.now = func() time.Time { return now.Add(time.Minute) }
-	monitor.evaluateSubscription(context.Background(), store.sub, partitions, nil, 0)
+	monitor.evaluateSubscription(context.Background(), store.sub, partitions)
 	if store.sub.State != StateResolving || len(sender.payloads) != 2 {
 		t.Fatalf("state=%s payloads=%d", store.sub.State, len(sender.payloads))
 	}
@@ -152,28 +160,113 @@ func TestPartitionAlertValue(t *testing.T) {
 	}
 }
 
-func TestMemberForPartition(t *testing.T) {
-	members := []kafkaesque_consumers.ConsumerGroupMember{{
-		MemberID: "member-1", ClientID: "worker", Host: "10.0.0.12",
-		Assignments: []kafkaesque_consumers.ConsumerGroupMemberAssignment{{Topic: "orders", Partitions: []int{1, 2}}},
-	}}
-	if got := memberForPartition(members, "orders", 2); got.MemberID != "member-1" {
-		t.Fatalf("member=%+v", got)
+func TestAlertMetricsUseCompactPartitionLagLabel(t *testing.T) {
+	partitions := []kafkaesque_consumers.ConsumerGroupPartitionLag{{Partition: 0, Lag: 200}, {Partition: 1, Lag: 300}}
+	for _, metric := range []string{MetricAverage, MetricPartition} {
+		store := &fakeAlertStore{sub: deliverySubscription{
+			Subscription: Subscription{ID: metric, Metric: metric, LagThreshold: 100, State: StateHealthy},
+			WebhookURL:   "https://hooks.slack.com/triggers/T/1/secret",
+		}}
+		sender := &fakeSlackSender{}
+		NewMonitor(store, nil, sender, nil).evaluateSubscription(context.Background(), store.sub, partitions)
+		if len(sender.payloads) != 1 || sender.payloads[0].Blocks[2].Fields[4].Text != "*Metric:* Partition Lag" {
+			t.Fatalf("metric=%s payloads=%+v", metric, sender.payloads)
+		}
 	}
-	if got := memberForPartition(members, "orders", 3); got.MemberID != "" {
-		t.Fatalf("unexpected member=%+v", got)
+}
+
+func TestMonitorInterval(t *testing.T) {
+	if monitorInterval != 5*time.Second {
+		t.Fatalf("monitor interval=%s", monitorInterval)
+	}
+}
+
+type monitorTransport struct {
+	mu       sync.Mutex
+	requests map[string]int
+}
+
+func (t *monitorTransport) RoundTrip(_ context.Context, _ net.Addr, request kafka.Request) (kafka.Response, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	switch request := request.(type) {
+	case *metadata.Request:
+		t.requests["metadata"]++
+		return &metadata.Response{
+			Brokers: []metadata.ResponseBroker{{NodeID: 1, Host: "broker", Port: 9092}},
+			Topics:  []metadata.ResponseTopic{{Name: "orders", Partitions: []metadata.ResponsePartition{{PartitionIndex: 0, LeaderID: 1}}}},
+		}, nil
+	case *findcoordinator.Request:
+		t.requests["coordinator"]++
+		return &findcoordinator.Response{NodeID: 2, Host: "coordinator", Port: 9093}, nil
+	case *describegroups.Request:
+		t.requests["describe"]++
+		return &describegroups.Response{Groups: []describegroups.ResponseGroup{{GroupID: request.Groups[0], GroupState: "Stable"}}}, nil
+	case *offsetfetch.Request:
+		t.requests["offsets"]++
+		return &offsetfetch.Response{Topics: []offsetfetch.ResponseTopic{{Name: "orders", Partitions: []offsetfetch.ResponsePartition{{PartitionIndex: 0, CommittedOffset: 10}}}}}, nil
+	case *listoffsets.Request:
+		t.requests["latest"]++
+		return &listoffsets.Response{Topics: []listoffsets.ResponseTopic{{Topic: "orders", Partitions: []listoffsets.ResponsePartition{{Partition: 0, Timestamp: kafka.LastOffset, Offset: 20}}}}}, nil
+	default:
+		return nil, errors.New("unexpected Kafka request")
+	}
+}
+
+type alertListStore struct {
+	subscriptions []deliverySubscription
+	updates       []evaluationUpdate
+}
+
+func (s *alertListStore) listForDelivery(context.Context) ([]deliverySubscription, error) {
+	return s.subscriptions, nil
+}
+
+func (s *alertListStore) updateEvaluation(_ context.Context, update evaluationUpdate) error {
+	s.updates = append(s.updates, update)
+	return nil
+}
+
+func TestMonitorFetchesUniqueTargetOncePerCycle(t *testing.T) {
+	transport := &monitorTransport{requests: make(map[string]int)}
+	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("bootstrap:9092"), Transport: transport}}
+	store := &alertListStore{subscriptions: []deliverySubscription{
+		{Subscription: Subscription{ID: "average", ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage, LagThreshold: 5, State: StateHealthy}},
+		{Subscription: Subscription{ID: "partition", ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricPartition, LagThreshold: 5, State: StateHealthy}},
+	}}
+	NewMonitor(store, conn, &fakeSlackSender{}, nil).evaluate(context.Background())
+	if len(store.updates) != 2 {
+		t.Fatalf("updates=%d", len(store.updates))
+	}
+	for _, request := range []string{"metadata", "coordinator", "describe", "offsets", "latest"} {
+		if transport.requests[request] != 1 {
+			t.Fatalf("%s requests=%d", request, transport.requests[request])
+		}
 	}
 }
 
 func TestMonitorRunStopsWithContext(t *testing.T) {
-	store := &fakeAlertStore{}
+	calls := make(chan struct{}, 2)
+	store := &signalingAlertStore{calls: calls}
 	monitor := NewMonitor(store, nil, &fakeSlackSender{}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
+	ticks := make(chan time.Time, 1)
 	done := make(chan struct{})
 	go func() {
-		monitor.run(ctx, make(chan time.Time))
+		monitor.run(ctx, ticks)
 		close(done)
 	}()
+	select {
+	case <-calls:
+	case <-time.After(time.Second):
+		t.Fatal("monitor did not evaluate immediately")
+	}
+	ticks <- time.Now()
+	select {
+	case <-calls:
+	case <-time.After(time.Second):
+		t.Fatal("monitor did not evaluate on tick")
+	}
 	cancel()
 	select {
 	case <-done:
@@ -181,3 +274,14 @@ func TestMonitorRunStopsWithContext(t *testing.T) {
 		t.Fatal("monitor did not stop")
 	}
 }
+
+type signalingAlertStore struct {
+	calls chan struct{}
+}
+
+func (s *signalingAlertStore) listForDelivery(context.Context) ([]deliverySubscription, error) {
+	s.calls <- struct{}{}
+	return nil, nil
+}
+
+func (*signalingAlertStore) updateEvaluation(context.Context, evaluationUpdate) error { return nil }

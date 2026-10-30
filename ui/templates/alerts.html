@@ -30,7 +30,7 @@
 <label class="field"><span>Lag threshold</span><input name="lag_threshold" type="number" min="0" step="1" value="{{.Form.LagThreshold}}" required></label>
 <label class="field user-password-field"><span>Slack Webhook URL</span><input name="webhook_url" type="password" autocomplete="off" placeholder="{{if .Form.WebhookConfigured}}Leave blank to keep the current webhook{{else}}https://hooks.slack.com/services/… or /triggers/…{{end}}"{{if not .Form.WebhookConfigured}} required{{end}}></label>
 <label class="checkbox-field"><input name="notify_on_resolve" type="checkbox" value="true"{{if .Form.NotifyOnResolve}} checked{{end}}><span>Alert when resolved</span></label>
-</div><p class="muted">Incoming Webhooks (<code>/services/</code>) receive a native Block Kit card. Workflow webhooks (<code>/triggers/</code>) require a text input named <code>message</code> and receive formatted multiline text. Webhook URLs are encrypted and never displayed again.</p>
+</div><p class="muted">Incoming Webhooks (<code>/services/</code>) receive a native Block Kit card. Workflow webhooks (<code>/triggers/</code>) require a text input named <code>message</code> and receive plain multiline text. Webhook URLs are encrypted and never displayed again.</p>
 <div class="user-form-actions"><button class="primary-button" type="submit">Save Slack alert</button><a class="secondary-button" href="/ui/settings/alerts">Cancel</a></div></form></section></div>
 </main></div></body></html>
 {{end}}

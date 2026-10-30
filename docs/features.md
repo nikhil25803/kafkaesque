@@ -28,9 +28,9 @@ charts, or predict future lag.
 ## Slack alerts
 
 - Persist Slack subscriptions for average or maximum partition lag.
-- Evaluate unique consumer/topic targets every minute.
+- Evaluate unique configured consumer/topic targets every five seconds.
 - Send one firing notification per breach and an optional immediate recovery notice.
-- Include partition and active-member details in native cards or multiline messages.
+- Send compact topic and partition-lag details in native cards or multiline messages.
 - Encrypt Slack webhook URLs at rest with an operator-managed AES key.
 
 Kafkaesque accepts both Slack webhook types and selects the payload automatically:
@@ -38,7 +38,7 @@ Kafkaesque accepts both Slack webhook types and selects the payload automaticall
 - `/services/` [Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
   receive fallback text plus a native Block Kit card.
 - `/triggers/` [Workflow Builder webhooks](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack)
-  receive a flat `message` input containing formatted multiline text.
+  receive a flat `message` input containing plain multiline text.
 
 For Workflow Builder, create a text input named `message`, insert it into a
 “Send a message” step, publish the workflow, and paste its URL into Kafkaesque.
@@ -47,7 +47,7 @@ Kafkaesque sends a flat payload whose `message` value contains real line breaks:
 
 ```json
 {
-  "message": "🔴 Kafkaesque Alert Update: FIRED\nTopic: orders\nConsumer: order-processor\nCurrent lag: 18"
+  "message": "🔴 Kafkaesque Update: Lag Alert Fired\nTopic: orders\nConsumer group: order-processor\nTotal partitions: 6\nLag partitions: 2\nMetric: Partition Lag\nWorst partition lag: 10 (#5)"
 }
 ```
 

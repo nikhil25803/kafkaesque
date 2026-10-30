@@ -12,69 +12,39 @@ import (
 )
 
 func TestBuildSlackPayloadFiring(t *testing.T) {
-	now := time.Date(2026, time.October, 30, 12, 0, 0, 0, time.UTC)
 	payload := BuildSlackPayload(Notification{
-		ConsumerGroup: "orders<&>", Topic: "orders", Metric: MetricPartition,
-		Value: 500, Threshold: 100, PartitionCount: 6, WorstPartition: 3,
-		WorstPartitionLag: 500, BreachedPartitions: 2, ActiveMembers: 1,
-		MemberID: "member<&>", ClientID: "worker", Host: "10.0.0.12", OccurredAt: now,
+		ConsumerGroup: "orders<&>", Topic: "orders", PartitionCount: 6,
+		WorstPartition: 3, WorstPartitionLag: 500, BreachedPartitions: 2,
 	})
 	wantMessage := strings.Join([]string{
-		"*KAFKAESQUE*",
-		"🔴 *FIRING*",
-		"",
-		"*Maximum partition lag exceeded*",
-		"",
-		"*AFFECTED RESOURCE*",
-		"• Topic: `orders`",
-		"• Consumer group: `orders&lt;&amp;&gt;`",
-		"• Partitions: `6`",
-		"• Metric: Maximum lag",
-		"",
-		"────────────────────",
-		"",
-		"*METRIC OVERVIEW*",
-		"• Current lag: *500*",
-		"• Threshold: `100.00`",
-		"• Breached partitions: *2 / 6*",
-		"",
-		"────────────────────",
-		"",
-		"*PARTITION DETAILS*",
-		"• Worst partition: `3` (lag: `500`)",
-		"• Active members: *1*",
-		"• Member: `member&lt;&amp;&gt;`",
-		"• Client: `worker`",
-		"• Host: `10.0.0.12`",
-		"",
-		"────────────────────",
-		"",
-		"_30 Oct 2026 · 12:00:00 UTC_",
-		"",
+		"🔴 Kafkaesque Update: Lag Alert Fired",
+		"Topic: orders",
+		"Consumer group: orders<&>",
+		"Total partitions: 6",
+		"Lag partitions: 2",
+		"Metric: Partition Lag",
+		"Worst partition lag: 500 (#3)",
 	}, "\n")
 	if payload.Message != wantMessage {
 		t.Fatalf("message mismatch\n got: %q\nwant: %q", payload.Message, wantMessage)
 	}
-	if payload.Text != "🔴 Kafkaesque lag alert firing: orders&lt;&amp;&gt;/orders lag 500.00 (threshold 100)" {
+	if payload.Text != "🔴 Kafkaesque Update: Lag Alert Fired" {
 		t.Fatalf("fallback text=%q", payload.Text)
 	}
-	if len(payload.Blocks) != 13 {
+	if len(payload.Blocks) != 3 {
 		t.Fatalf("blocks=%d: %+v", len(payload.Blocks), payload.Blocks)
 	}
-	if payload.Blocks[0].Type != "header" || payload.Blocks[0].Text.Text != "Kafkaesque" {
-		t.Fatalf("header=%+v", payload.Blocks[0])
+	if payload.Blocks[0].Text.Text != "*🔴 Kafkaesque Update: Lag Alert Fired*" {
+		t.Fatalf("status=%+v", payload.Blocks[0])
 	}
-	if payload.Blocks[1].Text.Text != "*🔴 FIRING*\n*Maximum partition lag exceeded*" {
-		t.Fatalf("status=%+v", payload.Blocks[1])
+	if len(payload.Blocks[2].Fields) != 6 {
+		t.Fatalf("fields=%+v", payload.Blocks[2].Fields)
 	}
-	if got := payload.Blocks[3].Fields[1].Text; got != "*Consumer group:* `orders&lt;&amp;&gt;`" {
+	if got := payload.Blocks[2].Fields[1].Text; got != "*Consumer group:* `orders&lt;&amp;&gt;`" {
 		t.Fatalf("consumer field=%q", got)
 	}
-	if got := payload.Blocks[9].Fields[0].Text; got != "*Worst partition:* #3" {
-		t.Fatalf("partition field=%q", got)
-	}
-	if got := payload.Blocks[10].Elements[0].Text; !strings.Contains(got, "Member: `member&lt;&amp;&gt;`") {
-		t.Fatalf("member context=%q", got)
+	if got := payload.Blocks[2].Fields[5].Text; got != "*Worst partition lag:* 500 (#3)" {
+		t.Fatalf("worst partition field=%q", got)
 	}
 	encoded, err := json.Marshal(struct {
 		Message string `json:"message"`
@@ -82,44 +52,36 @@ func TestBuildSlackPayloadFiring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(encoded), `\n🔴`) || strings.Contains(string(encoded), `/n`) {
+	if !strings.Contains(string(encoded), `\nTopic:`) || strings.Contains(string(encoded), `/n`) {
 		t.Fatalf("encoded newlines=%s", encoded)
+	}
+	if strings.ContainsAny(payload.Message, "*`") {
+		t.Fatalf("workflow message contains mrkdwn markers: %q", payload.Message)
 	}
 }
 
 func TestBuildSlackPayloadResolved(t *testing.T) {
 	payload := BuildSlackPayload(Notification{
-		Resolved: true, ConsumerGroup: "orders\ninjected", Topic: "orders`raw", Metric: MetricAverage,
-		Value: 1.5, Threshold: 10, PartitionCount: 2, WorstPartition: 1,
-		WorstPartitionLag: 3, OccurredAt: time.Date(2026, time.October, 30, 12, 0, 0, 0, time.UTC),
+		Resolved: true, ConsumerGroup: "orders\ninjected", Topic: "orders`raw",
+		PartitionCount: 2, BreachedPartitions: 0, WorstPartition: 1, WorstPartitionLag: 3,
 	})
-	for _, want := range []string{
-		"🟢 *RESOLVED*",
-		"*Partition lag recovered*",
-		"• Topic: `ordersˋraw`",
-		"• Consumer group: `orders injected`",
-		"• Current lag: *1.50*",
-		"🟢 _Lag is back within the configured threshold._",
-	} {
-		if !strings.Contains(payload.Message, want) {
-			t.Fatalf("message missing %q: %q", want, payload.Message)
+	want := "🟢 Kafkaesque Update: Lag Alert Resolved\n" +
+		"Topic: orders'raw\nConsumer group: orders injected\n" +
+		"Total partitions: 2\nLag partitions: 0\nMetric: Partition Lag\n" +
+		"Worst partition lag: 3 (#1)"
+	if payload.Message != want {
+		t.Fatalf("message mismatch\n got: %q\nwant: %q", payload.Message, want)
+	}
+	if payload.Text != "🟢 Kafkaesque Update: Lag Alert Resolved" {
+		t.Fatalf("fallback text=%q", payload.Text)
+	}
+	if strings.ContainsAny(payload.Message, "*`") {
+		t.Fatalf("workflow message contains mrkdwn markers: %q", payload.Message)
+	}
+	for _, removed := range []string{"Maximum", "Average", "Threshold", "Active members", "Observed at", "recovered"} {
+		if strings.Contains(payload.Message, removed) {
+			t.Fatalf("message contains removed detail %q: %q", removed, payload.Message)
 		}
-	}
-	if strings.Contains(payload.Message, "PARTITION DETAILS") {
-		t.Fatalf("resolved message contains partition details: %q", payload.Message)
-	}
-	if payload.Blocks[1].Text.Text != "*🟢 RESOLVED*\n*Partition lag recovered*" {
-		t.Fatalf("resolved status=%+v", payload.Blocks[1])
-	}
-}
-
-func TestBuildSlackPayloadNoActiveMembers(t *testing.T) {
-	payload := BuildSlackPayload(Notification{Topic: "orders", ConsumerGroup: "orders", PartitionCount: 1})
-	if !strings.Contains(payload.Message, "Consumer status: ⚠️ *No active members*") {
-		t.Fatalf("message=%q", payload.Message)
-	}
-	if got := payload.Blocks[len(payload.Blocks)-1].Elements[0].Text; got != "⚠️ *No active members*" {
-		t.Fatalf("context=%q", got)
 	}
 }
 
@@ -154,7 +116,7 @@ func TestSlackSenderRoutesPayloadByWebhookType(t *testing.T) {
 				}
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(test.response)), Header: make(http.Header)}, nil
 			})
-			payload := SlackPayload{Message: "workflow", Text: "fallback", Blocks: []SlackBlock{headerBlock("Kafkaesque")}}
+			payload := SlackPayload{Message: "workflow", Text: "fallback", Blocks: []SlackBlock{sectionBlock("Kafkaesque")}}
 			if err := sender.Send(context.Background(), test.webhook, payload); err != nil {
 				t.Fatal(err)
 			}
