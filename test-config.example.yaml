@@ -30,6 +30,10 @@ database:
   # Add the local PostgreSQL URL only in the ignored copy.
   url: ""
 
+alerts:
+  # Generate for local use with: openssl rand -base64 32
+  encryption_key: ""
+
 api:
   host: 0.0.0.0
   port: 8085

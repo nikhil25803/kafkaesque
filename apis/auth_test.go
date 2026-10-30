@@ -51,11 +51,11 @@ func (f *fakeAuthManager) AuthenticateAccess(context.Context, string) (kafkaesqu
 	if len(f.user.Permissions) == 0 {
 		switch f.user.Role {
 		case "super_admin":
-			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete, kafkaesque_auth.PermissionAlertView, kafkaesque_auth.PermissionAlertCreate, kafkaesque_auth.PermissionAlertEdit, kafkaesque_auth.PermissionAlertDelete}
 		case "admin":
-			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionAlertView, kafkaesque_auth.PermissionAlertCreate, kafkaesque_auth.PermissionAlertEdit}
 		case "user":
-			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView}
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionAlertView}
 		}
 	}
 	return f.user, f.authErr

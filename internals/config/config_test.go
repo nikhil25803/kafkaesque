@@ -63,6 +63,7 @@ func TestEnvironmentNamesMirrorYAML(t *testing.T) {
 		"authentication.refresh_ttl":          AuthRefreshTTLEnv,
 		"authentication.cookie_secure":        AuthCookieSecureEnv,
 		"database.url":                        DatabaseURLEnv,
+		"alerts.encryption_key":               AlertsEncryptionKeyEnv,
 		"api.host":                            APIHostEnv,
 		"api.port":                            APIPortEnv,
 	}
@@ -377,6 +378,7 @@ func unsetConfigEnvironment(t *testing.T) {
 		LagWarningThresholdEnv, LagUnhealthyThresholdEnv, APIHostEnv, APIPortEnv,
 		DatabaseURLEnv, SuperAdminUsernameEnv, SuperAdminEmailEnv, SuperAdminPasswordEnv, SuperAdminRecoveryEnv,
 		AuthAccessTTLEnv, AuthRefreshTTLEnv, AuthCookieSecureEnv,
+		AlertsEncryptionKeyEnv,
 	} {
 		unsetEnvironment(t, key)
 	}

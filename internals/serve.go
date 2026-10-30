@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nikhil25803/kafkaesque/apis"
+	kafkaesque_alerts "github.com/nikhil25803/kafkaesque/internals/alerts"
 	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
@@ -39,6 +40,7 @@ func newApplicationHandler(
 	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 	topicRates kafkaesque_topics.MessageRateProvider,
+	alertManager kafkaesque_alerts.Manager,
 ) http.Handler {
 	mux := http.NewServeMux()
 
@@ -46,7 +48,7 @@ func newApplicationHandler(
 	mux.Handle("/api/", apis.NewHandlerWithTopicRates(conn, cfg, authentication, logger, topicRates))
 
 	// UI routes.
-	uiHandler := ui.NewHandlerWithTopicRates(conn, cfg, authentication, logger, topicRates)
+	uiHandler := ui.NewHandlerWithTopicRates(conn, cfg, authentication, logger, topicRates, alertManager)
 	mux.Handle("/ui", uiHandler)
 	mux.Handle("/ui/", uiHandler)
 
@@ -192,8 +194,15 @@ func initializeServer(ctx context.Context, cfg *kafkaesque_config.Config, logger
 	}
 	topicRates := kafkaesque_topics.NewMessageRateCollector(conn, logger)
 	topicRates.Start(ctx)
+	alertService, err := kafkaesque_alerts.NewService(authentication.Database(), conn, cfg.Alerts.EncryptionKey)
+	if err != nil {
+		conn.Close()
+		authentication.Close()
+		return nil, fmt.Errorf("initialize alerts: %w", err)
+	}
+	kafkaesque_alerts.NewMonitor(alertService, conn, kafkaesque_alerts.NewHTTPSlackSender(), logger).Start(ctx)
 	return &serverRuntime{
-		handler: newApplicationHandler(conn, cfg, authentication, logger, topicRates),
+		handler: newApplicationHandler(conn, cfg, authentication, logger, topicRates, alertService),
 		close: func() {
 			conn.Close()
 			authentication.Close()

@@ -41,11 +41,11 @@ func (f *fakeAuthManager) AuthenticateAccess(context.Context, string) (kafkaesqu
 	if len(f.user.Permissions) == 0 {
 		switch f.user.Role {
 		case "super_admin":
-			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete, kafkaesque_auth.PermissionAlertView, kafkaesque_auth.PermissionAlertCreate, kafkaesque_auth.PermissionAlertEdit, kafkaesque_auth.PermissionAlertDelete}
 		case "admin":
-			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionAlertView, kafkaesque_auth.PermissionAlertCreate, kafkaesque_auth.PermissionAlertEdit}
 		case "user":
-			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView}
+			f.user.Permissions = []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionAlertView}
 		}
 	}
 	return f.user, f.authErr
@@ -92,9 +92,9 @@ func (f *fakeAuthManager) DeleteUser(context.Context, kafkaesque_auth.User, stri
 
 func (f *fakeAuthManager) ListRoles(context.Context) ([]kafkaesque_auth.ManagedRole, error) {
 	return []kafkaesque_auth.ManagedRole{
-		{Name: "admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit}},
-		{Name: "super_admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete}},
-		{Name: "user", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView}},
+		{Name: "admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionAlertView, kafkaesque_auth.PermissionAlertCreate, kafkaesque_auth.PermissionAlertEdit}},
+		{Name: "super_admin", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate, kafkaesque_auth.PermissionUserEdit, kafkaesque_auth.PermissionUserDelete, kafkaesque_auth.PermissionAlertView, kafkaesque_auth.PermissionAlertCreate, kafkaesque_auth.PermissionAlertEdit, kafkaesque_auth.PermissionAlertDelete}},
+		{Name: "user", System: true, Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionAlertView}},
 		{ID: "support-role", Name: "support", Permissions: []string{kafkaesque_auth.PermissionUserView, kafkaesque_auth.PermissionUserCreate}},
 	}, nil
 }
@@ -237,7 +237,7 @@ func TestAuthenticatedShellAndLogout(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("dashboard status = %d", response.Code)
 	}
-	requireContains(t, response.Body.String(), "Logged in as", "Role: User", ">Users</span>", "Log out")
+	requireContains(t, response.Body.String(), "Logged in as", "Role: User", ">Settings</span>", "Log out")
 
 	form := url.Values{"csrf_token": {"csrf"}}
 	request = httptest.NewRequest(http.MethodPost, "/ui/logout", strings.NewReader(form.Encode()))

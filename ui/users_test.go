@@ -31,7 +31,7 @@ func TestUsersPageRendersAccountsAndNavigation(t *testing.T) {
 	}
 	source := &fakeDataSource{}
 	handler := newHandlerWithAuth(source, authentication, false, nil)
-	request := authenticatedUIRequest(http.MethodGet, "/ui/users?created=1", nil)
+	request := authenticatedUIRequest(http.MethodGet, "/ui/settings/users?created=1", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -42,8 +42,8 @@ func TestUsersPageRendersAccountsAndNavigation(t *testing.T) {
 		t,
 		response.Body.String(),
 		`aria-current="page"`,
-		">Users</span>",
-		`href="/ui/users/new"`,
+		">Settings</span>",
+		`href="/ui/settings/users/new"`,
 		"+ Add user",
 		"All users",
 		"User created successfully.",
@@ -77,7 +77,7 @@ func TestNewUserPageRendersCenteredFormWithoutListingUsers(t *testing.T) {
 	}
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users/new", nil))
+	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users/new", nil))
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -87,8 +87,8 @@ func TestNewUserPageRendersCenteredFormWithoutListingUsers(t *testing.T) {
 		t,
 		body,
 		`class="user-create-shell"`,
-		`action="/ui/users"`,
-		`href="/ui/users">Cancel</a>`,
+		`action="/ui/settings/users"`,
+		`href="/ui/settings/users">Cancel</a>`,
 		"Create an account that can sign in immediately",
 		"Use email as username",
 		"8–99 characters",
@@ -184,7 +184,7 @@ func TestUsersPagePaginationAndFragment(t *testing.T) {
 		usersTotal: 26,
 	}
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
-	request := authenticatedUIRequest(http.MethodGet, "/ui/users?page=2", nil)
+	request := authenticatedUIRequest(http.MethodGet, "/ui/settings/users?page=2", nil)
 	request.Header.Set("HX-Request", "true")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -196,10 +196,10 @@ func TestUsersPagePaginationAndFragment(t *testing.T) {
 	if strings.Contains(body, "<!doctype html>") || strings.Contains(body, "Create user") {
 		t.Fatalf("fragment contains full page: %s", body)
 	}
-	requireContains(t, body, "/ui/users?page=1", "Old User")
+	requireContains(t, body, "/ui/settings/users?page=1", "Old User")
 
 	authentication.users = []kafkaesque_auth.ManagedUser{}
-	request = authenticatedUIRequest(http.MethodGet, "/ui/users?page=99", nil)
+	request = authenticatedUIRequest(http.MethodGet, "/ui/settings/users?page=99", nil)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "0 of 26 users") {
@@ -218,14 +218,14 @@ func TestUsersPageSize(t *testing.T) {
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users?page_size=50", nil))
+	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users?page_size=50", nil))
 	if response.Code != http.StatusOK || authentication.listSize != 50 {
 		t.Fatalf("status=%d page size=%d body=%s", response.Code, authentication.listSize, response.Body.String())
 	}
 	requireContains(t, response.Body.String(), `name="page_size"`, `<option value="50" selected>50</option>`, `name="page" value="1"`)
 
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users?page_size=20", nil))
+	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users?page_size=20", nil))
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid page size status=%d", response.Code)
 	}
@@ -238,7 +238,7 @@ func TestUsersPageEmptyState(t *testing.T) {
 	}
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users", nil))
+	handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
 	}
@@ -250,7 +250,7 @@ func TestUsersPageRejectsInvalidPageAndAllowsEveryRole(t *testing.T) {
 		authentication := &fakeAuthManager{user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"}}
 		handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users?page=0", nil))
+		handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users?page=0", nil))
 		if response.Code != http.StatusBadRequest || authentication.listCalls != 0 {
 			t.Fatalf("status=%d list calls=%d", response.Code, authentication.listCalls)
 		}
@@ -262,14 +262,14 @@ func TestUsersPageRejectsInvalidPageAndAllowsEveryRole(t *testing.T) {
 			handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 
 			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users", nil))
+			handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users", nil))
 			if response.Code != http.StatusOK || authentication.listCalls != 1 {
 				t.Fatalf("role=%s status=%d list calls=%d", role, response.Code, authentication.listCalls)
 			}
-			requireContains(t, response.Body.String(), ">Users</span>")
+			requireContains(t, response.Body.String(), ">Settings</span>", ">Users</a>")
 
 			response = httptest.NewRecorder()
-			handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users/new", nil))
+			handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users/new", nil))
 			want := http.StatusOK
 			if role == "user" {
 				want = http.StatusForbidden
@@ -303,12 +303,12 @@ func TestCreateUserRedirectsAndSupportsEmailUsername(t *testing.T) {
 		"password":              {password},
 		"use_email_as_username": {"true"},
 	}
-	request := authenticatedUIRequest(http.MethodPost, "/ui/users", strings.NewReader(form.Encode()))
+	request := authenticatedUIRequest(http.MethodPost, "/ui/settings/users", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/ui/users?created=1" {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/ui/settings/users?created=1" {
 		t.Fatalf("response=%d location=%q", response.Code, response.Header().Get("Location"))
 	}
 	if authentication.createCalls != 1 || authentication.createInput.Username != "jane@example.com" || authentication.createInput.Role != "user" {
@@ -326,7 +326,7 @@ func TestCreateUserRedirectsAndSupportsEmailUsername(t *testing.T) {
 		"email": {"admin@example.com"}, "password": {password}, "role": {"admin"},
 	}
 	authentication.user = kafkaesque_auth.User{ID: "super-1", Role: "super_admin"}
-	request = authenticatedUIRequest(http.MethodPost, "/ui/users", strings.NewReader(form.Encode()))
+	request = authenticatedUIRequest(http.MethodPost, "/ui/settings/users", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -362,7 +362,7 @@ func TestCreateUserPreservesSafeValuesButClearsPassword(t *testing.T) {
 				"csrf_token": {"csrf"}, "name": {"Jane Doe"}, "username": {"jane"},
 				"email": {"jane@example.com"}, "password": {password}, "role": {"admin"},
 			}
-			request := authenticatedUIRequest(http.MethodPost, "/ui/users", strings.NewReader(form.Encode()))
+			request := authenticatedUIRequest(http.MethodPost, "/ui/settings/users", strings.NewReader(form.Encode()))
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
@@ -390,7 +390,7 @@ func TestUsersDatabaseFailuresAreUnavailable(t *testing.T) {
 		}
 		handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/users", nil))
+		handler.ServeHTTP(response, authenticatedUIRequest(http.MethodGet, "/ui/settings/users", nil))
 		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "private database error") {
 			t.Fatalf("response=%d body=%s", response.Code, response.Body.String())
 		}
@@ -404,7 +404,7 @@ func TestUsersDatabaseFailuresAreUnavailable(t *testing.T) {
 		}
 		handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
 		form := url.Values{"csrf_token": {"csrf"}}
-		request := authenticatedUIRequest(http.MethodPost, "/ui/users", strings.NewReader(form.Encode()))
+		request := authenticatedUIRequest(http.MethodPost, "/ui/settings/users", strings.NewReader(form.Encode()))
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -419,7 +419,7 @@ func TestUserCreationRequiresCSRF(t *testing.T) {
 		user: kafkaesque_auth.User{ID: "super-1", Role: "super_admin"},
 	}
 	handler := newHandlerWithAuth(&fakeDataSource{}, authentication, false, nil)
-	request := authenticatedUIRequest(http.MethodPost, "/ui/users", strings.NewReader(url.Values{}.Encode()))
+	request := authenticatedUIRequest(http.MethodPost, "/ui/settings/users", strings.NewReader(url.Values{}.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

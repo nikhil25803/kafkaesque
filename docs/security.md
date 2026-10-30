@@ -16,6 +16,7 @@ Server mode does write application data to PostgreSQL:
 - SHA-256 hashes of access, refresh, and CSRF tokens.
 - Session expiry, revocation, and activity timestamps.
 - Migration history and checksums.
+- Alert subscription state and AES-256-GCM-encrypted Slack webhook URLs.
 
 Use a PostgreSQL database dedicated to Kafkaesque because destructive bootstrap
 recovery can rebuild the complete `public` schema.
@@ -45,7 +46,7 @@ appropriate only for trusted local HTTP development.
 
 ## Authorization
 
-Every authenticated account can inspect Kafka. RBAC protects account management:
+Every authenticated account can inspect Kafka. RBAC protects account and alert management:
 
 | Role | List users | Create users | Edit users | Delete users |
 | --- | --- | --- | --- | --- |
@@ -53,10 +54,16 @@ Every authenticated account can inspect Kafka. RBAC protects account management:
 | Admin | Yes | Yes | Yes | No |
 | User | Yes | No | No | No |
 
+| Role | View alerts | Create alerts | Edit alerts | Delete alerts |
+| --- | --- | --- | --- | --- |
+| Super Admin | Yes | Yes | Yes | Yes |
+| Admin | Yes | Yes | Yes | No |
+| User | Yes | No | No | No |
+
 System roles and grants are protected by PostgreSQL guards and verified at
-startup. Custom roles can receive List, Create, and Edit; Delete is reserved
-for Super Admin. Only Super Admin can manage roles and assign Admin/custom
-roles. See [API authentication](api/authentication.md#account-permissions).
+startup. Custom roles may receive alert delete permission, while deleting users
+remains reserved for Super Admin. Only Super Admin can manage roles and assign
+Admin/custom roles. See [API authentication](api/authentication.md#account-permissions).
 
 ## Secrets
 
@@ -66,6 +73,8 @@ roles. See [API authentication](api/authentication.md#account-permissions).
 - Do not place secrets in container images, Git, command examples, or build arguments.
 - Use absolute certificate paths in container environment variables.
 - Review captured logs before sharing internal infrastructure names.
+- Keep `alerts.encryption_key` stable and separate from the database. Slack
+  webhook URLs are never rendered or logged after submission.
 
 Kafkaesque structured logs exclude request bodies, authorization headers,
 cookies, tokens, password hashes, database URLs, and configured credentials.
@@ -108,4 +117,5 @@ timeouts appropriate to the deployment.
 - No observability-specific permissions; all authenticated accounts can inspect Kafka.
 - No audit-history database beyond structured runtime logs.
 - No Kafka OAuth/OIDC, Kerberos/GSSAPI, or provider IAM mechanisms.
-- No alert delivery, Slack integration, or webhook support.
+- No generic webhooks, Slack OAuth installation, alert history, or distributed
+  monitor coordination. Multiple replicas independently evaluate subscriptions.

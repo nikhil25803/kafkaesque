@@ -103,6 +103,12 @@ database:
   # ENV: KAFKAESQUE_DATABASE_URL
   url: postgres://kafkaesque:replace-with-a-secret@postgres:5432/kafkaesque?sslmode=require
 
+alerts:
+  # Required by `serve` to encrypt Slack webhook URLs at rest. Generate with
+  # `openssl rand -base64 32` and keep the value stable across deployments.
+  # ENV: KAFKAESQUE_ALERTS_ENCRYPTION_KEY
+  encryption_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
 api:
   # Use 0.0.0.0 inside containers; use 127.0.0.1 for local-only access.
   # ENV: KAFKAESQUE_API_HOST

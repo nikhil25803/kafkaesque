@@ -471,8 +471,8 @@ func TestPostgreSQLMigrationChecksumMismatch(t *testing.T) {
 	if err := service.pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&migrationsApplied); err != nil {
 		t.Fatal(err)
 	}
-	if migrationsApplied != 5 {
-		t.Fatalf("migrations = %d, want 5", migrationsApplied)
+	if migrationsApplied != 6 {
+		t.Fatalf("migrations = %d, want 6", migrationsApplied)
 	}
 }
 

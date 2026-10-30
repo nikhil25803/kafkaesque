@@ -23,7 +23,14 @@ it is not a historical metrics platform or a Kafka administration console.
 - Refresh consumer detail in the web UI or use CLI watch mode.
 
 Kafkaesque reports current Kafka values. It does not store lag history, produce
-charts, calculate message rates, or predict future lag.
+charts, or predict future lag.
+
+## Slack alerts
+
+- Persist Slack subscriptions for average or maximum partition lag.
+- Evaluate unique consumer/topic targets every minute.
+- Send firing reminders at the configured cooldown and optional recovery notices.
+- Encrypt Incoming Webhook URLs at rest with an operator-managed AES key.
 
 ## Interfaces
 
@@ -37,11 +44,11 @@ charts, calculate message rates, or predict future lag.
 
 - PostgreSQL-backed users, roles, opaque sessions, and CSRF protection.
 - Argon2id password hashing.
-- Built-in Super Admin, Admin, and User roles plus custom account-management roles.
+- Built-in Super Admin, Admin, and User roles plus custom account/alert-management roles.
 - TLS, mTLS, SASL PLAIN, SCRAM-SHA-256, and SCRAM-SHA-512 for Kafka.
 
-Every authenticated role can inspect Kafka. RBAC currently controls only user
-and role management.
+Every authenticated role can inspect Kafka. RBAC controls user, role, and alert
+subscription management.
 
 ## Distribution
 
@@ -54,8 +61,8 @@ and role management.
 - Producing, modifying, or deleting Kafka data and configuration.
 - OAuth/OIDC, Kerberos/GSSAPI, AWS MSK IAM, or provider-specific Kafka auth.
 - MFA, SSO, password reset, or external identity providers.
-- Slack alerts, generic webhooks, or alert history.
-- Historical Kafka metrics, message browsing, or message-rate calculations.
+- Generic webhooks, Slack OAuth installation, custom payloads, or alert history.
+- Historical Kafka metrics or message browsing.
 - Caching or stale-data fallback when Kafka is unavailable.
 - SQLite; server mode requires PostgreSQL 18 or newer.
 

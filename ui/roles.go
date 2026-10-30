@@ -11,6 +11,7 @@ import (
 
 type rolesPage struct {
 	Navigation navigationView
+	Tabs       []settingsTab
 	Roles      []roleView
 	Success    string
 }
@@ -27,6 +28,7 @@ type permissionGroupView struct {
 
 type roleFormPage struct {
 	Navigation navigationView
+	Tabs       []settingsTab
 	Role       kafkaesque_auth.ManagedRole
 	Editing    bool
 	Error      string
@@ -48,7 +50,7 @@ func renderRoles(manager kafkaesque_auth.RoleManager, logger *slog.Logger) http.
 				PermissionGroups: rolePermissionGroups(role.Permissions),
 			})
 		}
-		view := rolesPage{Navigation: navigationFor(r, "roles"), Roles: views}
+		view := rolesPage{Navigation: navigationFor(r, "settings"), Tabs: settingsTabs(r, "roles"), Roles: views}
 		if r.URL.Query().Get("saved") == "1" {
 			view.Success = "Role saved successfully."
 		}
@@ -118,7 +120,7 @@ func saveRoleUI(manager kafkaesque_auth.RoleManager, logger *slog.Logger, editin
 			return
 		}
 		logger.Info("role_saved", "actor_user_id", actor.ID, "role_id", role.ID, "role", role.Name)
-		http.Redirect(w, r, "/ui/roles?saved=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings/roles?saved=1", http.StatusSeeOther)
 	}
 }
 
@@ -132,12 +134,13 @@ func deleteRoleUI(manager kafkaesque_auth.RoleManager, logger *slog.Logger) http
 			return
 		}
 		logger.Info("role_deleted", "actor_user_id", actor.ID, "role_id", id)
-		http.Redirect(w, r, "/ui/roles?deleted=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings/roles?deleted=1", http.StatusSeeOther)
 	}
 }
 
 func renderRoleForm(w http.ResponseWriter, r *http.Request, status int, view roleFormPage) {
-	view.Navigation = navigationFor(r, "roles")
+	view.Navigation = navigationFor(r, "settings")
+	view.Tabs = settingsTabs(r, "roles")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_ = dashboardTemplate.ExecuteTemplate(w, "role-form", view)
@@ -192,19 +195,30 @@ func rolePermissionGroups(permissions []string) []permissionGroupView {
 		{key: kafkaesque_auth.PermissionUserCreate, label: "Create Users"},
 		{key: kafkaesque_auth.PermissionUserEdit, label: "Edit Users"},
 		{key: kafkaesque_auth.PermissionUserDelete, label: "Delete Users"},
+		{key: kafkaesque_auth.PermissionAlertView, label: "View Alerts"},
+		{key: kafkaesque_auth.PermissionAlertCreate, label: "Create Alerts"},
+		{key: kafkaesque_auth.PermissionAlertEdit, label: "Edit Alerts"},
+		{key: kafkaesque_auth.PermissionAlertDelete, label: "Delete Alerts"},
 	}
 
-	group := permissionGroupView{Name: "User"}
+	groups := []permissionGroupView{{Name: "User"}, {Name: "Alerts"}}
 	for _, item := range labels {
 		for _, permission := range permissions {
 			if permission == item.key {
-				group.Permissions = append(group.Permissions, item.label)
+				index := 0
+				if strings.HasPrefix(item.key, "alert:") {
+					index = 1
+				}
+				groups[index].Permissions = append(groups[index].Permissions, item.label)
 				break
 			}
 		}
 	}
-	if len(group.Permissions) == 0 {
-		return nil
+	result := make([]permissionGroupView, 0, 2)
+	for _, group := range groups {
+		if len(group.Permissions) > 0 {
+			result = append(result, group)
+		}
 	}
-	return []permissionGroupView{group}
+	return result
 }

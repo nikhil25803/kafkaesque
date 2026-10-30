@@ -20,6 +20,8 @@ func TestLoadReadsServeYAML(t *testing.T) {
   cookie_secure: false
 database:
   url: postgres://yaml.example/kafkaesque
+alerts:
+  encryption_key: `+testAlertKey+`
 `)
 
 	cfg, err := Load(path)
@@ -56,6 +58,7 @@ func TestServeAuthenticationEnvironment(t *testing.T) {
 	t.Setenv(AuthAccessTTLEnv, "20m")
 	t.Setenv(AuthRefreshTTLEnv, "48h")
 	t.Setenv(AuthCookieSecureEnv, "false")
+	t.Setenv(AlertsEncryptionKeyEnv, testAlertKey)
 	cfg, err := load("missing.yaml", false)
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +99,7 @@ database:
 	t.Setenv(AuthAccessTTLEnv, "10m")
 	t.Setenv(AuthRefreshTTLEnv, "24h")
 	t.Setenv(AuthCookieSecureEnv, "false")
+	t.Setenv(AlertsEncryptionKeyEnv, testAlertKey)
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -123,6 +127,7 @@ func TestServeCombinesYAMLAndEnvironment(t *testing.T) {
 	t.Setenv(SuperAdminUsernameEnv, "admin")
 	t.Setenv(SuperAdminEmailEnv, "admin@example.com")
 	t.Setenv(SuperAdminPasswordEnv, testPassword("e"))
+	t.Setenv(AlertsEncryptionKeyEnv, testAlertKey)
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -168,6 +173,9 @@ func TestLoadRejectsLegacySuperAdminYAML(t *testing.T) {
 
 func TestValidateServe(t *testing.T) {
 	tests := map[string]func(*Config){
+		"alert encryption key": func(config *Config) {
+			config.Alerts.EncryptionKey = "invalid"
+		},
 		"database": func(config *Config) {
 			config.Database.URL = ""
 		},
@@ -274,6 +282,7 @@ func validServeConfig() *Config {
 			Port: 8085,
 		},
 		Database: DatabaseConfig{URL: "postgres://db"},
+		Alerts:   AlertsConfig{EncryptionKey: testAlertKey},
 		Authentication: AuthenticationConfig{
 			SuperAdminUsername: "admin",
 			SuperAdminEmail:    "admin@example.com",
@@ -285,6 +294,8 @@ func validServeConfig() *Config {
 		},
 	}
 }
+
+const testAlertKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 func testPassword(character string) string {
 	return string([]rune{'A', 'a', '1', '_'}) + strings.Repeat(character, 16)

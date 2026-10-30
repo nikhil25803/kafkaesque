@@ -299,7 +299,12 @@ tbody tr:hover { background: var(--elevated); }
 .brokers-panel { margin-bottom: 24px; }
 .brokers-panel table { min-width: 780px; }
 .users-panel { margin-bottom: 24px; }
+.settings-tabs { display: flex; gap: 6px; margin: -8px 0 20px; border-bottom: 1px solid var(--border); }
+.settings-tabs a { padding: 10px 14px; border-bottom: 2px solid transparent; color: var(--text-secondary); text-decoration: none; }
+.settings-tabs a:hover { color: var(--text); }
+.settings-tabs a.active { border-bottom-color: var(--text); color: var(--text); }
 .users-table { min-width: 880px; }
+.alerts-table { min-width: 1050px; }
 .topic-name { color: var(--text); }
 .topic-level { display: block; margin-top: 4px; color: var(--text-muted); font-size: 12px; font-weight: 500; }
 .message-rates { display: grid; gap: 2px; }

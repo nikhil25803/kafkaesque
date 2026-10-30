@@ -229,7 +229,9 @@ func validateRoleInput(input RoleInput) (RoleInput, error) {
 				Message: "cannot include the Super Admin delete permission",
 			}
 		}
-		if permission != PermissionUserView && permission != PermissionUserCreate && permission != PermissionUserEdit {
+		if permission != PermissionUserView && permission != PermissionUserCreate && permission != PermissionUserEdit &&
+			permission != PermissionAlertView && permission != PermissionAlertCreate &&
+			permission != PermissionAlertEdit && permission != PermissionAlertDelete {
 			return RoleInput{}, &ValidationError{Field: "permissions", Message: "contains an unsupported permission"}
 		}
 		if !seen[permission] {
@@ -241,6 +243,12 @@ func validateRoleInput(input RoleInput) (RoleInput, error) {
 		return RoleInput{}, &ValidationError{
 			Field:   "permissions",
 			Message: "must include user:account:view with mutation permissions",
+		}
+	}
+	if (seen[PermissionAlertCreate] || seen[PermissionAlertEdit] || seen[PermissionAlertDelete]) && !seen[PermissionAlertView] {
+		return RoleInput{}, &ValidationError{
+			Field:   "permissions",
+			Message: "must include alert:subscription:view with mutation permissions",
 		}
 	}
 	sort.Strings(permissions)

@@ -128,11 +128,11 @@ Initial navigation contains, in this order:
 3. Topics
 4. Brokers
 5. Cluster Health
-6. Users
+6. Settings
 
-Do not show Alerts or Settings until those features exist. The shared shell
-anchors the authenticated account role and logout control at the bottom of the
-sidebar.
+Settings contains permission-aware Users, Roles, and Alerts tabs. The shared
+shell anchors the authenticated account role and logout control at the bottom
+of the sidebar.
 
 | State | Surface | Text and icon | Additional requirement |
 | --- | --- | --- | --- |
@@ -296,9 +296,9 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 
 ## User Management
 
-- Keep the user list as the primary `/ui/users` content, with Add user in the
+- Keep the user list as the primary `/ui/settings/users` content, with Add user in the
   page header.
-- Render account creation on `/ui/users/new` in a centered panel and stack form
+- Render account creation on `/ui/settings/users/new` in a centered panel and stack form
   fields on narrow screens.
 - Keep roles neutral; they are authorization labels rather than health states.
 - Show a five-segment red/green password meter and keep the detailed ×/✓ rules
@@ -317,6 +317,6 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
 - Topic Detail remains deferred until it is explicitly approved.
-- PostgreSQL-backed account login, logout, user lifecycle management, and
-  custom account roles are implemented. Password management,
-  MFA, charts, alerts, settings, and new logo assets remain deferred.
+- PostgreSQL-backed account login, logout, user lifecycle management, custom
+  roles, Settings, and Slack lag alerts are implemented. Password management,
+  MFA, charts, generic webhooks, and new logo assets remain deferred.

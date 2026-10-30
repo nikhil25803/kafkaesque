@@ -28,8 +28,8 @@ weight of a full metrics platform. Use it to answer practical questions:
 - Which consumer groups are rebalancing, dead, or lagging?
 - What are the committed offset, log-end offset, and lag for each partition?
 
-Kafka inspection is read-only. The server writes only authentication, session,
-user, and role data to PostgreSQL.
+Kafka inspection is read-only. The server writes authentication, session,
+user, role, and Slack alert-subscription state to PostgreSQL.
 
 ## Features
 
@@ -38,7 +38,7 @@ user, and role data to PostgreSQL.
 - Cluster health, broker, topic, partition, consumer-group, member, and lag inspection.
 - Responsive web dashboard with live request-time Kafka data.
 - Authenticated HTTP API with opaque access and refresh tokens.
-- PostgreSQL-backed users, roles, and account-management permissions.
+- PostgreSQL-backed users, roles, Settings permissions, and Slack lag alerts.
 - Multi-architecture container images for Linux AMD64 and ARM64.
 
 See [Features and limitations](docs/features.md) for the complete capability
@@ -74,8 +74,8 @@ consumer-lag examples.
 docker pull ghcr.io/nikhil25803/kafkaesque:<release-tag>
 ```
 
-The container starts `kafkaesque serve`, so it requires PostgreSQL and the
-Super Admin bootstrap values in addition to Kafka configuration. Follow the
+The container starts `kafkaesque serve`, so it requires PostgreSQL, the Super
+Admin bootstrap values, and an alert-encryption key in addition to Kafka configuration. Follow the
 [container and Kubernetes deployment guide](docs/deployment.md) for a runnable
 setup. Choose an exact tag from
 [GitHub Releases](https://github.com/nikhil25803/kafkaesque/releases) or pin an
@@ -147,7 +147,8 @@ defaults → YAML → environment variables → explicit serve flags
 ```
 
 CLI inspection needs only Kafka and optional lag configuration. `serve` also
-requires PostgreSQL and the Super Admin bootstrap values.
+requires PostgreSQL, the Super Admin bootstrap values, and an alert-encryption
+key.
 
 <details>
 <summary><strong>Complete YAML example</strong></summary>
@@ -201,6 +202,10 @@ authentication:
 database:
   url: postgres://kafkaesque:<url-encoded-password>@postgres:5432/kafkaesque?sslmode=require
 
+alerts:
+  # Base64 encoding of exactly 32 random bytes. Keep this stable between deploys.
+  encryption_key: <base64-encoded-32-byte-key>
+
 api:
   host: 0.0.0.0
   port: 8085
@@ -241,6 +246,7 @@ Environment values always override their YAML equivalent.
 | `KAFKAESQUE_AUTHENTICATION_REFRESH_TTL`          | `authentication.refresh_ttl`          | Duration greater than access TTL; default `168h`.                                                                |
 | `KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE`        | `authentication.cookie_secure`        | Boolean; default `true`, disable only for trusted local HTTP.                                                    |
 | `KAFKAESQUE_DATABASE_URL`                        | `database.url`                        | Complete PostgreSQL 18+ URL; required by `serve`.                                                                |
+| `KAFKAESQUE_ALERTS_ENCRYPTION_KEY`               | `alerts.encryption_key`               | Base64 encoding of exactly 32 bytes; required by `serve` and must remain stable.                                  |
 | `KAFKAESQUE_API_HOST`                            | `api.host`                            | Listener host; default `0.0.0.0`.                                                                                |
 | `KAFKAESQUE_API_PORT`                            | `api.port`                            | Integer from `1` through `65535`; default `8085`.                                                                |
 
@@ -301,11 +307,11 @@ For advanced validation and production use, read
   </tr>
   <tr>
     <td align="center" width="50%">
-      <strong>Users</strong><br>
+      <strong>Settings · Users</strong><br>
       <img src="asset/ui/users_page.png" alt="Kafkaesque users page showing account details, roles, and pagination" width="100%">
     </td>
     <td align="center" width="50%">
-      <strong>Roles</strong><br>
+      <strong>Settings · Roles</strong><br>
       <img src="asset/ui/roles_page.png" alt="Kafkaesque roles page showing system roles, permissions, and assigned users" width="100%">
     </td>
   </tr>
@@ -321,6 +327,7 @@ For advanced validation and production use, read
 | Use every CLI flag                      | [CLI reference](docs/cli-reference.md)                |
 | Configure YAML or environment variables | [Configuration reference](docs/configuration.md)      |
 | Integrate with the HTTP API             | [API overview](docs/api/overview.md)                  |
+| Configure Slack lag alerts              | [Features and limitations](docs/features.md)          |
 | Diagnose a failure                      | [Troubleshooting](docs/troubleshooting.md)            |
 
 ## How it works

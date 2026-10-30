@@ -195,6 +195,9 @@ func Open(ctx context.Context, cfg *kafkaesque_config.Config, logger *slog.Logge
 // Close releases the PostgreSQL connection pool.
 func (s *Service) Close() { s.pool.Close() }
 
+// Database returns the shared application database pool.
+func (s *Service) Database() *pgxpool.Pool { return s.pool }
+
 // bootstrap serializes migrations and Super Admin reconciliation.
 func (s *Service) bootstrap(
 	ctx context.Context,
@@ -385,7 +388,24 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 			('auth_sessions', 'refresh_expires_at'),
 			('auth_sessions', 'revoked_at'),
 			('auth_sessions', 'created_at'),
-			('auth_sessions', 'last_activity_at')
+			('auth_sessions', 'last_activity_at'),
+			('alert_subscriptions', 'id'),
+			('alert_subscriptions', 'consumer_group'),
+			('alert_subscriptions', 'topic'),
+			('alert_subscriptions', 'metric'),
+			('alert_subscriptions', 'lag_threshold'),
+			('alert_subscriptions', 'cooldown_minutes'),
+			('alert_subscriptions', 'notify_on_resolve'),
+			('alert_subscriptions', 'webhook_ciphertext'),
+			('alert_subscriptions', 'webhook_nonce'),
+			('alert_subscriptions', 'state'),
+			('alert_subscriptions', 'last_value'),
+			('alert_subscriptions', 'last_evaluated_at'),
+			('alert_subscriptions', 'last_attempt_at'),
+			('alert_subscriptions', 'last_notified_at'),
+			('alert_subscriptions', 'created_by'),
+			('alert_subscriptions', 'created_at'),
+			('alert_subscriptions', 'updated_at')
 		)
 		SELECT count(*)
 		FROM required r
@@ -393,7 +413,7 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 			ON c.table_schema = 'public'
 			AND c.table_name = r.table_name
 			AND c.column_name = r.column_name`
-	if err := executor.QueryRow(ctx, query).Scan(&count); err != nil || count != 36 {
+	if err := executor.QueryRow(ctx, query).Scan(&count); err != nil || count != 53 {
 		return schemaIntegrityError()
 	}
 	var obsoleteRoleColumn int
@@ -432,7 +452,7 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 	}
 	var catalogPermissions, systemGrants int
 	if err := executor.QueryRow(ctx, "SELECT count(*) FROM permissions").Scan(&catalogPermissions); err != nil ||
-		catalogPermissions != 4 {
+		catalogPermissions != 8 {
 		return schemaIntegrityError()
 	}
 	const systemGrantsQuery = `
@@ -440,7 +460,22 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 		FROM role_permissions rp
 		JOIN roles r ON r.id = rp.role_id
 		WHERE r.system`
-	if err := executor.QueryRow(ctx, systemGrantsQuery).Scan(&systemGrants); err != nil || systemGrants != 8 {
+	if err := executor.QueryRow(ctx, systemGrantsQuery).Scan(&systemGrants); err != nil || systemGrants != 16 {
+		return schemaIntegrityError()
+	}
+	var alertGrants int
+	const alertGrantsQuery = `
+		SELECT count(*)
+		FROM role_permissions rp
+		JOIN roles r ON r.id = rp.role_id
+		JOIN permissions p ON p.id = rp.permission_id
+		WHERE p.module = 'alert' AND p.resource = 'subscription'
+		  AND (
+		    r.name = 'super_admin'
+		    OR (r.name = 'admin' AND p.action IN ('view', 'create', 'edit'))
+		    OR (r.name = 'user' AND p.action = 'view')
+		  )`
+	if err := executor.QueryRow(ctx, alertGrantsQuery).Scan(&alertGrants); err != nil || alertGrants != 8 {
 		return schemaIntegrityError()
 	}
 	var guards int

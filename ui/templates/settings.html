@@ -1,0 +1,5 @@
+{{define "settings-tabs"}}
+<nav class="settings-tabs" aria-label="Settings sections">
+  {{range .}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+</nav>
+{{end}}
