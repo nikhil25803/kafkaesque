@@ -20,6 +20,7 @@ import (
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_topics "github.com/nikhil25803/kafkaesque/internals/topics"
 )
 
 //go:embed templates/*.html static/*
@@ -237,8 +238,22 @@ func NewHandler(
 	if authentication == nil {
 		panic("authentication manager is required")
 	}
+	return NewHandlerWithTopicRates(conn, cfg, authentication, logger, nil)
+}
+
+// NewHandlerWithTopicRates returns an embedded UI handler backed by a shared topic-rate collector.
+func NewHandlerWithTopicRates(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	authentication kafkaesque_auth.RuntimeManager,
+	logger *slog.Logger,
+	topicRates kafkaesque_topics.MessageRateProvider,
+) http.Handler {
+	if authentication == nil {
+		panic("authentication manager is required")
+	}
 	return newHandlerWithAuth(
-		newLiveDataSource(conn, cfg),
+		newLiveDataSource(conn, cfg, topicRates),
 		authentication,
 		cfg.Authentication.CookieSecure,
 		logger,

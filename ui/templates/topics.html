@@ -24,7 +24,7 @@
             <div class="title-with-badge">
               <h1>Topics</h1>
             </div>
-            <p>Inspect topic visibility, partitions, and replication</p>
+            <p>Inspect topic visibility, throughput, partitions, and replication</p>
           </div>
         </div>
       </header>
@@ -76,12 +76,23 @@
   {{if .Topics}}
   <div class="table-scroll" tabindex="0" aria-label="Topics table, horizontally scrollable">
     <table>
-      <thead><tr><th scope="col">Topic</th><th scope="col">Level</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Replication factor</th></tr></thead>
+      <thead><tr><th scope="col">Topic</th><th scope="col" class="number">Message rate</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Replication factor</th></tr></thead>
       <tbody>
         {{range .Topics}}
         <tr>
-          <th scope="row"><span class="mono topic-name">{{.Name}}</span></th>
-          <td><span class="level-label">{{.Level}}</span></td>
+          <th scope="row">
+            <span class="mono topic-name">{{.Name}}</span>
+            <span class="topic-level">{{.Level}}</span>
+          </th>
+          <td class="number">
+            {{if .RateAvailable}}
+            <span class="message-rates">
+              <span>{{.MessagesPerSecond}}/sec</span>
+              <span>{{.MessagesPerMinute}}/min</span>
+              <span>{{.MessagesPerHour}}/hr</span>
+            </span>
+            {{else}}<span class="muted-value">Collecting…</span>{{end}}
+          </td>
           <td class="number">{{.Partitions}}</td>
           <td class="number">{{.ReplicationFactor}}</td>
         </tr>

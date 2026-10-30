@@ -38,13 +38,23 @@ type dataSource interface {
 type liveDataSource struct {
 	conn       *kafkaesque.KafkaesqueConn
 	config     *kafkaesque_config.Config
+	topicRates kafkaesque_topics.MessageRateProvider
 	thresholds kafkaesque_consumers.LagThresholds
 }
 
-func newLiveDataSource(conn *kafkaesque.KafkaesqueConn, cfg *kafkaesque_config.Config) *liveDataSource {
+func newLiveDataSource(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	topicRates ...kafkaesque_topics.MessageRateProvider,
+) *liveDataSource {
+	var rates kafkaesque_topics.MessageRateProvider
+	if len(topicRates) > 0 {
+		rates = topicRates[0]
+	}
 	return &liveDataSource{
-		conn:   conn,
-		config: cfg,
+		conn:       conn,
+		config:     cfg,
+		topicRates: rates,
 		thresholds: kafkaesque_consumers.LagThresholds{
 			Warning:   cfg.Lag.WarningThreshold,
 			Unhealthy: cfg.Lag.UnhealthyThreshold,
@@ -122,7 +132,14 @@ func (s *liveDataSource) Topics(ctx context.Context) ([]kafkaesque_topics.TopicI
 	if err != nil {
 		return nil, err
 	}
-	return kafkaesque_topics.GetTopicInformation(snapshot.Metadata), nil
+	var rates map[string]kafkaesque_topics.MessageRates
+	if s.topicRates != nil {
+		rates = s.topicRates.Snapshot()
+	}
+	return kafkaesque_topics.AddMessageRates(
+		kafkaesque_topics.GetTopicInformation(snapshot.Metadata),
+		rates,
+	), nil
 }
 
 func (s *liveDataSource) Brokers(ctx context.Context) ([]kafkaesque_brokers.BrokerInformation, error) {

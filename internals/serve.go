@@ -15,6 +15,7 @@ import (
 	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_topics "github.com/nikhil25803/kafkaesque/internals/topics"
 	"github.com/nikhil25803/kafkaesque/ui"
 	"github.com/spf13/cobra"
 )
@@ -37,14 +38,15 @@ func newApplicationHandler(
 	cfg *kafkaesque_config.Config,
 	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
+	topicRates kafkaesque_topics.MessageRateProvider,
 ) http.Handler {
 	mux := http.NewServeMux()
 
 	// API routes.
-	mux.Handle("/api/", apis.NewHandler(conn, cfg, authentication, logger))
+	mux.Handle("/api/", apis.NewHandlerWithTopicRates(conn, cfg, authentication, logger, topicRates))
 
 	// UI routes.
-	uiHandler := ui.NewHandler(conn, cfg, authentication, logger)
+	uiHandler := ui.NewHandlerWithTopicRates(conn, cfg, authentication, logger, topicRates)
 	mux.Handle("/ui", uiHandler)
 	mux.Handle("/ui/", uiHandler)
 
@@ -188,8 +190,10 @@ func initializeServer(ctx context.Context, cfg *kafkaesque_config.Config, logger
 		authentication.Close()
 		return nil, fmt.Errorf("failed to configure Kafka connection: %w", err)
 	}
+	topicRates := kafkaesque_topics.NewMessageRateCollector(conn, logger)
+	topicRates.Start(ctx)
 	return &serverRuntime{
-		handler: newApplicationHandler(conn, cfg, authentication, logger),
+		handler: newApplicationHandler(conn, cfg, authentication, logger, topicRates),
 		close: func() {
 			conn.Close()
 			authentication.Close()

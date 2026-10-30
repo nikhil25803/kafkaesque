@@ -29,6 +29,7 @@ type fakeDataSource struct {
 	groupCalls     int
 	groups         []kafkaesque_consumers.ConsumerGroupInformation
 	health         *kafkaesque_health.Information
+	topicRates     *kafkaesque_topics.MessageRates
 }
 
 func (f *fakeDataSource) Dashboard(context.Context) (*dashboardData, error) {
@@ -92,10 +93,14 @@ func (f *fakeDataSource) Topics(context.Context) ([]kafkaesque_topics.TopicInfor
 	if f.err != nil {
 		return nil, f.err
 	}
-	return []kafkaesque_topics.TopicInformation{
+	topics := []kafkaesque_topics.TopicInformation{
 		{Name: "orders", Level: "External", PartitionCount: 2, ReplicationFactor: 2},
 		{Name: "__consumer_offsets", Level: "Internal", PartitionCount: 1, ReplicationFactor: 2},
-	}, nil
+	}
+	if f.topicRates != nil {
+		topics = kafkaesque_topics.AddMessageRates(topics, map[string]kafkaesque_topics.MessageRates{"orders": *f.topicRates})
+	}
+	return topics, nil
 }
 
 func (f *fakeDataSource) Brokers(context.Context) ([]kafkaesque_brokers.BrokerInformation, error) {
@@ -216,6 +221,18 @@ func TestLivePages(t *testing.T) {
 	}
 	if source.dashboardCalls != 1 {
 		t.Fatalf("dashboard collections = %d, want 1", source.dashboardCalls)
+	}
+}
+
+func TestTopicsPageShowsMessageRatesAndMergedLevel(t *testing.T) {
+	source := &fakeDataSource{topicRates: &kafkaesque_topics.MessageRates{
+		PerSecond: 1, PerMinute: 60, PerHour: 3600,
+	}}
+	response := requestUI(t, newHandler(source), "/ui/topics", false)
+	body := response.Body.String()
+	requireContains(t, body, "Message rate", "topic-level", "1/sec", "60/min", "3600/hr", "Collecting…")
+	if strings.Contains(body, `<th scope="col">Level</th>`) {
+		t.Fatal("topics table still contains a separate Level column")
 	}
 }
 

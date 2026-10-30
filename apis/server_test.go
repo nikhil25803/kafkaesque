@@ -13,6 +13,7 @@ import (
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
+	kafkaesque_topics "github.com/nikhil25803/kafkaesque/internals/topics"
 	kafka "github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/protocol/describegroups"
 	"github.com/segmentio/kafka-go/protocol/findcoordinator"
@@ -84,12 +85,20 @@ func testMetadata() *metadataAPI.Response {
 }
 
 func testHandler(transport kafka.RoundTripper) http.Handler {
+	return testHandlerWithRates(transport, nil)
+}
+
+type staticMessageRates map[string]kafkaesque_topics.MessageRates
+
+func (r staticMessageRates) Snapshot() map[string]kafkaesque_topics.MessageRates { return r }
+
+func testHandlerWithRates(transport kafka.RoundTripper, rates kafkaesque_topics.MessageRateProvider) http.Handler {
 	cfg := &kafkaesque_config.Config{
 		Kafka: kafkaesque_config.KafkaConfig{BootstrapServers: []string{"bootstrap:9092"}, ConnectionTimeout: time.Second},
 		Lag:   kafkaesque_config.LagConfig{WarningThreshold: 100, UnhealthyThreshold: 500},
 	}
 	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("bootstrap:9092"), Transport: transport}}
-	return newHandler(conn, cfg, nil, nil)
+	return newHandlerWithTopicRates(conn, cfg, nil, nil, rates)
 }
 
 func TestRoutesReturnJSONEnvelopes(t *testing.T) {
@@ -149,6 +158,30 @@ func TestListFilteringPaginationAndSorting(t *testing.T) {
 	response = request(t, handler, "/api/v1/topics?page=99")
 	if !strings.Contains(response.Body.String(), `"data":[]`) || !strings.Contains(response.Body.String(), `"page":99`) {
 		t.Fatalf("out-of-range page = %s", response.Body.String())
+	}
+}
+
+func TestTopicMessageRates(t *testing.T) {
+	warmup := request(t, testHandler(&apiTransport{}), "/api/v1/topics/orders")
+	for _, field := range []string{
+		`"messages_per_second":null`,
+		`"messages_per_minute":null`,
+		`"messages_per_hour":null`,
+	} {
+		if !strings.Contains(warmup.Body.String(), field) {
+			t.Fatalf("warm-up response missing %s: %s", field, warmup.Body.String())
+		}
+	}
+
+	rates := staticMessageRates{"orders": {PerSecond: 1, PerMinute: 60, PerHour: 3600}}
+	handler := testHandlerWithRates(&apiTransport{}, rates)
+	for _, path := range []string{"/api/v1/topics", "/api/v1/topics/orders"} {
+		response := request(t, handler, path)
+		body := response.Body.String()
+		if response.Code != http.StatusOK || !strings.Contains(body, `"messages_per_second":1`) ||
+			!strings.Contains(body, `"messages_per_minute":60`) || !strings.Contains(body, `"messages_per_hour":3600`) {
+			t.Fatalf("%s response = %d %s", path, response.Code, body)
+		}
 	}
 }
 

@@ -10,7 +10,7 @@ it is not a historical metrics platform or a Kafka administration console.
 | Connection check | Whether bootstrap, DNS, TCP, TLS, SASL, and Kafka metadata access succeed. |
 | Metadata | Cluster ID, controller, and broker/topic totals. |
 | Brokers | Advertised address, effective connect address, and rack. |
-| Topics | Internal/external level, partition count, and replication factor. |
+| Topics | Internal/external level, hourly message throughput, partition count, and replication factor. |
 | Partitions | Leader, replicas, ISR, and healthy/degraded state. |
 | Cluster health | Offline and under-replicated partitions plus consumer-group health signals. |
 

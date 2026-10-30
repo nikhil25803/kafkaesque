@@ -44,3 +44,16 @@ func TestGetTopicInformationEmpty(t *testing.T) {
 		t.Fatalf("topics = %+v, want empty", got)
 	}
 }
+
+func TestAddMessageRates(t *testing.T) {
+	topics := AddMessageRates(
+		[]TopicInformation{{Name: "orders"}, {Name: "payments"}},
+		map[string]MessageRates{"orders": {PerSecond: 1, PerMinute: 60, PerHour: 3600}},
+	)
+	if topics[0].MessagesPerSecond == nil || *topics[0].MessagesPerHour != 3600 {
+		t.Fatalf("rates = %+v", topics[0])
+	}
+	if topics[1].MessagesPerSecond != nil {
+		t.Fatalf("unexpected payments rates = %+v", topics[1])
+	}
+}
