@@ -3,13 +3,21 @@ package auth
 import "slices"
 
 const (
-	PermissionUserView   = "user:account:view"
-	PermissionUserCreate = "user:account:create"
-	PermissionUserEdit   = "user:account:edit"
-	PermissionUserDelete = "user:account:delete"
+	PermissionUserView    = "user:account:view"
+	PermissionUserCreate  = "user:account:create"
+	PermissionUserEdit    = "user:account:edit"
+	PermissionUserDelete  = "user:account:delete"
+	PermissionAlertView   = "alert:subscription:view"
+	PermissionAlertCreate = "alert:subscription:create"
+	PermissionAlertEdit   = "alert:subscription:edit"
+	PermissionAlertDelete = "alert:subscription:delete"
 )
 
 var accountPermissions = []string{
+	PermissionAlertCreate,
+	PermissionAlertDelete,
+	PermissionAlertEdit,
+	PermissionAlertView,
 	PermissionUserCreate,
 	PermissionUserDelete,
 	PermissionUserEdit,

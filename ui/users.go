@@ -16,6 +16,7 @@ const usersPageSize = 25
 
 type usersPage struct {
 	Navigation navigationView
+	Tabs       []settingsTab
 	Results    usersResults
 	Success    string
 	CanCreate  bool
@@ -23,6 +24,7 @@ type usersPage struct {
 
 type newUserPage struct {
 	Navigation navigationView
+	Tabs       []settingsTab
 	Form       userFormView
 }
 
@@ -95,7 +97,7 @@ func renderUsers(manager kafkaesque_auth.UserManager, logger *slog.Logger) http.
 		}
 		actor, _ := kafkaesque_auth.UserFromContext(r.Context())
 		view := usersPage{
-			Navigation: navigationFor(r, "users"), Results: results,
+			Navigation: navigationFor(r, "settings"), Tabs: settingsTabs(r, "users"), Results: results,
 			CanCreate: kafkaesque_auth.HasPermission(actor, kafkaesque_auth.PermissionUserCreate),
 		}
 		switch {
@@ -169,7 +171,7 @@ func createUserUI(manager kafkaesque_auth.RuntimeManager, logger *slog.Logger) h
 			return
 		}
 		logger.Info("user_created", "actor_user_id", actor.ID, "user_id", created.ID, "role", created.Role)
-		http.Redirect(w, r, "/ui/users?created=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings/users?created=1", http.StatusSeeOther)
 	}
 }
 
@@ -218,7 +220,7 @@ func updateUserUI(manager kafkaesque_auth.UserManager, logger *slog.Logger) http
 			return
 		}
 		logger.Info("user_updated", "actor_user_id", actor.ID, "user_id", user.ID, "role", user.Role)
-		http.Redirect(w, r, "/ui/users?updated=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings/users?updated=1", http.StatusSeeOther)
 	}
 }
 
@@ -232,7 +234,7 @@ func deleteUserUI(manager kafkaesque_auth.UserManager, logger *slog.Logger) http
 			return
 		}
 		logger.Info("user_deleted", "actor_user_id", actor.ID, "user_id", user.ID, "role", user.Role)
-		http.Redirect(w, r, "/ui/users?deleted=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings/users?deleted=1", http.StatusSeeOther)
 	}
 }
 
@@ -324,7 +326,9 @@ func renderUserServiceError(w http.ResponseWriter, r *http.Request, err error) {
 func renderNewUserPage(w http.ResponseWriter, r *http.Request, status int, form userFormView) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = dashboardTemplate.ExecuteTemplate(w, "new-user", newUserPage{Navigation: navigationFor(r, "users"), Form: form})
+	_ = dashboardTemplate.ExecuteTemplate(w, "new-user", newUserPage{
+		Navigation: navigationFor(r, "settings"), Tabs: settingsTabs(r, "users"), Form: form,
+	})
 }
 
 func loadUsers(r *http.Request, manager kafkaesque_auth.UserManager, page, pageSize int) (usersResults, error) {
@@ -382,7 +386,7 @@ func paginateUsers(users []userView, total, page, pageSize int) usersResults {
 		Users:      users,
 		Range:      rangeText,
 		Pages:      pages,
-		Pagination: newPageSizeControl("/ui/users", "#users-results", pageSize),
+		Pagination: newPageSizeControl("/ui/settings/users", "#users-results", pageSize),
 	}
 	if page > 1 && page <= totalPages {
 		results.PreviousURL = usersURL(page-1, pageSize)
@@ -394,5 +398,5 @@ func paginateUsers(users []userView, total, page, pageSize int) usersResults {
 }
 
 func usersURL(page, pageSize int) string {
-	return "/ui/users?page=" + strconv.Itoa(page) + "&page_size=" + strconv.Itoa(pageSize)
+	return "/ui/settings/users?page=" + strconv.Itoa(page) + "&page_size=" + strconv.Itoa(pageSize)
 }

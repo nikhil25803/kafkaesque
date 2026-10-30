@@ -24,6 +24,8 @@ func TestValidateRoleInput(t *testing.T) {
 		{name: "invalid name", input: RoleInput{Name: "Support Team"}, wantInvalid: true},
 		{name: "delete reserved", input: RoleInput{Name: "support", Permissions: []string{PermissionUserView, PermissionUserDelete}}, wantInvalid: true},
 		{name: "mutation needs view", input: RoleInput{Name: "support", Permissions: []string{PermissionUserCreate}}, wantInvalid: true},
+		{name: "alert delete allowed", input: RoleInput{Name: "on_call", Permissions: []string{PermissionAlertView, PermissionAlertDelete}}, want: RoleInput{Name: "on_call", Permissions: []string{PermissionAlertDelete, PermissionAlertView}}},
+		{name: "alert mutation needs view", input: RoleInput{Name: "on_call", Permissions: []string{PermissionAlertCreate}}, wantInvalid: true},
 		{name: "unknown permission", input: RoleInput{Name: "support", Permissions: []string{"kafka:topic:view"}}, wantInvalid: true},
 	}
 

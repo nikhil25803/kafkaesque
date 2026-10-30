@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: |
           super_admin_password="$(printf '%s%s%s%s%s' A a 1 _ "$(openssl rand -hex 24)")"
+          alerts_encryption_key="$(openssl rand -base64 32)"
           docker build --build-arg VERSION=test -t kafkaesque:release-test .
           test "$(docker image inspect --format '{{.Config.User}}' kafkaesque:release-test)" = "65532:65532"
           test "$(docker run --rm kafkaesque:release-test --version)" = "kafkaesque version test"
@@ -54,7 +55,7 @@ jobs:
           postgres_id="$(docker run --detach --network kafkaesque-release-test --name kafkaesque-postgres --health-cmd 'pg_isready -U kafkaesque -d kafkaesque' --health-interval 2s --health-timeout 3s --health-retries 20 -e POSTGRES_DB=kafkaesque -e POSTGRES_USER=kafkaesque -e POSTGRES_PASSWORD=kafkaesque-ci postgres:18)"
           for _ in {1..30}; do test "$(docker inspect --format '{{.State.Health.Status}}' "${postgres_id}")" = healthy && break; sleep 1; done
           test "$(docker inspect --format '{{.State.Health.Status}}' "${postgres_id}")" = healthy
-          container_id="$(docker run --detach --network kafkaesque-release-test --publish 127.0.0.1:18085:8085 -e KAFKAESQUE_DATABASE_URL=postgres://kafkaesque:kafkaesque-ci@kafkaesque-postgres:5432/kafkaesque?sslmode=disable -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD="${super_admin_password}" -e KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false kafkaesque:release-test)"
+          container_id="$(docker run --detach --network kafkaesque-release-test --publish 127.0.0.1:18085:8085 -e KAFKAESQUE_DATABASE_URL=postgres://kafkaesque:kafkaesque-ci@kafkaesque-postgres:5432/kafkaesque?sslmode=disable -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com -e KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD="${super_admin_password}" -e KAFKAESQUE_ALERTS_ENCRYPTION_KEY="${alerts_encryption_key}" -e KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false kafkaesque:release-test)"
           trap 'docker logs "${container_id}"; docker rm --force "${container_id}"; docker rm --force "${postgres_id}"; docker network rm kafkaesque-release-test' EXIT
           for _ in {1..30}; do
             if curl --fail --silent http://127.0.0.1:18085/api/v1/health >/dev/null; then

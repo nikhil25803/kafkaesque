@@ -79,7 +79,8 @@ groups.
 
 ## PostgreSQL
 
-PostgreSQL stores application identity and session state, not Kafka history.
+PostgreSQL stores application identity, session state, and alert subscriptions,
+not Kafka history.
 Embedded versioned migrations use checksums and advisory locks. Startup:
 
 1. Validates effective server configuration.
@@ -88,7 +89,8 @@ Embedded versioned migrations use checksums and advisory locks. Startup:
 4. Verifies schema, system roles, permissions, and grants.
 5. Reconciles the configured Super Admin according to recovery policy.
 6. Removes expired/revoked sessions.
-7. Connects to Kafka and starts HTTP serving.
+7. Connects to Kafka and starts the message-rate and lag-alert monitors.
+8. Starts HTTP serving.
 
 Multiple replicas share PostgreSQL and use locks to avoid migration/bootstrap
 races.
@@ -103,6 +105,9 @@ HTMX fragments use the same typed view models.
 
 - Kafka is inspected but never mutated.
 - Snapshots are live; there is no cache, retry layer, or stale fallback.
-- Lag history, message rates, and alerts are outside the current architecture.
+- Hourly message rates are in-memory; alert definitions and delivery state are
+  persistent, but lag history is not retained.
+- Lag alerts fire once per breach, resolve at the same threshold, and re-arm
+  after resolution; failed Slack deliveries retry on the next monitor cycle.
 - API/UI authentication depends on PostgreSQL; CLI inspection does not.
 - Errors are sanitized at HTTP boundaries and retain normal CLI diagnostics.

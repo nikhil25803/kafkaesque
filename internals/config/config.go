@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,7 @@ const (
 )
 
 const DatabaseURLEnv = "KAFKAESQUE_DATABASE_URL"
+const AlertsEncryptionKeyEnv = "KAFKAESQUE_ALERTS_ENCRYPTION_KEY"
 
 const (
 	APIHostEnv = "KAFKAESQUE_API_HOST"
@@ -99,7 +101,13 @@ type Config struct {
 	Lag            LagConfig            `yaml:"lag"`
 	Authentication AuthenticationConfig `yaml:"authentication"`
 	Database       DatabaseConfig       `yaml:"database"`
+	Alerts         AlertsConfig         `yaml:"alerts"`
 	API            APIConfig            `yaml:"api"`
+}
+
+// AlertsConfig contains secrets used by alert integrations.
+type AlertsConfig struct {
+	EncryptionKey string `yaml:"encryption_key"`
 }
 
 // AuthenticationConfig contains Super Admin and session settings.
@@ -255,6 +263,7 @@ func load(path string, explicit bool) (*Config, error) {
 	cfg.Authentication.SuperAdminEmail = strings.ToLower(strings.TrimSpace(cfg.Authentication.SuperAdminEmail))
 	cfg.Authentication.SuperAdminRecovery = strings.ToLower(strings.TrimSpace(cfg.Authentication.SuperAdminRecovery))
 	cfg.Database.URL = strings.TrimSpace(cfg.Database.URL)
+	cfg.Alerts.EncryptionKey = strings.TrimSpace(cfg.Alerts.EncryptionKey)
 
 	overrides, err := normalizeBrokerAddressOverrides(cfg.Kafka.BrokerAddressOverrides)
 	if err != nil {
@@ -383,6 +392,9 @@ func applyEnvironment(cfg *Config) error {
 	if value, ok := os.LookupEnv(DatabaseURLEnv); ok {
 		cfg.Database.URL = strings.TrimSpace(value)
 	}
+	if value, ok := os.LookupEnv(AlertsEncryptionKeyEnv); ok {
+		cfg.Alerts.EncryptionKey = strings.TrimSpace(value)
+	}
 
 	// Authentication.
 	if value, ok := os.LookupEnv(SuperAdminUsernameEnv); ok {
@@ -450,6 +462,10 @@ func (c *Config) ValidateServe() error {
 	}
 	if strings.TrimSpace(c.Database.URL) == "" {
 		return fmt.Errorf("database.url or %s is required", DatabaseURLEnv)
+	}
+	decodedAlertKey, err := base64.StdEncoding.DecodeString(c.Alerts.EncryptionKey)
+	if err != nil || len(decodedAlertKey) != 32 {
+		return fmt.Errorf("alerts.encryption_key or %s must be a base64-encoded 32-byte key", AlertsEncryptionKeyEnv)
 	}
 	username, usernameValid := credentials.NormalizeUsername(c.Authentication.SuperAdminUsername)
 	if !usernameValid {

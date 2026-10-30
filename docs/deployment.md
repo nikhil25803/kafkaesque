@@ -18,6 +18,7 @@ KAFKAESQUE_IMAGE=ghcr.io/nikhil25803/kafkaesque:<release-tag>
 POSTGRES_PASSWORD=<database-password>
 KAFKAESQUE_DATABASE_URL=postgres://kafkaesque:<url-encoded-database-password>@postgres:5432/kafkaesque?sslmode=disable
 KAFKAESQUE_SUPER_ADMIN_PASSWORD=<policy-compliant-password>
+KAFKAESQUE_ALERTS_ENCRYPTION_KEY=<output-of-openssl-rand-base64-32>
 KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092
 ```
 
@@ -57,6 +58,7 @@ services:
       KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME: super_admin
       KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL: super-admin@example.com
       KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD: ${KAFKAESQUE_SUPER_ADMIN_PASSWORD:?set Super Admin password}
+      KAFKAESQUE_ALERTS_ENCRYPTION_KEY: ${KAFKAESQUE_ALERTS_ENCRYPTION_KEY:?set alert encryption key}
       KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY: verify
       KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE: "false"
       KAFKAESQUE_API_HOST: 0.0.0.0
@@ -93,6 +95,7 @@ stringData:
   postgres-password: <database-password>
   database-url: postgres://kafkaesque:<url-encoded-database-password>@kafkaesque-postgres:5432/kafkaesque?sslmode=disable
   super-admin-password: <policy-compliant-password>
+  alert-encryption-key: <base64-encoded-32-byte-key>
 ---
 apiVersion: v1
 kind: Service
@@ -194,6 +197,11 @@ spec:
                   key: super-admin-password
             - name: KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY
               value: verify
+            - name: KAFKAESQUE_ALERTS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kafkaesque-secrets
+                  key: alert-encryption-key
             - name: KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE
               value: "true"
             - name: KAFKAESQUE_API_HOST
@@ -256,15 +264,18 @@ operations use advisory locks, while sessions and permissions are stored in
 PostgreSQL. Login throttling is in-process and therefore per replica; enforce
 an additional rate limit at the ingress for public deployments.
 
-Kafka and health collection is performed on request. Consumer-group lag is
-currently collected sequentially, so dashboard and health latency grows with
-the number of groups.
+Kafka and health collection is performed on request. Slack subscriptions are
+evaluated every five seconds, with one lag read per unique configured
+consumer/topic target in each cycle. This background cadence is independent of
+the consumer page's refresh preference. Both Slack [Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+and [Workflow webhook triggers](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack)
+are supported.
 
 ## Backups
 
 Back up PostgreSQL before upgrades or recovery changes. The database contains
-accounts, role assignments, password hashes, and sessions, but not Kafka
-messages or historical Kafka metrics.
+accounts, role assignments, password hashes, sessions, and alert subscriptions,
+but not Kafka messages or historical Kafka metrics.
 
 ## Upgrades
 

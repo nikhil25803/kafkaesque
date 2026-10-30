@@ -46,6 +46,7 @@ jobs:
           api_log="${RUNNER_TEMP}/kafkaesque-api.log"
           api_pid=""
           super_admin_password="$(printf '%s%s%s%s%s' A a 1 _ "$(openssl rand -hex 24)")"
+          alerts_encryption_key="$(openssl rand -base64 32)"
 
           report_error() {
             printf 'Integration check failed at line %s: %s\n' "$1" "$2" >&2
@@ -138,6 +139,7 @@ jobs:
           KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
           KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com \
           KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD="${super_admin_password}" \
+          KAFKAESQUE_ALERTS_ENCRYPTION_KEY="${alerts_encryption_key}" \
           KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false \
             ./bin/kafkaesque serve --config "${config}" --port 18085 >"${api_log}" 2>&1 &
           api_pid=$!

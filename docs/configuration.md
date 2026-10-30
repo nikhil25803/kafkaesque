@@ -1,12 +1,13 @@
 # Configuration
 
-Kafkaesque reads five top-level YAML sections:
+Kafkaesque reads six top-level YAML sections:
 
 ```yaml
 kafka:
 lag:
 authentication:
 database:
+alerts:
 api:
 ```
 
@@ -117,16 +118,24 @@ Recovery behavior:
 only with a PostgreSQL database dedicated to Kafkaesque, then return the value
 to `verify`.
 
-## Database and API
+## Database, alerts, and API
 
 | YAML | Environment | Default and rules |
 | --- | --- | --- |
 | `database.url` | `KAFKAESQUE_DATABASE_URL` | Complete PostgreSQL 18+ URL; required by `serve`. |
+| `alerts.encryption_key` | `KAFKAESQUE_ALERTS_ENCRYPTION_KEY` | Base64-encoded 32-byte AES key; required by `serve`. |
 | `api.host` | `KAFKAESQUE_API_HOST` | Non-empty listener host; default `0.0.0.0`. |
 | `api.port` | `KAFKAESQUE_API_PORT` | `1`–`65535`; default `8085`. |
 
 Production PostgreSQL URLs should enforce TLS. `--host` and `--port` override
 only the API listener values.
+
+The alert encryption key protects Slack webhook URLs at rest. Generate
+it with `openssl rand -base64 32`, store it in a secret manager, and keep it
+stable across deployments. Losing or changing it makes existing webhook URLs
+unreadable until each subscription is edited with a replacement URL.
+Alert subscriptions accept Slack [Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+and [Workflow webhook triggers](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack).
 
 ## Environment-only example
 
@@ -136,6 +145,7 @@ export KAFKAESQUE_DATABASE_URL='postgres://kafkaesque:<password>@postgres:5432/k
 export KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin
 export KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com
 export KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD='<policy-compliant-password>'
+export KAFKAESQUE_ALERTS_ENCRYPTION_KEY='<output-of-openssl-rand-base64-32>'
 kafkaesque serve
 ```
 

@@ -4,10 +4,11 @@
   <title>Roles · Kafkaesque</title><link rel="stylesheet" href="/ui/assets/app.css"><script src="/ui/assets/app.js" defer></script>
 </head><body><div class="app-shell">{{template "sidebar" .Navigation}}
 <main class="main-content" id="main-content">
-  <header class="page-header users-page-header"><div class="page-title-row"><button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div><h1>Roles</h1><p>Manage account permissions</p></div></div><a class="primary-button" href="/ui/roles/new">+ Add role</a></header>
+  <header class="page-header users-page-header"><div class="page-title-row"><button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div><h1>Settings</h1><p>Manage roles and permissions</p></div></div><a class="primary-button" href="/ui/settings/roles/new">+ Add role</a></header>
+  {{template "settings-tabs" .Tabs}}
   {{if .Success}}<div class="form-message success" role="status">{{.Success}}</div>{{end}}
   <section class="panel"><div class="table-scroll" tabindex="0" aria-label="Roles table, horizontally scrollable"><table><thead><tr><th>Name</th><th>Permissions</th><th>Users</th><th>Type</th><th>Actions</th></tr></thead><tbody>
-  {{range .Roles}}<tr><th class="mono">{{.Name}}</th><td>{{if .Permissions}}<details class="permission-disclosure"><summary>View permissions ({{len .Permissions}})</summary><div class="permission-groups">{{range .PermissionGroups}}<div class="permission-group"><strong>{{.Name}}</strong><ul>{{range .Permissions}}<li>{{.}}</li>{{end}}</ul></div>{{end}}</div></details>{{else}}—{{end}}</td><td>{{.UserCount}}</td><td>{{if .System}}System{{else}}Custom{{end}}</td><td class="actions-cell">{{if not .System}}<button class="action-menu-trigger" type="button" popovertarget="role-actions-{{.ID}}" aria-label="Actions for {{.Name}}"><span aria-hidden="true">&#8942;</span></button><div class="action-menu-items" id="role-actions-{{.ID}}" popover="auto" aria-label="Actions for {{.Name}}"><a href="/ui/roles/{{.ID}}/edit">Edit</a><form method="post" action="/ui/roles/{{.ID}}/delete" onsubmit="return confirm('Delete this role?')"><input type="hidden" name="csrf_token" value="{{$.Navigation.CSRFToken}}"><button class="critical" type="submit">Delete</button></form></div>{{end}}</td></tr>{{end}}
+  {{range .Roles}}<tr><th class="mono">{{.Name}}</th><td>{{if .Permissions}}<details class="permission-disclosure"><summary>View permissions ({{len .Permissions}})</summary><div class="permission-groups">{{range .PermissionGroups}}<div class="permission-group"><strong>{{.Name}}</strong><ul>{{range .Permissions}}<li>{{.}}</li>{{end}}</ul></div>{{end}}</div></details>{{else}}—{{end}}</td><td>{{.UserCount}}</td><td>{{if .System}}System{{else}}Custom{{end}}</td><td class="actions-cell">{{if not .System}}<button class="action-menu-trigger" type="button" popovertarget="role-actions-{{.ID}}" aria-label="Actions for {{.Name}}"><span aria-hidden="true">&#8942;</span></button><div class="action-menu-items" id="role-actions-{{.ID}}" popover="auto" aria-label="Actions for {{.Name}}"><a href="/ui/settings/roles/{{.ID}}/edit">Edit</a><form method="post" action="/ui/settings/roles/{{.ID}}/delete" onsubmit="return confirm('Delete this role?')"><input type="hidden" name="csrf_token" value="{{$.Navigation.CSRFToken}}"><button class="critical" type="submit">Delete</button></form></div>{{end}}</td></tr>{{end}}
   </tbody></table></div></section>
 </main></div></body></html>
 {{end}}
@@ -17,9 +18,9 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark">
   <title>{{if .Editing}}Edit role{{else}}Add role{{end}} · Kafkaesque</title><link rel="stylesheet" href="/ui/assets/app.css"><script src="/ui/assets/app.js" defer></script>
 </head><body><div class="app-shell">{{template "sidebar" .Navigation}}
-<main class="main-content" id="main-content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/ui/roles">Roles</a><span aria-hidden="true">/</span><span>{{if .Editing}}Edit role{{else}}Add role{{end}}</span></nav>
+<main class="main-content" id="main-content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/ui/settings/roles">Roles</a><span aria-hidden="true">/</span><span>{{if .Editing}}Edit role{{else}}Add role{{end}}</span></nav>
 <header class="page-header"><div class="page-title-row"><button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div><h1>{{if .Editing}}Edit role{{else}}Add role{{end}}</h1><p>Choose account-management permissions</p></div></div></header>
-<div class="user-create-shell"><section class="panel user-create-panel"><form class="user-form" method="post" action="{{if .Editing}}/ui/roles/{{.Role.ID}}{{else}}/ui/roles{{end}}"><input type="hidden" name="csrf_token" value="{{.Navigation.CSRFToken}}">{{if .Error}}<div class="form-message error" role="alert">{{.Error}}</div>{{end}}
+<div class="user-create-shell"><section class="panel user-create-panel"><form class="user-form" method="post" action="{{if .Editing}}/ui/settings/roles/{{.Role.ID}}{{else}}/ui/settings/roles{{end}}"><input type="hidden" name="csrf_token" value="{{.Navigation.CSRFToken}}">{{if .Error}}<div class="form-message error" role="alert">{{.Error}}</div>{{end}}
 <label class="field"><span>Role name</span><input name="name" value="{{.Role.Name}}" pattern="[a-z][a-z0-9_]{2,63}" required></label>
 <fieldset class="permission-list"><legend>Permissions</legend>
 <div class="permission-module"><h3>User</h3>
@@ -27,7 +28,13 @@
 <label class="checkbox-field"><input name="permissions" type="checkbox" value="user:account:create"{{if permissionChecked .Role "user:account:create"}} checked{{end}}><span>Create Users</span></label>
 <label class="checkbox-field"><input name="permissions" type="checkbox" value="user:account:edit"{{if permissionChecked .Role "user:account:edit"}} checked{{end}}><span>Edit Users</span></label>
 </div>
-</fieldset><p class="muted">Delete users is reserved for Super Admin. Create and Edit require View.</p>
-<div class="user-form-actions"><button class="primary-button" type="submit">Save role</button><a class="secondary-button" href="/ui/roles">Cancel</a></div></form></section></div>
+<div class="permission-module"><h3>Alerts</h3>
+<label class="checkbox-field"><input name="permissions" type="checkbox" value="alert:subscription:view"{{if permissionChecked .Role "alert:subscription:view"}} checked{{end}}><span>View Alerts</span></label>
+<label class="checkbox-field"><input name="permissions" type="checkbox" value="alert:subscription:create"{{if permissionChecked .Role "alert:subscription:create"}} checked{{end}}><span>Create Alerts</span></label>
+<label class="checkbox-field"><input name="permissions" type="checkbox" value="alert:subscription:edit"{{if permissionChecked .Role "alert:subscription:edit"}} checked{{end}}><span>Edit Alerts</span></label>
+<label class="checkbox-field"><input name="permissions" type="checkbox" value="alert:subscription:delete"{{if permissionChecked .Role "alert:subscription:delete"}} checked{{end}}><span>Delete Alerts</span></label>
+</div>
+</fieldset><p class="muted">Mutation permissions require View. Delete users remains reserved for Super Admin.</p>
+<div class="user-form-actions"><button class="primary-button" type="submit">Save role</button><a class="secondary-button" href="/ui/settings/roles">Cancel</a></div></form></section></div>
 </main></div></body></html>
 {{end}}

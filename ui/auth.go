@@ -18,13 +18,18 @@ type loginPage struct {
 
 func navigationFor(r *http.Request, active string) navigationView {
 	user, _ := kafkaesque_auth.UserFromContext(r.Context())
+	showUsers := kafkaesque_auth.HasPermission(user, kafkaesque_auth.PermissionUserView)
+	showRoles := user.Role == "super_admin"
+	showAlerts := kafkaesque_auth.HasPermission(user, kafkaesque_auth.PermissionAlertView)
 	return navigationView{
-		Active:    active,
-		Username:  user.Username,
-		Role:      roleLabel(user.Role),
-		CSRFToken: kafkaesque_auth.CookieValue(r, kafkaesque_auth.CSRFCookie),
-		ShowUsers: kafkaesque_auth.HasPermission(user, kafkaesque_auth.PermissionUserView),
-		ShowRoles: user.Role == "super_admin",
+		Active:       active,
+		Username:     user.Username,
+		Role:         roleLabel(user.Role),
+		CSRFToken:    kafkaesque_auth.CookieValue(r, kafkaesque_auth.CSRFCookie),
+		ShowUsers:    showUsers,
+		ShowRoles:    showRoles,
+		ShowAlerts:   showAlerts,
+		ShowSettings: showUsers || showRoles || showAlerts,
 	}
 }
 

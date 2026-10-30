@@ -84,9 +84,15 @@ Password or bootstrap identity reconciliation also revokes affected sessions.
 ## Account permissions
 
 Kafka observability is available to every authenticated account. Permissions
-currently control account management only.
+control account and Slack alert subscription management.
 
 | Role | List users | Create users | Edit users | Delete users |
+| --- | --- | --- | --- | --- |
+| Super Admin | Yes | Yes | Yes | Yes |
+| Admin | Yes | Yes | Yes | No |
+| User | Yes | No | No | No |
+
+| Role | View alerts | Create alerts | Edit alerts | Delete alerts |
 | --- | --- | --- | --- | --- |
 | Super Admin | Yes | Yes | Yes | Yes |
 | Admin | Yes | Yes | Yes | No |
@@ -98,6 +104,10 @@ Canonical permission keys:
 - `user:account:create`
 - `user:account:edit`
 - `user:account:delete`
+- `alert:subscription:view`
+- `alert:subscription:create`
+- `alert:subscription:edit`
+- `alert:subscription:delete`
 
 Permissions are resolved from PostgreSQL on every authenticated request, so
 role changes apply immediately.
@@ -107,8 +117,9 @@ role changes apply immediately.
 - `super_admin`, `admin`, and `user` are immutable system roles.
 - Every account has exactly one role.
 - Only Super Admin can administer roles or assign Admin/custom roles.
-- Custom roles may use View, Create, and Edit; mutation permissions require View.
-- Delete is reserved for Super Admin.
+- Custom roles may use account and alert permissions; mutations require the
+  corresponding View permission.
+- Deleting users is reserved for Super Admin; alert delete may be granted to a custom role.
 - Assigned custom roles cannot be deleted.
 - The environment-managed Super Admin cannot be edited, reassigned, or deleted.
 

@@ -170,6 +170,7 @@ func TestApplicationRoutes(t *testing.T) {
 		serveAuth{},
 		slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		nil,
+		nil,
 	)
 
 	t.Run("discovery", func(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	imageassets "github.com/nikhil25803/kafkaesque/asset/image"
+	kafkaesque_alerts "github.com/nikhil25803/kafkaesque/internals/alerts"
 	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
 	kafkaesque_consumers "github.com/nikhil25803/kafkaesque/internals/consumers"
@@ -40,12 +41,14 @@ type dashboardPage struct {
 }
 
 type navigationView struct {
-	Active    string
-	Username  string
-	Role      string
-	CSRFToken string
-	ShowUsers bool
-	ShowRoles bool
+	Active       string
+	Username     string
+	Role         string
+	CSRFToken    string
+	ShowUsers    bool
+	ShowRoles    bool
+	ShowAlerts   bool
+	ShowSettings bool
 }
 
 type connectionView struct {
@@ -238,7 +241,7 @@ func NewHandler(
 	if authentication == nil {
 		panic("authentication manager is required")
 	}
-	return NewHandlerWithTopicRates(conn, cfg, authentication, logger, nil)
+	return NewHandlerWithTopicRates(conn, cfg, authentication, logger, nil, nil)
 }
 
 // NewHandlerWithTopicRates returns an embedded UI handler backed by a shared topic-rate collector.
@@ -248,6 +251,7 @@ func NewHandlerWithTopicRates(
 	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 	topicRates kafkaesque_topics.MessageRateProvider,
+	alertManager kafkaesque_alerts.Manager,
 ) http.Handler {
 	if authentication == nil {
 		panic("authentication manager is required")
@@ -257,6 +261,7 @@ func NewHandlerWithTopicRates(
 		authentication,
 		cfg.Authentication.CookieSecure,
 		logger,
+		alertManager,
 	)
 }
 
@@ -271,6 +276,7 @@ func newHandlerWithAuth(
 	authentication kafkaesque_auth.RuntimeManager,
 	cookieSecure bool,
 	logger *slog.Logger,
+	alertManagers ...kafkaesque_alerts.Manager,
 ) http.Handler {
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
@@ -286,6 +292,10 @@ func newHandlerWithAuth(
 
 		return authenticateUI(authentication, cookieSecure, logger, handler)
 	}
+	var alertManager kafkaesque_alerts.Manager
+	if len(alertManagers) > 0 {
+		alertManager = alertManagers[0]
+	}
 
 	// Authentication routes.
 	if authentication != nil {
@@ -295,37 +305,48 @@ func newHandlerWithAuth(
 
 		// User account routes.
 		mux.HandleFunc(
-			"GET /ui/users",
+			"GET /ui/settings/users",
 			protect(authorizeUI(kafkaesque_auth.PermissionUserView, renderUsers(authentication, logger))),
 		)
 		mux.HandleFunc(
-			"GET /ui/users/new",
+			"GET /ui/settings/users/new",
 			protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, renderNewUser(authentication))),
 		)
 		mux.HandleFunc(
-			"POST /ui/users",
+			"POST /ui/settings/users",
 			protect(authorizeUI(kafkaesque_auth.PermissionUserCreate, createUserUI(authentication, logger))),
 		)
 		mux.HandleFunc(
-			"GET /ui/users/{id}/edit",
+			"GET /ui/settings/users/{id}/edit",
 			protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, renderEditUser(authentication, logger))),
 		)
 		mux.HandleFunc(
-			"POST /ui/users/{id}",
+			"POST /ui/settings/users/{id}",
 			protect(authorizeUI(kafkaesque_auth.PermissionUserEdit, updateUserUI(authentication, logger))),
 		)
 		mux.HandleFunc(
-			"POST /ui/users/{id}/delete",
+			"POST /ui/settings/users/{id}/delete",
 			protect(authorizeUI(kafkaesque_auth.PermissionUserDelete, deleteUserUI(authentication, logger))),
 		)
 
 		// Role routes.
-		mux.HandleFunc("GET /ui/roles", protect(superAdminUI(renderRoles(authentication, logger))))
-		mux.HandleFunc("GET /ui/roles/new", protect(superAdminUI(renderNewRole)))
-		mux.HandleFunc("POST /ui/roles", protect(superAdminUI(createRoleUI(authentication, logger))))
-		mux.HandleFunc("GET /ui/roles/{id}/edit", protect(superAdminUI(renderEditRole(authentication, logger))))
-		mux.HandleFunc("POST /ui/roles/{id}", protect(superAdminUI(updateRoleUI(authentication, logger))))
-		mux.HandleFunc("POST /ui/roles/{id}/delete", protect(superAdminUI(deleteRoleUI(authentication, logger))))
+		mux.HandleFunc("GET /ui/settings/roles", protect(superAdminUI(renderRoles(authentication, logger))))
+		mux.HandleFunc("GET /ui/settings/roles/new", protect(superAdminUI(renderNewRole)))
+		mux.HandleFunc("POST /ui/settings/roles", protect(superAdminUI(createRoleUI(authentication, logger))))
+		mux.HandleFunc("GET /ui/settings/roles/{id}/edit", protect(superAdminUI(renderEditRole(authentication, logger))))
+		mux.HandleFunc("POST /ui/settings/roles/{id}", protect(superAdminUI(updateRoleUI(authentication, logger))))
+		mux.HandleFunc("POST /ui/settings/roles/{id}/delete", protect(superAdminUI(deleteRoleUI(authentication, logger))))
+
+		mux.HandleFunc("GET /ui/settings", protect(renderSettingsRoot))
+		mux.HandleFunc("GET /ui/settings/{$}", protect(renderSettingsRoot))
+		mux.HandleFunc("/ui/users", protect(legacySettingsRedirect("users")))
+		mux.HandleFunc("/ui/users/", protect(legacySettingsRedirect("users")))
+		mux.HandleFunc("/ui/roles", protect(legacySettingsRedirect("roles")))
+		mux.HandleFunc("/ui/roles/", protect(legacySettingsRedirect("roles")))
+
+		if alertManager != nil {
+			registerAlertRoutes(mux, protect, alertManager, logger)
+		}
 	}
 
 	// Observability pages.

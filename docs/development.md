@@ -46,6 +46,14 @@ make kafka-simulator-logs
 make kafka-simulator-stop
 ```
 
+Create ten unconsumed records for a Slack alert test, then drain them without
+restarting producers to exercise resolution:
+
+```sh
+make kafka-lag-simulate GROUP=order-processor TOPIC=orders COUNT=10
+make kafka-lag-resolve GROUP=order-processor TOPIC=orders
+```
+
 Stop or rebuild the disposable environment:
 
 ```sh

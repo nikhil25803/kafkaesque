@@ -380,7 +380,7 @@ func TestPaginationURLsPreservePageSizeAndFilters(t *testing.T) {
 		consumerGroupsURL("orders", "Stable", 2, 50): "/ui/consumer-groups?page=2&page_size=50&q=orders&state=Stable",
 		topicsURL("orders", "external", 2, 50):       "/ui/topics?level=external&page=2&page_size=50&q=orders",
 		brokersURL("rack-a", 2, 50):                  "/ui/brokers?page=2&page_size=50&q=rack-a",
-		usersURL(2, 50):                              "/ui/users?page=2&page_size=50",
+		usersURL(2, 50):                              "/ui/settings/users?page=2&page_size=50",
 	}
 	for got, want := range tests {
 		if got != want {
