@@ -107,5 +107,7 @@ HTMX fragments use the same typed view models.
 - Snapshots are live; there is no cache, retry layer, or stale fallback.
 - Hourly message rates are in-memory; alert definitions and delivery state are
   persistent, but lag history is not retained.
+- Lag alerts fire once per breach, resolve at the same threshold, and re-arm
+  after resolution; failed Slack deliveries retry on the next monitor cycle.
 - API/UI authentication depends on PostgreSQL; CLI inspection does not.
 - Errors are sanitized at HTTP boundaries and retain normal CLI diagnostics.

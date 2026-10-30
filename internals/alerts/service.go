@@ -41,12 +41,10 @@ type Subscription struct {
 	Topic             string
 	Metric            string
 	LagThreshold      int64
-	CooldownMinutes   int
 	NotifyOnResolve   bool
 	State             string
 	LastValue         *float64
 	LastEvaluatedAt   *time.Time
-	LastAttemptAt     *time.Time
 	LastNotifiedAt    *time.Time
 	WebhookConfigured bool
 	CreatedAt         time.Time
@@ -58,7 +56,6 @@ type Input struct {
 	Topic           string
 	Metric          string
 	LagThreshold    int64
-	CooldownMinutes int
 	NotifyOnResolve bool
 	WebhookURL      string
 }
@@ -130,13 +127,13 @@ func (s *Service) Create(ctx context.Context, actor kafkaesque_auth.User, input 
 	}
 	const query = `
 		INSERT INTO alert_subscriptions (
-			consumer_group, topic, metric, lag_threshold, cooldown_minutes,
+			consumer_group, topic, metric, lag_threshold,
 			notify_on_resolve, webhook_ciphertext, webhook_nonce, created_by
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING id::text`
 	var id string
 	err = s.pool.QueryRow(ctx, query, input.ConsumerGroup, input.Topic, input.Metric, input.LagThreshold,
-		input.CooldownMinutes, input.NotifyOnResolve, ciphertext, nonce, actor.ID).Scan(&id)
+		input.NotifyOnResolve, ciphertext, nonce, actor.ID).Scan(&id)
 	if err != nil {
 		return Subscription{}, classifyStoreError(err)
 	}
@@ -169,17 +166,16 @@ func (s *Service) Update(ctx context.Context, actor kafkaesque_auth.User, id str
 	}
 	const query = `
 		UPDATE alert_subscriptions SET
-			consumer_group=$2, topic=$3, metric=$4, lag_threshold=$5, cooldown_minutes=$6,
-			notify_on_resolve=$7, webhook_ciphertext=$8, webhook_nonce=$9,
-			state=CASE WHEN $10 THEN 'healthy' ELSE state END,
-			last_value=CASE WHEN $10 THEN NULL ELSE last_value END,
-			last_evaluated_at=CASE WHEN $10 THEN NULL ELSE last_evaluated_at END,
-			last_attempt_at=CASE WHEN $10 THEN NULL ELSE last_attempt_at END,
-			last_notified_at=CASE WHEN $10 THEN NULL ELSE last_notified_at END,
+			consumer_group=$2, topic=$3, metric=$4, lag_threshold=$5,
+			notify_on_resolve=$6, webhook_ciphertext=$7, webhook_nonce=$8,
+			state=CASE WHEN $9 THEN 'healthy' ELSE state END,
+			last_value=CASE WHEN $9 THEN NULL ELSE last_value END,
+			last_evaluated_at=CASE WHEN $9 THEN NULL ELSE last_evaluated_at END,
+			last_notified_at=CASE WHEN $9 THEN NULL ELSE last_notified_at END,
 			updated_at=now()
 		WHERE id::text=$1`
 	result, err := s.pool.Exec(ctx, query, id, input.ConsumerGroup, input.Topic, input.Metric, input.LagThreshold,
-		input.CooldownMinutes, input.NotifyOnResolve, ciphertext, nonce, conditionChanged)
+		input.NotifyOnResolve, ciphertext, nonce, conditionChanged)
 	if err != nil {
 		return Subscription{}, classifyStoreError(err)
 	}
@@ -241,9 +237,6 @@ func validateInput(input Input, requireWebhook bool) (Input, error) {
 	if input.LagThreshold < 0 {
 		return Input{}, &ValidationError{Field: "lag_threshold", Message: "cannot be negative"}
 	}
-	if input.CooldownMinutes < 1 || input.CooldownMinutes > 1440 {
-		return Input{}, &ValidationError{Field: "cooldown_minutes", Message: "must be between 1 and 1440"}
-	}
 	if requireWebhook && input.WebhookURL == "" {
 		return Input{}, &ValidationError{Field: "webhook_url", Message: "is required"}
 	}
@@ -256,21 +249,43 @@ func validateInput(input Input, requireWebhook bool) (Input, error) {
 }
 
 func validateSlackWebhookURL(value string) error {
+	_, err := classifySlackWebhookURL(value)
+	return err
+}
+
+type slackWebhookType uint8
+
+const (
+	slackIncomingWebhook slackWebhookType = iota + 1
+	slackWorkflowWebhook
+)
+
+func classifySlackWebhookURL(value string) (slackWebhookType, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return fmt.Errorf("must be an HTTPS Slack Incoming Webhook URL")
+		return 0, fmt.Errorf("must be an HTTPS Slack webhook URL")
 	}
 	host := strings.ToLower(parsed.Hostname())
-	if (host != "hooks.slack.com" && host != "hooks.slack-gov.com") ||
-		(parsed.Port() != "" && parsed.Port() != "443") || !strings.HasPrefix(parsed.EscapedPath(), "/services/") {
-		return fmt.Errorf("must use hooks.slack.com or hooks.slack-gov.com")
+	if (host != "hooks.slack.com" && host != "hooks.slack-gov.com") || (parsed.Port() != "" && parsed.Port() != "443") {
+		return 0, fmt.Errorf("must use hooks.slack.com or hooks.slack-gov.com")
 	}
-	return nil
+	parts := strings.Split(strings.Trim(parsed.EscapedPath(), "/"), "/")
+	if len(parts) != 4 || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+		return 0, fmt.Errorf("must be a Slack webhook URL under /services/ or /triggers/")
+	}
+	switch parts[0] {
+	case "services":
+		return slackIncomingWebhook, nil
+	case "triggers":
+		return slackWorkflowWebhook, nil
+	default:
+		return 0, fmt.Errorf("must be a Slack webhook URL under /services/ or /triggers/")
+	}
 }
 
 const subscriptionColumns = `SELECT
-	id::text, consumer_group, topic, metric, lag_threshold, cooldown_minutes,
-	notify_on_resolve, state, last_value, last_evaluated_at, last_attempt_at,
+	id::text, consumer_group, topic, metric, lag_threshold,
+	notify_on_resolve, state, last_value, last_evaluated_at,
 	last_notified_at, created_at, updated_at, webhook_ciphertext, webhook_nonce
 	FROM alert_subscriptions`
 
@@ -281,9 +296,9 @@ func scanSubscription(row rowScanner) (Subscription, []byte, []byte, error) {
 	var ciphertext, nonce []byte
 	err := row.Scan(
 		&subscription.ID, &subscription.ConsumerGroup, &subscription.Topic, &subscription.Metric,
-		&subscription.LagThreshold, &subscription.CooldownMinutes, &subscription.NotifyOnResolve,
+		&subscription.LagThreshold, &subscription.NotifyOnResolve,
 		&subscription.State, &subscription.LastValue, &subscription.LastEvaluatedAt,
-		&subscription.LastAttemptAt, &subscription.LastNotifiedAt, &subscription.CreatedAt,
+		&subscription.LastNotifiedAt, &subscription.CreatedAt,
 		&subscription.UpdatedAt, &ciphertext, &nonce,
 	)
 	subscription.WebhookConfigured = len(ciphertext) > 0

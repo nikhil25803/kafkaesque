@@ -11,12 +11,12 @@ func TestWebhookCipherRoundTripAndTamperDetection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ciphertext, nonce, err := cipher.encrypt("https://hooks.slack.com/services/T/B/secret")
+	ciphertext, nonce, err := cipher.encrypt("https://hooks.slack.com/triggers/T/1/secret")
 	if err != nil {
 		t.Fatal(err)
 	}
 	plaintext, err := cipher.decrypt(ciphertext, nonce)
-	if err != nil || plaintext != "https://hooks.slack.com/services/T/B/secret" {
+	if err != nil || plaintext != "https://hooks.slack.com/triggers/T/1/secret" {
 		t.Fatalf("plaintext=%q error=%v", plaintext, err)
 	}
 	ciphertext[0] ^= 1

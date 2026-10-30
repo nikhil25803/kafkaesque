@@ -266,7 +266,9 @@ an additional rate limit at the ingress for public deployments.
 
 Kafka and health collection is performed on request. Slack subscriptions are
 evaluated once per minute, with one lag read per unique consumer/topic target
-in each cycle.
+in each cycle. Both Slack [Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+and [Workflow webhook triggers](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack)
+are supported.
 
 ## Backups
 

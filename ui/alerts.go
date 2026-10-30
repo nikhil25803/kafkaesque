@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	kafkaesque_alerts "github.com/nikhil25803/kafkaesque/internals/alerts"
 	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
@@ -29,7 +28,6 @@ type alertView struct {
 	Topic           string
 	Metric          string
 	Threshold       int64
-	Cooldown        string
 	NotifyOnResolve bool
 	State           string
 	StateClass      string
@@ -51,8 +49,6 @@ type alertFormView struct {
 	Topic             string
 	Metric            string
 	LagThreshold      string
-	CooldownPreset    string
-	CustomCooldown    string
 	NotifyOnResolve   bool
 	WebhookURL        string
 	WebhookConfigured bool
@@ -110,7 +106,7 @@ func renderAlerts(manager kafkaesque_alerts.Manager, logger *slog.Logger) http.H
 func renderNewAlert(manager kafkaesque_alerts.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		renderAlertForm(w, r, manager, http.StatusOK, alertFormView{
-			Metric: kafkaesque_alerts.MetricAverage, CooldownPreset: "5", NotifyOnResolve: true,
+			Metric: kafkaesque_alerts.MetricAverage, NotifyOnResolve: true,
 		})
 	}
 }
@@ -123,15 +119,10 @@ func renderEditAlert(manager kafkaesque_alerts.Manager) http.HandlerFunc {
 			renderAlertError(w, r, err)
 			return
 		}
-		preset := strconv.Itoa(subscription.CooldownMinutes)
-		custom := ""
-		if preset != "5" && preset != "10" && preset != "20" {
-			custom, preset = preset, "custom"
-		}
 		renderAlertForm(w, r, manager, http.StatusOK, alertFormView{
 			ID: subscription.ID, ConsumerGroup: subscription.ConsumerGroup, Topic: subscription.Topic,
 			Metric: subscription.Metric, LagThreshold: strconv.FormatInt(subscription.LagThreshold, 10),
-			CooldownPreset: preset, CustomCooldown: custom, NotifyOnResolve: subscription.NotifyOnResolve,
+			NotifyOnResolve:   subscription.NotifyOnResolve,
 			WebhookConfigured: subscription.WebhookConfigured, Editing: true,
 		})
 	}
@@ -198,8 +189,7 @@ func parseAlertForm(r *http.Request, editing bool) (alertFormView, kafkaesque_al
 	form := alertFormView{
 		ID: r.PathValue("id"), ConsumerGroup: strings.TrimSpace(r.FormValue("consumer_group")),
 		Topic: strings.TrimSpace(r.FormValue("topic")), Metric: r.FormValue("metric"),
-		LagThreshold:   strings.TrimSpace(r.FormValue("lag_threshold")),
-		CooldownPreset: r.FormValue("cooldown"), CustomCooldown: strings.TrimSpace(r.FormValue("custom_cooldown")),
+		LagThreshold:    strings.TrimSpace(r.FormValue("lag_threshold")),
 		NotifyOnResolve: r.FormValue("notify_on_resolve") == "true", WebhookURL: strings.TrimSpace(r.FormValue("webhook_url")),
 		WebhookConfigured: editing, Editing: editing,
 	}
@@ -207,17 +197,9 @@ func parseAlertForm(r *http.Request, editing bool) (alertFormView, kafkaesque_al
 	if err != nil || threshold < 0 {
 		return form, kafkaesque_alerts.Input{}, errors.New("Lag threshold must be a non-negative whole number.")
 	}
-	cooldownValue := form.CooldownPreset
-	if cooldownValue == "custom" {
-		cooldownValue = form.CustomCooldown
-	}
-	cooldown, err := strconv.Atoi(cooldownValue)
-	if err != nil || cooldown < 1 || cooldown > 1440 {
-		return form, kafkaesque_alerts.Input{}, errors.New("Cooldown must be between 1 and 1440 minutes.")
-	}
 	return form, kafkaesque_alerts.Input{
 		ConsumerGroup: form.ConsumerGroup, Topic: form.Topic, Metric: form.Metric,
-		LagThreshold: threshold, CooldownMinutes: cooldown, NotifyOnResolve: form.NotifyOnResolve,
+		LagThreshold: threshold, NotifyOnResolve: form.NotifyOnResolve,
 		WebhookURL: form.WebhookURL,
 	}, nil
 }
@@ -270,7 +252,6 @@ func newAlertView(subscription kafkaesque_alerts.Subscription) alertView {
 	return alertView{
 		ID: subscription.ID, ConsumerGroup: subscription.ConsumerGroup, Topic: subscription.Topic,
 		Metric: metric, Threshold: subscription.LagThreshold,
-		Cooldown:        (time.Duration(subscription.CooldownMinutes) * time.Minute).String(),
 		NotifyOnResolve: subscription.NotifyOnResolve, State: strings.ToUpper(subscription.State),
 		StateClass: stateClass, LastValue: lastValue, LastNotified: lastNotified,
 	}

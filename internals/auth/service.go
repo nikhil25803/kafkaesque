@@ -394,14 +394,12 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 			('alert_subscriptions', 'topic'),
 			('alert_subscriptions', 'metric'),
 			('alert_subscriptions', 'lag_threshold'),
-			('alert_subscriptions', 'cooldown_minutes'),
 			('alert_subscriptions', 'notify_on_resolve'),
 			('alert_subscriptions', 'webhook_ciphertext'),
 			('alert_subscriptions', 'webhook_nonce'),
 			('alert_subscriptions', 'state'),
 			('alert_subscriptions', 'last_value'),
 			('alert_subscriptions', 'last_evaluated_at'),
-			('alert_subscriptions', 'last_attempt_at'),
 			('alert_subscriptions', 'last_notified_at'),
 			('alert_subscriptions', 'created_by'),
 			('alert_subscriptions', 'created_at'),
@@ -413,7 +411,7 @@ func verifySchema(ctx context.Context, executor sqlExecutor) error {
 			ON c.table_schema = 'public'
 			AND c.table_name = r.table_name
 			AND c.column_name = r.column_name`
-	if err := executor.QueryRow(ctx, query).Scan(&count); err != nil || count != 53 {
+	if err := executor.QueryRow(ctx, query).Scan(&count); err != nil || count != 51 {
 		return schemaIntegrityError()
 	}
 	var obsoleteRoleColumn int

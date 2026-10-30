@@ -130,10 +130,12 @@ to `verify`.
 Production PostgreSQL URLs should enforce TLS. `--host` and `--port` override
 only the API listener values.
 
-The alert encryption key protects Slack Incoming Webhook URLs at rest. Generate
+The alert encryption key protects Slack webhook URLs at rest. Generate
 it with `openssl rand -base64 32`, store it in a secret manager, and keep it
 stable across deployments. Losing or changing it makes existing webhook URLs
 unreadable until each subscription is edited with a replacement URL.
+Alert subscriptions accept Slack [Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+and [Workflow webhook triggers](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack).
 
 ## Environment-only example
 

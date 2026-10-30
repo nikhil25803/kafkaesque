@@ -56,6 +56,19 @@ Use `make kafka-simulator-status` to inspect the container and
 existing fixture and will not start Kafka automatically. Produced records and
 consumer offsets remain until `make kafka-reset`.
 
+To create deterministic lag for an alert test, select any fixture group/topic:
+
+```sh
+make kafka-lag-simulate GROUP=order-processor TOPIC=orders COUNT=10
+```
+
+`COUNT` defaults to `10`. The command validates the relationship, stops the
+activity simulator, produces that many unconsumed records, and verifies the
+total group/topic lag increased by the requested amount. It intentionally
+leaves the simulator stopped so the alert monitor can observe the breach. Run
+`make kafka-simulator-start` afterward to consume the records and exercise the
+resolution notification.
+
 The equivalent direct Compose commands are:
 
 ```sh

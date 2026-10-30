@@ -22,6 +22,14 @@ type ConsumerGroupInformation struct {
 	Topics       []ConsumerGroupTopicLag `json:"topics"`
 }
 
+// ConsumerGroupTopicDetails combines topic lag with the group's active members.
+type ConsumerGroupTopicDetails struct {
+	State        string
+	MembersCount int
+	Members      []ConsumerGroupMember
+	Topic        *ConsumerGroupTopicInformation
+}
+
 // GetConsumerGroupInformation returns group state, membership, and committed-offset lag.
 func GetConsumerGroupInformation(
 	c *kafkaesque.KafkaesqueConn,
@@ -72,6 +80,28 @@ func GetConsumerGroupTopicInformation(
 		return nil, err
 	}
 	return GetConsumerGroupTopicLag(c, ctx, metadata, brokerAddress, groupName, topicName)
+}
+
+// GetConsumerGroupTopicDetails returns topic lag and active member assignments.
+func GetConsumerGroupTopicDetails(
+	c *kafkaesque.KafkaesqueConn,
+	ctx context.Context,
+	metadata *kafka.MetadataResponse,
+	groupName string,
+	topicName string,
+) (*ConsumerGroupTopicDetails, error) {
+	described, brokerAddress, err := describeConsumerGroup(c, ctx, groupName, true)
+	if err != nil {
+		return nil, err
+	}
+	topic, err := GetConsumerGroupTopicLag(c, ctx, metadata, brokerAddress, groupName, topicName)
+	if err != nil {
+		return nil, err
+	}
+	return &ConsumerGroupTopicDetails{
+		State: described.State, MembersCount: described.MembersCount,
+		Members: described.Members, Topic: topic,
+	}, nil
 }
 
 func describeConsumerGroup(

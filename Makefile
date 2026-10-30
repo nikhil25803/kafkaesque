@@ -14,7 +14,7 @@ KAFKAESQUE_POSTGRES_PORT ?= 5434
 POSTGRES_TEST_DATABASE := kafkaesque_auth_test
 POSTGRES_TEST_URL := postgres://kafkaesque:kafkaesque-dev-only@127.0.0.1:$(KAFKAESQUE_POSTGRES_PORT)/$(POSTGRES_TEST_DATABASE)?sslmode=disable
 
-.PHONY: check fmt-check lint build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs postgres-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
+.PHONY: check fmt-check lint build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs postgres-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-lag-simulate kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
 
 check: fmt-check lint test build
 
@@ -91,6 +91,9 @@ kafka-simulator-logs:
 
 kafka-simulator-status:
 	$(KAFKA_SIMULATOR_COMPOSE) ps --all simulator
+
+kafka-lag-simulate:
+	@bash kafka-env/lag-simulate.sh "$(GROUP)" "$(TOPIC)" "$(or $(COUNT),10)"
 
 kafka-ci-up:
 	$(KAFKA_CI_COMPOSE) up -d --wait $(KAFKA_CI_BROKERS)

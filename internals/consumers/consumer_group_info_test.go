@@ -132,3 +132,24 @@ func TestGetConsumerGroupInformation(t *testing.T) {
 		t.Fatalf("requests = %v, want %v", transport.requests, wantRequests)
 	}
 }
+
+func TestGetConsumerGroupTopicDetailsIncludesMembers(t *testing.T) {
+	transport := &groupInformationTransport{}
+	metadata := &kafka.MetadataResponse{Topics: []kafka.Topic{{
+		Name: "orders", Partitions: []kafka.Partition{{
+			Topic: "orders", ID: 0, Leader: kafka.Broker{ID: 1, Host: "broker", Port: 9092},
+		}},
+	}}}
+	connection := consumerConnection(transport)
+	connection.Client.Addr = kafka.TCP("bootstrap:9092")
+	details, err := GetConsumerGroupTopicDetails(connection, context.Background(), metadata, "orders-service", "orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.State != "Stable" || details.MembersCount != 2 || len(details.Members) != 2 {
+		t.Fatalf("details=%+v", details)
+	}
+	if details.Topic.TotalLag != 124 || details.Members[0].Assignments[0].Partitions[0] != 0 {
+		t.Fatalf("details=%+v", details)
+	}
+}

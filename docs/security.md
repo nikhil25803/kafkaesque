@@ -76,6 +76,10 @@ Admin/custom roles. See [API authentication](api/authentication.md#account-permi
 - Keep `alerts.encryption_key` stable and separate from the database. Slack
   webhook URLs are never rendered or logged after submission.
 
+Only HTTPS Slack [Incoming Webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+and [Workflow webhook trigger](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack)
+URLs on Slack or GovSlack hosts are accepted. Redirects are rejected.
+
 Kafkaesque structured logs exclude request bodies, authorization headers,
 cookies, tokens, password hashes, database URLs, and configured credentials.
 
