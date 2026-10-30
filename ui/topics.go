@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -13,6 +14,10 @@ type topicView struct {
 	Level             string
 	Partitions        int
 	ReplicationFactor int
+	RateAvailable     bool
+	MessagesPerSecond string
+	MessagesPerMinute string
+	MessagesPerHour   string
 }
 
 type topicsPage struct {
@@ -75,6 +80,10 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 			Level:             topic.Level,
 			Partitions:        topic.PartitionCount,
 			ReplicationFactor: topic.ReplicationFactor,
+			RateAvailable:     topic.MessagesPerSecond != nil,
+			MessagesPerSecond: formatMessageRate(topic.MessagesPerSecond),
+			MessagesPerMinute: formatMessageRate(topic.MessagesPerMinute),
+			MessagesPerHour:   formatMessageRate(topic.MessagesPerHour),
 		})
 	}
 	results := paginateTopics(filterTopics(topics, query, level), query, level, page, pageSize)
@@ -95,6 +104,14 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 	if err := dashboardTemplate.ExecuteTemplate(w, "topics", view); err != nil {
 		http.Error(w, "Unable to render topics", http.StatusInternalServerError)
 	}
+}
+
+func formatMessageRate(rate *float64) string {
+	if rate == nil {
+		return ""
+	}
+	rounded := math.Round(*rate*100) / 100
+	return strconv.FormatFloat(rounded, 'f', -1, 64)
 }
 
 func filterTopics(topics []topicView, query, level string) []topicView {

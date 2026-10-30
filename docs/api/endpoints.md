@@ -102,12 +102,16 @@ retains Kafka's raw state.
 
 | Method | Path | Query Params | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/topics` | `q`, `level`, `page`, `page_size` | Topic name, level, partitions, and replication factor. |
-| `GET` | `/api/v1/topics/{topic}` | — | One topic summary. |
+| `GET` | `/api/v1/topics` | `q`, `level`, `page`, `page_size` | Topic name, level, message rates, partitions, and replication factor. |
+| `GET` | `/api/v1/topics/{topic}` | — | One topic summary, including message rates. |
 | `GET` | `/api/v1/topics/{topic}/partitions` | `status`, `page`, `page_size` | Leader, replicas, ISR, and partition health. |
 
 Topic level accepts `internal` or `external`. Partition status accepts
 `healthy` or `degraded`.
+
+`messages_per_second`, `messages_per_minute`, and `messages_per_hour` are
+derived from hourly log-end-offset snapshots. They are `null` during the first
+hour after startup and whenever a topic's partition set or offsets reset.
 
 ## Brokers
 

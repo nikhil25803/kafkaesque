@@ -169,6 +169,7 @@ func TestApplicationRoutes(t *testing.T) {
 		&kafkaesque_config.Config{},
 		serveAuth{},
 		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		nil,
 	)
 
 	t.Run("discovery", func(t *testing.T) {

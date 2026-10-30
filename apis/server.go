@@ -29,6 +29,7 @@ import (
 type server struct {
 	conn       *kafkaesque.KafkaesqueConn
 	config     *kafkaesque_config.Config
+	topicRates kafkaesque_topics.MessageRateProvider
 	thresholds kafkaesque_consumers.LagThresholds
 	auth       kafkaesque_auth.Manager
 	users      kafkaesque_auth.UserManager
@@ -94,6 +95,16 @@ type consumerGroupDetail struct {
 	Members []kafkaesque_consumers.ConsumerGroupMember `json:"members"`
 }
 
+type topicResponse struct {
+	Name              string   `json:"name"`
+	Level             string   `json:"level"`
+	PartitionCount    int      `json:"partition_count"`
+	ReplicationFactor int      `json:"replication_factor"`
+	MessagesPerSecond *float64 `json:"messages_per_second"`
+	MessagesPerMinute *float64 `json:"messages_per_minute"`
+	MessagesPerHour   *float64 `json:"messages_per_hour"`
+}
+
 // NewHandler returns an authenticated API handler.
 func NewHandler(
 	conn *kafkaesque.KafkaesqueConn,
@@ -104,7 +115,21 @@ func NewHandler(
 	if authentication == nil {
 		panic("authentication manager is required")
 	}
-	return newHandler(conn, cfg, authentication, logger)
+	return NewHandlerWithTopicRates(conn, cfg, authentication, logger, nil)
+}
+
+// NewHandlerWithTopicRates returns an API handler backed by a shared topic-rate collector.
+func NewHandlerWithTopicRates(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	authentication kafkaesque_auth.RuntimeManager,
+	logger *slog.Logger,
+	topicRates kafkaesque_topics.MessageRateProvider,
+) http.Handler {
+	if authentication == nil {
+		panic("authentication manager is required")
+	}
+	return newHandlerWithTopicRates(conn, cfg, authentication, logger, topicRates)
 }
 
 func newHandler(
@@ -113,17 +138,28 @@ func newHandler(
 	authentication kafkaesque_auth.RuntimeManager,
 	logger *slog.Logger,
 ) http.Handler {
+	return newHandlerWithTopicRates(conn, cfg, authentication, logger, nil)
+}
+
+func newHandlerWithTopicRates(
+	conn *kafkaesque.KafkaesqueConn,
+	cfg *kafkaesque_config.Config,
+	authentication kafkaesque_auth.RuntimeManager,
+	logger *slog.Logger,
+	topicRates kafkaesque_topics.MessageRateProvider,
+) http.Handler {
 	if logger == nil {
 		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
 	s := &server{
-		conn:    conn,
-		config:  cfg,
-		auth:    authentication,
-		users:   authentication,
-		roles:   authentication,
-		limiter: kafkaesque_auth.NewLimiter(),
-		logger:  logger,
+		conn:       conn,
+		config:     cfg,
+		topicRates: topicRates,
+		auth:       authentication,
+		users:      authentication,
+		roles:      authentication,
+		limiter:    kafkaesque_auth.NewLimiter(),
+		logger:     logger,
 		thresholds: kafkaesque_consumers.LagThresholds{
 			Warning:   cfg.Lag.WarningThreshold,
 			Unhealthy: cfg.Lag.UnhealthyThreshold,
@@ -368,7 +404,10 @@ func (s *server) topics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metadata := snapshotFrom(r).Metadata
-	items := kafkaesque_topics.GetTopicInformation(metadata)
+	items := kafkaesque_topics.AddMessageRates(
+		kafkaesque_topics.GetTopicInformation(metadata),
+		s.messageRates(),
+	)
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	filtered := make([]kafkaesque_topics.TopicInformation, 0, len(items))
 	for _, item := range items {
@@ -377,19 +416,50 @@ func (s *server) topics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	start, end, meta := pageBounds(len(filtered), page)
-	writeSuccess(w, http.StatusOK, filtered[start:end], meta)
+	writeSuccess(w, http.StatusOK, topicResponses(filtered[start:end]), meta)
 }
 
 func (s *server) topic(w http.ResponseWriter, r *http.Request) {
 	metadata := snapshotFrom(r).Metadata
 	name := r.PathValue("topic")
-	for _, topic := range kafkaesque_topics.GetTopicInformation(metadata) {
+	items := kafkaesque_topics.AddMessageRates(
+		kafkaesque_topics.GetTopicInformation(metadata),
+		s.messageRates(),
+	)
+	for _, topic := range items {
 		if topic.Name == name {
-			writeSuccess(w, http.StatusOK, topic, map[string]any{})
+			writeSuccess(w, http.StatusOK, newTopicResponse(topic), map[string]any{})
 			return
 		}
 	}
 	writeNotFound(w, "topic", name)
+}
+
+func (s *server) messageRates() map[string]kafkaesque_topics.MessageRates {
+	if s.topicRates == nil {
+		return nil
+	}
+	return s.topicRates.Snapshot()
+}
+
+func topicResponses(topics []kafkaesque_topics.TopicInformation) []topicResponse {
+	responses := make([]topicResponse, len(topics))
+	for i, topic := range topics {
+		responses[i] = newTopicResponse(topic)
+	}
+	return responses
+}
+
+func newTopicResponse(topic kafkaesque_topics.TopicInformation) topicResponse {
+	return topicResponse{
+		Name:              topic.Name,
+		Level:             topic.Level,
+		PartitionCount:    topic.PartitionCount,
+		ReplicationFactor: topic.ReplicationFactor,
+		MessagesPerSecond: topic.MessagesPerSecond,
+		MessagesPerMinute: topic.MessagesPerMinute,
+		MessagesPerHour:   topic.MessagesPerHour,
+	}
 }
 
 func (s *server) topicPartitions(w http.ResponseWriter, r *http.Request) {
