@@ -1,8 +1,8 @@
 <h1 align="center">Kafkaesque</h1>
 
 <p align="center">
-  <strong>Kafka cluster inspection and observability from a CLI and web dashboard.</strong><br>
-  Inspect brokers, topics, partitions, consumer groups, cluster health, and consumer lag without changing Kafka.
+  <strong>A focused Kafka monitoring dashboard, API, and CLI.</strong><br>
+  Monitor cluster health, topic activity, consumer lag, and Slack lag alerts from one read-only interface.
 </p>
 
 <p align="center">
@@ -13,254 +13,283 @@
   <a href="https://github.com/nikhil25803/kafkaesque/actions/workflows/tests.yml"><img src="https://github.com/nikhil25803/kafkaesque/actions/workflows/tests.yml/badge.svg" alt="Test status"></a>
   <a href="https://github.com/nikhil25803/kafkaesque/actions/workflows/kafka-integration.yml"><img src="https://github.com/nikhil25803/kafkaesque/actions/workflows/kafka-integration.yml/badge.svg" alt="Kafka integration status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-white.svg" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/Apache_Kafka-231F20?logo=apachekafka&amp;logoColor=white" alt="Apache Kafka">
+  <img src="https://img.shields.io/badge/PostgreSQL_18%2B-4169E1?logo=postgresql&amp;logoColor=white" alt="PostgreSQL 18 or newer">
+  <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&amp;logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/HTMX_4.0-3366CC?logo=htmx&amp;logoColor=white" alt="HTMX 4.0">
 </p>
 
 ![Kafkaesque product banner](docs/assets/branding/KafkaesqueBanner.png)
 
 ## Why Kafkaesque?
 
-Kafkaesque gives developers and operators a focused view of Kafka without the
-weight of a full metrics platform. Use it to answer practical questions:
+Monitoring Kafka is important, but it can become tedious. The standard CLI is
+useful for one-off checks, while broader observability platforms often require
+more setup than a team needs just to understand its Kafka cluster.
 
-- Can this client connect and authenticate to the cluster?
-- Which brokers, topics, partitions, and consumer groups exist?
-- Which partitions are offline or under-replicated?
-- Which consumer groups are rebalancing, dead, or lagging?
-- What are the committed offset, log-end offset, and lag for each partition?
+Kafkaesque is a dedicated, read-only Kafka monitoring tool. Its web UI gives
+developers and operators one place to inspect cluster health, brokers, topics,
+hourly message rates, consumer groups, and partition lag. You can also create
+Slack alerts with configurable lag thresholds and receive a follow-up when the
+lag is resolved.
 
-Kafka inspection is read-only. The server writes authentication, session,
-user, role, and Slack alert-subscription state to PostgreSQL.
+Kafkaesque does not produce messages or modify Kafka resources. PostgreSQL is
+used only for application accounts, sessions, roles, permissions, and alert
+subscriptions—not Kafka messages or historical metrics.
+
+## How it works
+
+```mermaid
+flowchart LR
+    User[Browser user]
+    APIClient[API client]
+    CLI[CLI user] --> CLIClient[Kafkaesque CLI]
+
+    subgraph Process[Kafkaesque server]
+        Web[Web UI]
+        API[HTTP API]
+        Web --> Auth[Authentication and RBAC]
+        API --> Auth
+        Auth --> Collectors[Live Kafka collectors]
+        Monitors[Message-rate and lag-alert monitors] --> Collectors
+    end
+
+    User -->|Sign in| Web
+    APIClient -->|Login and bearer token| API
+    Auth <-->|Users, sessions, roles| PostgreSQL[(PostgreSQL 18+)]
+    Monitors <-->|Alert definitions and state| PostgreSQL
+    Collectors -->|Metadata, groups, offsets| Kafka[Kafka cluster]
+    CLIClient -->|Direct inspection| Kafka
+    Monitors -->|Firing and resolved alerts| Slack[Slack]
+```
+
+The UI and API share the same authenticated Kafka connection and collectors.
+Browser users authenticate with secure session cookies, API clients use opaque
+access and refresh tokens, and the standalone CLI connects directly to Kafka.
+See [Architecture](docs/architecture.md) for detailed request and startup flows.
 
 ## Features
 
-- Text and JSON CLI output, including in-place watch mode.
-- Plaintext, TLS, mTLS, SASL PLAIN, SCRAM-SHA-256, and SCRAM-SHA-512 Kafka connections.
-- Cluster health, broker, topic, partition, consumer-group, member, and lag inspection.
-- Responsive web dashboard with live request-time Kafka data.
-- Authenticated HTTP API with opaque access and refresh tokens.
-- PostgreSQL-backed users, roles, Settings permissions, and Slack lag alerts.
-- Multi-architecture container images for Linux AMD64 and ARM64.
+| Concern                       | Details                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Web monitoring**            | <ul><li>Dashboard for connection status, cluster totals, and health.</li><li>Broker, topic, partition, and consumer-group inspection.</li><li>Hourly topic message rates and partition-level consumer lag.</li><li>Responsive server-rendered UI with configurable refresh intervals.</li></ul> |
+| **Kafka connectivity**        | <ul><li>Plaintext, TLS, and mutual TLS connections.</li><li>SASL PLAIN, SCRAM-SHA-256, and SCRAM-SHA-512 authentication.</li><li>Broker address overrides for containers, Kubernetes, and split networks.</li></ul>                                                                             |
+| **Authentication and access** | <ul><li>PostgreSQL-backed users, sessions, built-in roles, and custom RBAC.</li><li>Secure browser cookies with CSRF protection.</li><li>Opaque API access and refresh tokens.</li></ul>                                                                                                        |
+| **Slack lag alerts**          | <ul><li>Average or maximum partition-lag thresholds.</li><li>Slack Incoming Webhook and Workflow Builder trigger support.</li><li>One firing notification per breach and optional resolution notification.</li></ul>                                                                            |
+| **API and CLI**               | <ul><li>Authenticated JSON API for Kafka inspection.</li><li>Text or JSON CLI output with in-place watch mode.</li><li>CLI inspection requires neither PostgreSQL nor an application account.</li></ul>                                                                                         |
+| **Deployment**                | <ul><li>One Go binary with embedded UI assets and no Node.js runtime.</li><li>Non-root Linux containers for AMD64 and ARM64.</li><li>Versioned PostgreSQL migrations applied during server startup.</li></ul>                                                                                   |
 
 See [Features and limitations](docs/features.md) for the complete capability
 map and intentionally unsupported functionality.
 
 ## Quick start
 
-### 1. Inspect Kafka from the CLI
+### Run the web UI with Docker
 
-Install the latest release on Linux or macOS:
+Before starting Kafkaesque, provide:
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-```
+1. Kafka bootstrap addresses that the container can reach. Kafkaesque must also
+   reach the broker, coordinator, and partition-leader addresses returned by
+   Kafka.
+2. A PostgreSQL 18+ database and role that can create and modify objects in its
+   `public` schema. Use a database dedicated to Kafkaesque.
+3. A Super Admin username, email, and policy-compliant password.
+4. A stable encryption key for Slack webhook URLs. Generate one with:
 
-Point Kafkaesque at a broker and run the connection check:
+   ```sh
+   openssl rand -base64 32
+   ```
 
-```sh
-export KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=localhost:9092
-kafkaesque --check
-kafkaesque --health
-kafkaesque --consumers
-```
-
-CLI inspection does not require PostgreSQL or application accounts. See
-[Getting started](docs/getting-started.md) for YAML, authenticated Kafka, and
-consumer-lag examples.
-
-### 2. Run the container
+Pull the latest image:
 
 ```sh
-docker pull ghcr.io/nikhil25803/kafkaesque:<release-tag>
+docker pull ghcr.io/nikhil25803/kafkaesque:latest
 ```
 
-The container starts `kafkaesque serve`, so it requires PostgreSQL, the Super
-Admin bootstrap values, and an alert-encryption key in addition to Kafka configuration. Follow the
-[container and Kubernetes deployment guide](docs/deployment.md) for a runnable
-setup. Choose an exact tag from
-[GitHub Releases](https://github.com/nikhil25803/kafkaesque/releases) or pin an
-image digest.
+Addresses such as `localhost` inside the container refer to the container
+itself. Use a Docker network hostname, `host.docker.internal` where supported,
+or another address reachable from the container.
 
-### 3. Open the web UI
+#### Option A: mounted YAML configuration
 
-After starting the server, visit `/ui`, sign in with the configured account,
-and inspect the live cluster. The same process serves the authenticated API at
-`/api/v1` and the public process check at `/api/v1/health`.
-
-## CLI reference
-
-### General and presentation
-
-| Flag                  | Description (including required or related flags)                                       | Example                              |
-| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
-| `-h`, `--help`        | Show command help.                                                                      | `kafkaesque --help`                  |
-| `-v`, `--version`     | Show the installed Kafkaesque version.                                                  | `kafkaesque --version`               |
-| `--output text\|json` | Select text or structured JSON output. Requires an information flag; default is `text`. | `kafkaesque --brokers --output json` |
-| `--watch <seconds>`   | Refresh an information command in place at a positive interval.                         | `kafkaesque --health --watch 10`     |
-
-### Checks and configuration
-
-| Flag                     | Description (including required or related flags)                                                                        | Example                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| `--config <path>`        | Load an explicit YAML file. It also works with `serve`.                                                                  | `kafkaesque --config ./kafkaesque.yaml --metadata` |
-| `--check [config\|conn]` | Validate configuration or Kafka connectivity. Bare `--check` means `conn` and cannot be combined with information flags. | `kafkaesque --check`                               |
-
-### Information
-
-| Flag                 | Description (including required or related flags)                                                          | Example                                                        |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `-m`, `--metadata`   | Show cluster identity and totals.                                                                          | `kafkaesque --metadata`                                        |
-| `--health`           | Show cluster, partition, and consumer health. Standalone except for `--config`, `--output`, and `--watch`. | `kafkaesque --health`                                          |
-| `-b`, `--brokers`    | List brokers, advertised addresses, effective connection addresses, and racks.                             | `kafkaesque --brokers`                                         |
-| `-t`, `--topics`     | List internal and external topics with partition and replication information.                              | `kafkaesque --topics`                                          |
-| `-p`, `--partitions` | List partition leaders, replicas, ISR, and health. Requires `--topic`.                                     | `kafkaesque --partitions --topic orders`                       |
-| `--topic <name>`     | Select a topic for `--partitions` or detailed `--consumer` inspection.                                     | `kafkaesque --consumer --group order-processor --topic orders` |
-| `-c`, `--consumers`  | List consumer groups. Cannot be combined with `--consumer`.                                                | `kafkaesque --consumers`                                       |
-| `--consumer`         | Inspect one consumer group. Requires `--group`.                                                            | `kafkaesque --consumer --group order-processor`                |
-| `--member`           | Include member assignments. Requires `--consumer` and `--group`; cannot be combined with `--topic`.        | `kafkaesque --consumer --member --group order-processor`       |
-| `--group <name>`     | Select the group inspected by `--consumer`.                                                                | `kafkaesque --consumer --group order-processor`                |
-
-Information flags can share one request when their selectors are compatible:
-
-```sh
-kafkaesque --metadata --brokers --topics
-```
-
-### Server-only flags
-
-Use these with `kafkaesque serve`. Authentication and PostgreSQL are required.
-
-| Flag            | Description (including required or related flags)   | Example                           |
-| --------------- | --------------------------------------------------- | --------------------------------- |
-| `--host <host>` | Override `api.host` for this server process.        | `kafkaesque serve --host 0.0.0.0` |
-| `--port <port>` | Override `api.port`; accepted range is `1`–`65535`. | `kafkaesque serve --port 8085`    |
-
-See the [complete CLI reference](docs/cli-reference.md) for output examples,
-watch behavior, and exit codes.
-
-## Configuration
-
-Kafkaesque applies configuration in this order, with later values winning:
-
-```text
-defaults → YAML → environment variables → explicit serve flags
-```
-
-CLI inspection needs only Kafka and optional lag configuration. `serve` also
-requires PostgreSQL, the Super Admin bootstrap values, and an alert-encryption
-key.
-
-<details>
-<summary><strong>Complete YAML example</strong></summary>
+Create `config.yaml` and replace every `CHANGE_ME` value:
 
 ```yaml
 kafka:
-  # Use bootstrap_server for one broker, or bootstrap_servers for several.
-  # Do not configure both forms.
-  bootstrap_servers:
-    - kafka-1.example.com:9093
-    - kafka-2.example.com:9093
-  connection_timeout: 10s
-
-  # Map addresses advertised by Kafka to addresses reachable by Kafkaesque.
-  broker_address_overrides:
-    "broker-1.kafka.svc.cluster.local:9092": "kafka-1.example.com:9093"
-
-  security:
-    tls:
-      enabled: true
-      # Omit ca_file to use system roots.
-      ca_file: /etc/kafka/tls/ca.pem
-      # Providing both client files enables mTLS.
-      client_cert_file: /etc/kafka/tls/client.pem
-      client_key_file: /etc/kafka/tls/client-key.pem
-      server_name: kafka.example.com
-
-    # A non-empty mechanism enables SASL. Supported values are PLAIN,
-    # SCRAM-SHA-256, and SCRAM-SHA-512. Always combine PLAIN with TLS.
-    sasl:
-      mechanism: SCRAM-SHA-256
-      username: <kafka-username>
-      password: <kafka-password>
-
-lag:
-  warning_threshold: 100
-  unhealthy_threshold: 500
+  bootstrap_server: kafka.example.com:9092
 
 authentication:
   super_admin_username: super_admin
   super_admin_email: super-admin@example.com
-  # Use 8-99 characters with uppercase, lowercase, a number, and one of
-  # !@#$%^&*()_.
-  super_admin_password: <policy-compliant-password>
-  # verify is the safe default. reinitialize can delete the public schema.
+  super_admin_password: CHANGE_ME_A1_
   super_admin_recovery: verify
-  access_ttl: 15m
-  refresh_ttl: 168h
-  cookie_secure: true
+  cookie_secure: false
 
 database:
-  url: postgres://kafkaesque:<url-encoded-password>@postgres:5432/kafkaesque?sslmode=require
+  url: postgres://kafkaesque:CHANGE_ME@postgres.example.com:5432/kafkaesque?sslmode=require
 
 alerts:
-  # Base64 encoding of exactly 32 random bytes. Keep this stable between deploys.
-  encryption_key: <base64-encoded-32-byte-key>
+  encryption_key: CHANGE_ME_WITH_OPENSSL_OUTPUT
 
 api:
   host: 0.0.0.0
   port: 8085
 ```
 
-Remove TLS, mTLS, or SASL values that your Kafka listener does not use. YAML
-certificate paths are resolved relative to the configuration file; absolute
-paths are recommended in containers.
+Start Kafkaesque with the file mounted read-only:
 
-</details>
+```sh
+docker run --rm --name kafkaesque \
+  --publish 8085:8085 \
+  --volume "$PWD/config.yaml:/config.yaml:ro" \
+  ghcr.io/nikhil25803/kafkaesque:latest \
+  serve --config /config.yaml
+```
+
+#### Option B: environment variables
+
+The same configuration can be supplied without a YAML file:
+
+```sh
+docker run --rm --name kafkaesque \
+  --publish 8085:8085 \
+  --env KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=kafka.example.com:9092 \
+  --env KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME=super_admin \
+  --env KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL=super-admin@example.com \
+  --env KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD=CHANGE_ME_A1_ \
+  --env KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY=verify \
+  --env KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE=false \
+  --env 'KAFKAESQUE_DATABASE_URL=postgres://kafkaesque:CHANGE_ME@postgres.example.com:5432/kafkaesque?sslmode=require' \
+  --env KAFKAESQUE_ALERTS_ENCRYPTION_KEY=CHANGE_ME_WITH_OPENSSL_OUTPUT \
+  --env KAFKAESQUE_API_HOST=0.0.0.0 \
+  --env KAFKAESQUE_API_PORT=8085 \
+  ghcr.io/nikhil25803/kafkaesque:latest serve
+```
+
+Check the process, then open the UI and sign in with the configured Super Admin:
+
+```sh
+curl --fail http://127.0.0.1:8085/api/v1/health
+```
+
+```text
+http://127.0.0.1:8085/ui
+```
+
+The examples disable secure cookies only for trusted local HTTP. Keep secure
+cookies enabled behind HTTPS, inject secrets through your deployment platform,
+and never commit a populated configuration file. See the complete
+[configuration reference](docs/configuration.md),
+[deployment guide](docs/deployment.md), and [security guide](docs/security.md).
+
+### Install the CLI
+
+The checksummed installer supports Linux and macOS and installs without `sudo`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nikhil25803/kafkaesque/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Point the CLI at Kafka and start inspecting the cluster:
+
+```sh
+export KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER=localhost:9092
+
+kafkaesque --check
+kafkaesque --health
+kafkaesque --brokers
+kafkaesque --topics
+kafkaesque --partitions --topic orders
+kafkaesque --consumers
+kafkaesque --consumer --group order-processor
+kafkaesque --consumer --group order-processor --topic orders
+kafkaesque --consumer --member --group order-processor
+kafkaesque --metadata --brokers --topics --output json
+kafkaesque --health --watch 10
+```
+
+CLI inspection connects directly to Kafka and does not require PostgreSQL or a
+Kafkaesque account. Read [Getting started](docs/getting-started.md) for YAML,
+TLS, SASL, and consumer-lag examples.
+
+## CLI reference
 
 <details>
-<summary><strong>Complete environment-variable reference</strong></summary>
+<summary><strong>Commands, flags, relationships, and examples</strong></summary>
 
-Environment values always override their YAML equivalent.
+### Commands
 
-| Environment variable                             | YAML equivalent                       | Format or purpose                                                                                                |
-| ------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER`              | `kafka.bootstrap_server`              | One `host:port`; do not combine with the plural variable. Defaults to `localhost:9092` when neither form is set. |
-| `KAFKAESQUE_KAFKA_BOOTSTRAP_SERVERS`             | `kafka.bootstrap_servers`             | Comma-separated `host:port` values; replaces the configured list.                                                |
-| `KAFKAESQUE_KAFKA_CONNECTION_TIMEOUT`            | `kafka.connection_timeout`            | Positive Go duration; default `10s`.                                                                             |
-| `KAFKAESQUE_KAFKA_BROKER_ADDRESS_OVERRIDES`      | `kafka.broker_address_overrides`      | JSON object such as `{"broker:9092":"reachable:9094"}`.                                                          |
-| `KAFKAESQUE_KAFKA_SECURITY_TLS_ENABLED`          | `kafka.security.tls.enabled`          | Boolean enabling TLS; default `false`.                                                                           |
-| `KAFKAESQUE_KAFKA_SECURITY_TLS_CA_FILE`          | `kafka.security.tls.ca_file`          | Absolute mounted CA path; omit to use system roots.                                                              |
-| `KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_CERT_FILE` | `kafka.security.tls.client_cert_file` | Client certificate path; requires the client key.                                                                |
-| `KAFKAESQUE_KAFKA_SECURITY_TLS_CLIENT_KEY_FILE`  | `kafka.security.tls.client_key_file`  | Client key path; requires the client certificate.                                                                |
-| `KAFKAESQUE_KAFKA_SECURITY_TLS_SERVER_NAME`      | `kafka.security.tls.server_name`      | Optional certificate hostname override.                                                                          |
-| `KAFKAESQUE_KAFKA_SECURITY_SASL_MECHANISM`       | `kafka.security.sasl.mechanism`       | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`.                                                                    |
-| `KAFKAESQUE_KAFKA_SECURITY_SASL_USERNAME`        | `kafka.security.sasl.username`        | SASL username; required with a mechanism.                                                                        |
-| `KAFKAESQUE_KAFKA_SECURITY_SASL_PASSWORD`        | `kafka.security.sasl.password`        | SASL password; required with a mechanism.                                                                        |
-| `KAFKAESQUE_LAG_WARNING_THRESHOLD`               | `lag.warning_threshold`               | Non-negative integer; default `100`.                                                                             |
-| `KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD`             | `lag.unhealthy_threshold`             | Integer greater than the warning threshold; default `500`.                                                       |
-| `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME` | `authentication.super_admin_username` | Required by `serve`; 3–64 character handle or configured email.                                                  |
-| `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL`    | `authentication.super_admin_email`    | Required normalized Super Admin email.                                                                           |
-| `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD` | `authentication.super_admin_password` | Required 8–99 characters with uppercase, lowercase, a number, and one of `!@#$%^&*()_`.                          |
-| `KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY` | `authentication.super_admin_recovery` | `verify` (default), `update`, or destructive `reinitialize`.                                                     |
-| `KAFKAESQUE_AUTHENTICATION_ACCESS_TTL`           | `authentication.access_ttl`           | Positive duration; default `15m`.                                                                                |
-| `KAFKAESQUE_AUTHENTICATION_REFRESH_TTL`          | `authentication.refresh_ttl`          | Duration greater than access TTL; default `168h`.                                                                |
-| `KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE`        | `authentication.cookie_secure`        | Boolean; default `true`, disable only for trusted local HTTP.                                                    |
-| `KAFKAESQUE_DATABASE_URL`                        | `database.url`                        | Complete PostgreSQL 18+ URL; required by `serve`.                                                                |
-| `KAFKAESQUE_ALERTS_ENCRYPTION_KEY`               | `alerts.encryption_key`               | Base64 encoding of exactly 32 bytes; required by `serve` and must remain stable.                                  |
-| `KAFKAESQUE_API_HOST`                            | `api.host`                            | Listener host; default `0.0.0.0`.                                                                                |
-| `KAFKAESQUE_API_PORT`                            | `api.port`                            | Integer from `1` through `65535`; default `8085`.                                                                |
+| Command                         | Description                                                     | Example                                   |
+| ------------------------------- | --------------------------------------------------------------- | ----------------------------------------- |
+| `kafkaesque [flags]`            | Inspect Kafka directly.                                         | `kafkaesque --health`                     |
+| `kafkaesque serve [flags]`      | Start the authenticated web UI and HTTP API.                    | `kafkaesque serve --config ./config.yaml` |
+| `kafkaesque completion <shell>` | Generate completion for `bash`, `fish`, `powershell`, or `zsh`. | `kafkaesque completion zsh`               |
+| `kafkaesque help [command]`     | Show help for Kafkaesque or a command.                          | `kafkaesque help serve`                   |
 
-Container deployments should inject passwords through Secrets and mount TLS
-files read-only rather than placing sensitive values in the image or command.
+### General and presentation flags
+
+| Flag                     | Description                                                                | Example                                      |
+| ------------------------ | -------------------------------------------------------------------------- | -------------------------------------------- |
+| `-h`, `--help`           | Show command help.                                                         | `kafkaesque --help`                          |
+| `-v`, `--version`        | Show the installed version.                                                | `kafkaesque --version`                       |
+| `--config <path>`        | Load an explicit YAML configuration file.                                  | `kafkaesque --config ./config.yaml --health` |
+| `--check [config\|conn]` | Validate configuration or Kafka connectivity. Bare `--check` means `conn`. | `kafkaesque --check config`                  |
+| `--output text\|json`    | Select text or structured JSON output; default `text`.                     | `kafkaesque --brokers --output json`         |
+| `--watch <seconds>`      | Refresh an information command in place at a positive interval.            | `kafkaesque --health --watch 10`             |
+
+### Information flags
+
+| Flag                 | Description                                                                   | Example                                                        |
+| -------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `-m`, `--metadata`   | Show cluster identity and resource totals.                                    | `kafkaesque --metadata`                                        |
+| `--health`           | Show cluster, partition, and consumer health.                                 | `kafkaesque --health`                                          |
+| `-b`, `--brokers`    | List brokers, advertised and effective addresses, and racks.                  | `kafkaesque --brokers`                                         |
+| `-t`, `--topics`     | List internal and external topics with partition and replication information. | `kafkaesque --topics`                                          |
+| `-p`, `--partitions` | List leaders, replicas, ISR, and health; requires `--topic`.                  | `kafkaesque --partitions --topic orders`                       |
+| `--topic <name>`     | Select a topic for partition or consumer-group inspection.                    | `kafkaesque --consumer --group order-processor --topic orders` |
+| `-c`, `--consumers`  | List consumer groups.                                                         | `kafkaesque --consumers`                                       |
+| `--consumer`         | Inspect one consumer group; requires `--group`.                               | `kafkaesque --consumer --group order-processor`                |
+| `--member`           | Include member assignments; requires `--consumer` and cannot use `--topic`.   | `kafkaesque --consumer --member --group order-processor`       |
+| `--group <name>`     | Select the consumer group used by `--consumer`.                               | `kafkaesque --consumer --group order-processor`                |
+
+Information flags may share one command when their selectors are compatible.
+`--health` is standalone except for `--config`, `--output`, and `--watch`.
+`--consumers` and `--consumer` are mutually exclusive. `--topic` requires
+`--partitions` or `--consumer`; `--group` requires `--consumer`; and
+`--check` cannot be combined with information or presentation flags.
+
+### Server flags
+
+| Flag              | Description                                         | Example                                   |
+| ----------------- | --------------------------------------------------- | ----------------------------------------- |
+| `--config <path>` | Load an explicit server YAML configuration.         | `kafkaesque serve --config ./config.yaml` |
+| `--host <host>`   | Override `api.host` for this process.               | `kafkaesque serve --host 0.0.0.0`         |
+| `--port <port>`   | Override `api.port`; accepted range is `1`–`65535`. | `kafkaesque serve --port 8085`            |
+| `-h`, `--help`    | Show help for `serve`.                              | `kafkaesque serve --help`                 |
+
+Server mode requires PostgreSQL 18+, Super Admin bootstrap values, and an alert
+encryption key. See the [complete CLI reference](docs/cli-reference.md) for
+output formats, watch behavior, exit codes, and examples.
 
 </details>
 
-For advanced validation and production use, read
-[Configuration](docs/configuration.md), [Deployment](docs/deployment.md),
-[TLS and SASL](docs/guides/tls-sasl.md), and
-[Runtime security](docs/security.md).
+## Common workflows
 
-## UI sneak peek
+| Goal                                       | Start in the UI                      | Detailed guide                                                 |
+| ------------------------------------------ | ------------------------------------ | -------------------------------------------------------------- |
+| Verify connection and cluster health       | **Dashboard** and **Cluster Health** | [Cluster health](docs/guides/cluster-health.md)                |
+| Inspect topics and hourly message rates    | **Topics**                           | [Features and limitations](docs/features.md)                   |
+| Investigate a lagging consumer             | **Consumer Groups**                  | [Consumer lag](docs/guides/consumer-lag.md)                    |
+| Create firing and resolution notifications | **Settings → Alerts**                | [Slack alerts](docs/features.md#slack-alerts)                  |
+| Manage accounts and permissions            | **Settings → Users / Roles**         | [Authentication and authorization](docs/api/authentication.md) |
+| Connect with TLS, mTLS, or SASL            | Configure the server connection      | [TLS and SASL](docs/guides/tls-sasl.md)                        |
+| Automate Kafka inspection                  | Use the JSON API or CLI              | [API overview](docs/api/overview.md)                           |
+| Diagnose startup or Kafka failures         | Review the reported error            | [Troubleshooting](docs/troubleshooting.md)                     |
+
+## UI walkthrough
+
+### Dashboard and cluster monitoring
 
 <table>
   <tr>
@@ -289,6 +318,11 @@ For advanced validation and production use, read
       <img src="docs/assets/screenshots/cluster_health.png" alt="Kafkaesque cluster health page showing cluster, partition, and consumer diagnostics" width="100%">
     </td>
   </tr>
+</table>
+
+### Access and settings
+
+<table>
   <tr>
     <td colspan="2" align="center">
       <strong>Sign in</strong><br>
@@ -315,6 +349,11 @@ For advanced validation and production use, read
       <img src="docs/assets/screenshots/create_roles.png" alt="Kafkaesque create-role form with account and alert permissions" width="100%">
     </td>
   </tr>
+</table>
+
+### Slack alert lifecycle
+
+<table>
   <tr>
     <td align="center" width="50%">
       <strong>Slack Alerts</strong><br>
@@ -337,54 +376,16 @@ For advanced validation and production use, read
   </tr>
 </table>
 
-## Common workflows
-
-| Goal                                    | Start here                                            |
-| --------------------------------------- | ----------------------------------------------------- |
-| Find a lagging consumer group           | [Consumer lag guide](docs/guides/consumer-lag.md)     |
-| Understand degraded cluster health      | [Cluster health guide](docs/guides/cluster-health.md) |
-| Configure TLS, mTLS, or SASL            | [TLS and SASL guide](docs/guides/tls-sasl.md)         |
-| Use every CLI flag                      | [CLI reference](docs/cli-reference.md)                |
-| Configure YAML or environment variables | [Configuration reference](docs/configuration.md)      |
-| Integrate with the HTTP API             | [API overview](docs/api/overview.md)                  |
-| Configure Slack lag alerts              | [Features and limitations](docs/features.md)          |
-| Diagnose a failure                      | [Troubleshooting](docs/troubleshooting.md)            |
-
-## How it works
-
-```mermaid
-flowchart LR
-    CLI[CLI] --> Kafka[Kafka cluster]
-    Browser[Web UI] --> Server[Kafkaesque serve]
-    Client[API client] --> Server
-    Server --> Kafka
-    Server --> PostgreSQL[(PostgreSQL 18+)]
-```
-
-The CLI connects directly to Kafka. Server-rendered UI and JSON API handlers
-share the same authenticated Kafka transport and live collectors; the UI does
-not call the API over loopback. PostgreSQL stores password hashes, sessions,
-users, roles, and permissions. See [Architecture](docs/architecture.md).
-
-## Security
-
-- Keep Kafkaesque behind HTTPS and a private ingress unless your deployment has
-  an additional access-control layer.
-- Store database, SASL, and bootstrap credentials in a secret manager or
-  Kubernetes Secret, never in an image or repository.
-- Leave secure cookies enabled outside trusted local HTTP development.
-- Treat `authentication.super_admin_recovery: reinitialize` as destructive; it
-  rebuilds the complete PostgreSQL `public` schema.
-
-Read the [runtime security guide](docs/security.md) or report a vulnerability
-privately as described in [SECURITY.md](SECURITY.md).
-
 ## Documentation
 
-The [documentation index](docs/README.md) is organized by task. Useful entry
-points include [Installation](docs/installation.md),
-[Configuration](docs/configuration.md), [Deployment](docs/deployment.md), and
-[API endpoints](docs/api/endpoints.md).
+| Topic                | Reference                                                                         |
+| -------------------- | --------------------------------------------------------------------------------- |
+| Install and connect  | [Installation](docs/installation.md) · [Getting started](docs/getting-started.md) |
+| Configure and deploy | [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md)         |
+| Operate securely     | [Security](docs/security.md) · [Troubleshooting](docs/troubleshooting.md)         |
+| Integrate and extend | [API endpoints](docs/api/endpoints.md) · [Architecture](docs/architecture.md)     |
+
+Browse the [documentation index](docs/README.md) for every guide and reference.
 
 ## Contributing
 
