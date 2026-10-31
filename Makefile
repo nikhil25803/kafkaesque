@@ -10,11 +10,14 @@ KAFKA_CI_SIMULATOR_COMPOSE := $(KAFKA_CI_COMPOSE) --profile simulator
 KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
 POSTGRES_COMPOSE := docker compose -f dev/postgres/compose.yaml
+DEMO_ENV_FILE ?= dev/demo/.env
+DEMO_ENV_PATH := $(abspath $(DEMO_ENV_FILE))
+DEMO_COMPOSE := DEMO_ENV_FILE=$(DEMO_ENV_PATH) docker compose --env-file $(DEMO_ENV_PATH) -f dev/demo/compose.yaml
 KAFKAESQUE_POSTGRES_PORT ?= 5434
 POSTGRES_TEST_DATABASE := kafkaesque_auth_test
 POSTGRES_TEST_URL := postgres://kafkaesque:kafkaesque-dev-only@127.0.0.1:$(KAFKAESQUE_POSTGRES_PORT)/$(POSTGRES_TEST_DATABASE)?sslmode=disable
 
-.PHONY: check fmt-check lint build docker-build run test release-test postgres-up postgres-down postgres-reset postgres-logs postgres-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-lag-simulate kafka-lag-resolve kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
+.PHONY: check fmt-check lint build docker-build run test release-test demo-env-check demo-up demo-down demo-reset demo-status demo-logs postgres-up postgres-down postgres-reset postgres-logs postgres-test kafka-up kafka-down kafka-reset kafka-logs kafka-simulator-start kafka-simulator-stop kafka-simulator-logs kafka-simulator-status kafka-lag-simulate kafka-lag-resolve kafka-ci-up kafka-ci-simulator-start kafka-ci-down kafka-ci-diagnostics
 
 check: fmt-check lint test build
 
@@ -46,6 +49,27 @@ test:
 
 release-test:
 	$(GORELEASER) release --snapshot --clean
+
+demo-env-check:
+	@test -f "$(DEMO_ENV_FILE)" || { echo "Copy dev/demo/.env.example to $(DEMO_ENV_FILE) and fill both values."; exit 1; }
+	@grep -Eq '^KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD=.+$$' "$(DEMO_ENV_FILE)" || { echo "Set KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_PASSWORD in $(DEMO_ENV_FILE)."; exit 1; }
+	@grep -Eq '^KAFKAESQUE_ALERTS_ENCRYPTION_KEY=.+$$' "$(DEMO_ENV_FILE)" || { echo "Set KAFKAESQUE_ALERTS_ENCRYPTION_KEY in $(DEMO_ENV_FILE)."; exit 1; }
+
+demo-up: demo-env-check
+	$(DEMO_COMPOSE) up -d --build --wait
+
+demo-down:
+	$(DEMO_COMPOSE) down
+
+demo-reset: demo-env-check
+	$(DEMO_COMPOSE) down --volumes --remove-orphans
+	$(DEMO_COMPOSE) up -d --build --wait
+
+demo-status:
+	$(DEMO_COMPOSE) ps --all
+
+demo-logs:
+	$(DEMO_COMPOSE) logs --follow kafkaesque simulator
 
 postgres-up:
 	$(POSTGRES_COMPOSE) up -d --wait
