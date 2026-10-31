@@ -1,4 +1,4 @@
-# Copy this file to test-config.yaml and add local-only credentials.
+# Copy this file to dev/kafkaesque.yaml and add local-only credentials.
 kafka:
   # The kafka-up fixture exposes its bootstrap broker on this address.
   bootstrap_server: localhost:9090
@@ -15,7 +15,7 @@ lag:
   unhealthy_threshold: 500
 
 authentication:
-  # Fill these values only in the ignored test-config.yaml copy.
+  # Fill these values only in the ignored dev/kafkaesque.yaml copy.
   super_admin_username: super_admin
   super_admin_email: ""
   super_admin_password: ""

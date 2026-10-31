@@ -3,13 +3,13 @@ BIN_DIR := bin
 GORELEASER ?= goreleaser
 DOCKER_IMAGE ?= kafkaesque
 VERSION ?= dev
-KAFKA_COMPOSE := docker compose -f kafka-env/compose.yaml
-KAFKA_CI_COMPOSE := $(KAFKA_COMPOSE) -f kafka-env/compose.ci.yaml
+KAFKA_COMPOSE := docker compose -f dev/kafka/compose.yaml
+KAFKA_CI_COMPOSE := $(KAFKA_COMPOSE) -f dev/kafka/compose.ci.yaml
 KAFKA_SIMULATOR_COMPOSE := $(KAFKA_COMPOSE) --profile simulator
 KAFKA_CI_SIMULATOR_COMPOSE := $(KAFKA_CI_COMPOSE) --profile simulator
 KAFKA_BROKERS := broker-1 broker-2 broker-3 broker-4 broker-5
 KAFKA_CI_BROKERS := broker-1 broker-2
-POSTGRES_COMPOSE := docker compose -f postgres-env/compose.yaml
+POSTGRES_COMPOSE := docker compose -f dev/postgres/compose.yaml
 KAFKAESQUE_POSTGRES_PORT ?= 5434
 POSTGRES_TEST_DATABASE := kafkaesque_auth_test
 POSTGRES_TEST_URL := postgres://kafkaesque:kafkaesque-dev-only@127.0.0.1:$(KAFKAESQUE_POSTGRES_PORT)/$(POSTGRES_TEST_DATABASE)?sslmode=disable
@@ -94,10 +94,10 @@ kafka-simulator-status:
 	$(KAFKA_SIMULATOR_COMPOSE) ps --all simulator
 
 kafka-lag-simulate:
-	@bash kafka-env/lag-simulate.sh "$(GROUP)" "$(TOPIC)" "$(or $(COUNT),10)"
+	@bash dev/kafka/lag-simulate.sh "$(GROUP)" "$(TOPIC)" "$(or $(COUNT),10)"
 
 kafka-lag-resolve:
-	@bash kafka-env/lag-simulate.sh --resolve "$(GROUP)" "$(TOPIC)"
+	@bash dev/kafka/lag-simulate.sh --resolve "$(GROUP)" "$(TOPIC)"
 
 kafka-ci-up:
 	$(KAFKA_CI_COMPOSE) up -d --wait $(KAFKA_CI_BROKERS)

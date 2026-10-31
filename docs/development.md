@@ -34,14 +34,14 @@ Start and seed the five-broker plaintext cluster:
 ```sh
 make kafka-up
 make build
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --metadata
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml --metadata
 ```
 
 Start active consumer groups when working on members or lag:
 
 ```sh
 make kafka-simulator-start
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumers
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml --consumers
 make kafka-simulator-logs
 make kafka-simulator-stop
 ```
@@ -61,7 +61,7 @@ make kafka-down
 make kafka-reset
 ```
 
-See [`kafka-env/README.md`](../kafka-env/README.md) for fixture topics,
+See [`dev/kafka/README.md`](../dev/kafka/README.md) for fixture topics,
 partitions, groups, ports, and direct Compose commands.
 
 ## Local PostgreSQL fixture
@@ -78,11 +78,11 @@ volume and creates a fresh database.
 Copy the safe configuration template and add disposable local credentials:
 
 ```sh
-cp test-config.example.yaml test-config.yaml
-./bin/kafkaesque serve --config test-config.yaml
+cp dev/kafkaesque.example.yaml dev/kafkaesque.yaml
+./bin/kafkaesque serve --config dev/kafkaesque.yaml
 ```
 
-`test-config.yaml` is ignored by Git and GitGuardian.
+`dev/kafkaesque.yaml` is ignored by Git and GitGuardian.
 
 ## Authentication integration tests
 
@@ -127,8 +127,8 @@ make docker-build DOCKER_IMAGE=kafkaesque VERSION=dev
 | `internals` | CLI, configuration, collectors, Kafka transport, auth, and rendering. |
 | `apis` | JSON routes, middleware, envelopes, and pagination. |
 | `ui` | Embedded templates, styles, scripts, and HTML handlers. |
-| `kafka-env` | Kafka fixtures and simulator. |
-| `postgres-env` | PostgreSQL 18 development fixture. |
+| `dev/kafka` | Kafka fixtures and simulator. |
+| `dev/postgres` | PostgreSQL 18 development fixture. |
 | `docs` | User, operator, API, and developer documentation. |
 
 Read [Architecture](architecture.md) before changing request flow, security, or

@@ -34,10 +34,10 @@ produce records and keep consumer groups active:
 ```sh
 make kafka-up
 make kafka-simulator-start
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml -c
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --member --group order-processor
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml --consumer --group order-processor --topic orders
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml -c
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml --consumer --group order-processor
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml --consumer --member --group order-processor
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml --consumer --group order-processor --topic orders
 make kafka-simulator-stop
 make kafka-down
 ```
@@ -78,18 +78,18 @@ simulator stopped. Start it separately when continuous fixture traffic is wanted
 The equivalent direct Compose commands are:
 
 ```sh
-docker compose -f kafka-env/compose.yaml up -d --wait broker-1 broker-2 broker-3 broker-4 broker-5
-docker compose -f kafka-env/compose.yaml run --rm init
-docker compose -f kafka-env/compose.yaml down --volumes --remove-orphans
+docker compose -f dev/kafka/compose.yaml up -d --wait broker-1 broker-2 broker-3 broker-4 broker-5
+docker compose -f dev/kafka/compose.yaml run --rm init
+docker compose -f dev/kafka/compose.yaml down --volumes --remove-orphans
 ```
 
 Run Kafkaesque against the environment with the included configuration:
 
 ```sh
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml -m
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml -b
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml -t
-./bin/kafkaesque --config kafka-env/kafkaesque.yaml -p --topic orders
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml -m
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml -b
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml -t
+./bin/kafkaesque --config dev/kafka/kafkaesque.yaml -p --topic orders
 ```
 
 The main development environment intentionally has no authentication, TLS, or

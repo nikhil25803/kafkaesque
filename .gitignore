@@ -26,13 +26,19 @@ go.work.sum
 
 # env file
 .env
+dev/kafkaesque.yaml
+# Keep pre-dev-layout local credentials ignored during upgrades.
 test-config.yaml
+.DS_Store
 
 # Editor/IDE
 # .idea/
 # .vscode/
 bin/
 dist/
+dev/kafka/auth/certificates/
+dev/kafka/auth/success.yaml
+dev/kafka/auth/failure.yaml
 kafka-env/auth/certificates/
 kafka-env/auth/success.yaml
 kafka-env/auth/failure.yaml

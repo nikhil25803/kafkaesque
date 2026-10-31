@@ -1,3 +1,5 @@
+name: kafka-env
+
 x-kafka-environment: &kafka-environment
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
   KAFKA_PROCESS_ROLES: broker,controller

@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          config="kafka-env/kafkaesque.yaml"
+          config="dev/kafka/kafkaesque.yaml"
           api_log="${RUNNER_TEMP}/kafkaesque-api.log"
           api_pid=""
           super_admin_password="$(printf '%s%s%s%s%s' A a 1 _ "$(openssl rand -hex 24)")"

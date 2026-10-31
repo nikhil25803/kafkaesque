@@ -31,6 +31,7 @@ Choose the task that matches what you want to do.
 ## Develop Kafkaesque
 
 - [Architecture](architecture.md) — components, data flow, storage, and design boundaries.
+- [Design system](design-system.md) — visual language, components, accessibility, and UI conventions.
 - [Development](development.md) — local services, fixtures, tests, and release checks.
 - [Contributing](../CONTRIBUTING.md) — contribution workflow and pull-request expectations.
 - [Changelog](../CHANGELOG.md) — user-facing changes by release.
