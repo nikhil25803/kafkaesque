@@ -1,0 +1,152 @@
+name: kafkaesque-demo
+
+x-kafka-environment: &kafka-environment
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker-1:29093,2@broker-2:29093,3@broker-3:29093
+  KAFKA_LISTENERS: CONTROLLER://:29093,PLAINTEXT://:19092
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 2
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+x-kafka-service: &kafka-service
+  image: apache/kafka:4.3.0
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list >/dev/null 2>&1"]
+    interval: 5s
+    timeout: 5s
+    retries: 20
+    start_period: 30s
+
+services:
+  broker-1:
+    <<: *kafka-service
+    hostname: broker-1
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-1:19092
+    volumes:
+      - broker-1-data:/var/lib/kafka/data
+
+  broker-2:
+    <<: *kafka-service
+    hostname: broker-2
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-2:19092
+    volumes:
+      - broker-2-data:/var/lib/kafka/data
+
+  broker-3:
+    <<: *kafka-service
+    hostname: broker-3
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-3:19092
+    volumes:
+      - broker-3-data:/var/lib/kafka/data
+
+  kafka-init:
+    image: apache/kafka:4.3.0
+    depends_on:
+      broker-1:
+        condition: service_healthy
+      broker-2:
+        condition: service_healthy
+      broker-3:
+        condition: service_healthy
+    environment:
+      REPLICATION_FACTOR: "3"
+    volumes:
+      - ../kafka/provision.sh:/opt/kafkaesque/provision.sh:ro
+    entrypoint: ["/bin/bash", "/opt/kafkaesque/provision.sh"]
+    restart: "no"
+
+  simulator:
+    image: apache/kafka:4.3.0
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    volumes:
+      - ../kafka/simulate.sh:/opt/kafkaesque/simulate.sh:ro
+    entrypoint: ["/bin/bash", "/opt/kafkaesque/simulate.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/kafkaesque-simulator-ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 5s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: kafkaesque
+      POSTGRES_USER: kafkaesque
+      POSTGRES_PASSWORD: demo-postgres-only
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kafkaesque -d kafkaesque"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  kafkaesque:
+    image: kafkaesque:demo
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VERSION: demo
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      simulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: ${DEMO_ENV_FILE:?set the demo environment file path}
+        required: true
+    environment:
+      KAFKAESQUE_KAFKA_BOOTSTRAP_SERVER: broker-1:19092
+      KAFKAESQUE_KAFKA_CONNECTION_TIMEOUT: 10s
+      KAFKAESQUE_LAG_WARNING_THRESHOLD: "100"
+      KAFKAESQUE_LAG_UNHEALTHY_THRESHOLD: "500"
+      KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_USERNAME: demo_captain
+      KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_EMAIL: demo-captain@kafkaesque.local
+      KAFKAESQUE_AUTHENTICATION_SUPER_ADMIN_RECOVERY: verify
+      KAFKAESQUE_AUTHENTICATION_COOKIE_SECURE: "false"
+      KAFKAESQUE_DATABASE_URL: postgres://kafkaesque:demo-postgres-only@postgres:5432/kafkaesque?sslmode=disable
+      KAFKAESQUE_API_HOST: 0.0.0.0
+      KAFKAESQUE_API_PORT: "8085"
+    ports:
+      - "127.0.0.1:${KAFKAESQUE_DEMO_PORT:-8085}:8085"
+    healthcheck:
+      test: ["CMD", "/kafkaesque", "--check"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  broker-1-data:
+  broker-2-data:
+  broker-3-data:
+  postgres-data:

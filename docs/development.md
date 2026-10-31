@@ -27,6 +27,26 @@ make release-test
 git diff --check
 ```
 
+## All-in-one demo
+
+Build and start Kafkaesque with a three-broker Kafka cluster, seeded data,
+continuous activity, and PostgreSQL:
+
+```sh
+make demo-up
+```
+
+Open <http://127.0.0.1:8085/ui> and use the disposable credentials documented
+in the [demo guide](../dev/demo/README.md). The demo is an isolated Compose
+project and does not reuse the Kafka or PostgreSQL fixtures below.
+
+```sh
+make demo-status
+make demo-logs
+make demo-down
+make demo-reset
+```
+
 ## Local Kafka fixture
 
 Start and seed the five-broker plaintext cluster:
@@ -127,6 +147,7 @@ make docker-build DOCKER_IMAGE=kafkaesque VERSION=dev
 | `internals` | CLI, configuration, collectors, Kafka transport, auth, and rendering. |
 | `apis` | JSON routes, middleware, envelopes, and pagination. |
 | `ui` | Embedded templates, styles, scripts, and HTML handlers. |
+| `dev/demo` | Complete local Kafkaesque evaluation stack. |
 | `dev/kafka` | Kafka fixtures and simulator. |
 | `dev/postgres` | PostgreSQL 18 development fixture. |
 | `docs` | User, operator, API, and developer documentation. |

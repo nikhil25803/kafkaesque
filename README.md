@@ -84,6 +84,24 @@ map and intentionally unsupported functionality.
 
 ## Quick start
 
+### Try the complete local demo
+
+The all-in-one demo builds Kafkaesque and starts three Kafka brokers, seeded
+topics and consumer groups, continuous activity, and PostgreSQL:
+
+```sh
+git clone https://github.com/nikhil25803/kafkaesque.git
+cd kafkaesque
+cp dev/demo/.env.example dev/demo/.env
+# Fill both required values in dev/demo/.env.
+make demo-up
+```
+
+Open <http://127.0.0.1:8085/ui> and sign in as `demo_captain` with the
+password configured in `dev/demo/.env`. The services bind only to localhost.
+See the [demo guide](dev/demo/README.md) for secret generation, data,
+permissions, ports, logs, and reset commands.
+
 ### Run the web UI with Docker
 
 Before starting Kafkaesque, provide:
