@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	imageassets "github.com/nikhil25803/kafkaesque/asset/image"
 	kafkaesque_alerts "github.com/nikhil25803/kafkaesque/internals/alerts"
 	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 	kafkaesque_config "github.com/nikhil25803/kafkaesque/internals/config"
@@ -364,7 +363,6 @@ func newHandlerWithAuth(
 	mux.HandleFunc("GET /ui/cluster-health", protect(renderClusterHealth))
 
 	// Static assets.
-	mux.Handle("GET /ui/assets/KafkaesqueLogo.png", http.StripPrefix("/ui/assets/", http.FileServerFS(imageassets.Files)))
 	mux.Handle("GET /ui/assets/", http.StripPrefix("/ui/assets/", http.FileServerFS(static)))
 
 	return withHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

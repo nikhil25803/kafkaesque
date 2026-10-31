@@ -277,8 +277,8 @@ the initial interface.
 
 ## Assets
 
-Treat `asset/image/KafkaesqueBanner.png` and
-`asset/image/KafkaesqueLogo.png` as visual references. They are detailed raster
+Treat `docs/assets/branding/KafkaesqueBanner.png` and
+`ui/static/KafkaesqueLogo.png` as visual references. They are detailed raster
 compositions with black backgrounds and must not be used as compact sidebar
 icons. The login page uses the complete logo composition in its branding panel;
 the sidebar keeps the text wordmark until a transparent mark is designed.

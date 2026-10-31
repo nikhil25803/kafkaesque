@@ -1,3 +1,5 @@
+name: kafka-env
+
 services:
   broker:
     image: apache/kafka:4.3.0

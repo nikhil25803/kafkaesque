@@ -2,4 +2,5 @@ version: 2
 
 secret:
   ignored_paths:
+    - dev/kafkaesque.yaml
     - test-config.yaml

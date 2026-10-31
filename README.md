@@ -15,7 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-white.svg" alt="MIT license"></a>
 </p>
 
-![Kafkaesque product banner](asset/image/KafkaesqueBanner.png)
+![Kafkaesque product banner](docs/assets/branding/KafkaesqueBanner.png)
 
 ## Why Kafkaesque?
 
@@ -266,53 +266,73 @@ For advanced validation and production use, read
   <tr>
     <td colspan="2" align="center">
       <strong>Dashboard</strong><br>
-      <img src="asset/ui/dashboard.png" alt="Kafkaesque dashboard showing connection status, cluster totals, consumer groups, and cluster health" width="100%">
+      <img src="docs/assets/screenshots/homepage_dashboard.png" alt="Kafkaesque dashboard showing connection status, cluster totals, consumer groups, and cluster health" width="100%">
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <strong>Consumer Groups</strong><br>
-      <img src="asset/ui/consumer_groups.png" alt="Kafkaesque consumer groups list with search, state filtering, and lag status" width="100%">
-    </td>
-    <td align="center" width="50%">
-      <strong>Consumer Group Summary</strong><br>
-      <img src="asset/ui/consumer_group_summary.png" alt="Kafkaesque consumer group summary showing lag totals and member information" width="100%">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Partition Lag and Topic Summary</strong><br>
-      <img src="asset/ui/partition_lag_and_topic_summary.png" alt="Kafkaesque partition lag and topic summary with offsets and assignments" width="100%">
+      <img src="docs/assets/screenshots/consumer_groups.png" alt="Kafkaesque consumer groups list with search, state filtering, and lag status" width="100%">
     </td>
     <td align="center" width="50%">
       <strong>Topics</strong><br>
-      <img src="asset/ui/topics.png" alt="Kafkaesque topics list with search and level filtering" width="100%">
+      <img src="docs/assets/screenshots/topics.png" alt="Kafkaesque topics list showing topic levels, partitions, replication, and message rates" width="100%">
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <strong>Brokers</strong><br>
-      <img src="asset/ui/brokers.png" alt="Kafkaesque brokers list showing advertised addresses, connect addresses, and racks" width="100%">
+      <img src="docs/assets/screenshots/brokers_page.png" alt="Kafkaesque brokers list showing advertised addresses, connect addresses, and racks" width="100%">
     </td>
     <td align="center" width="50%">
       <strong>Cluster Health</strong><br>
-      <img src="asset/ui/cluster_health.png" alt="Kafkaesque cluster health page showing cluster, partition, and consumer diagnostics" width="100%">
+      <img src="docs/assets/screenshots/cluster_health.png" alt="Kafkaesque cluster health page showing cluster, partition, and consumer diagnostics" width="100%">
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center">
-      <strong>Login</strong><br>
-      <img src="asset/ui/login_page.png" alt="Kafkaesque login page with account credentials and product branding" width="100%">
+      <strong>Sign in</strong><br>
+      <img src="docs/assets/screenshots/signin_page.png" alt="Kafkaesque sign-in page with account credentials and product branding" width="100%">
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <strong>Settings · Users</strong><br>
-      <img src="asset/ui/users_page.png" alt="Kafkaesque users page showing account details, roles, and pagination" width="100%">
+      <img src="docs/assets/screenshots/settings_user.png" alt="Kafkaesque user settings showing account details, roles, and pagination" width="100%">
     </td>
     <td align="center" width="50%">
       <strong>Settings · Roles</strong><br>
-      <img src="asset/ui/roles_page.png" alt="Kafkaesque roles page showing system roles, permissions, and assigned users" width="100%">
+      <img src="docs/assets/screenshots/settings_role.png" alt="Kafkaesque role settings showing system roles, permissions, and assigned users" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Add User</strong><br>
+      <img src="docs/assets/screenshots/add_user.png" alt="Kafkaesque add-user form with identity, password, and role fields" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Create Role</strong><br>
+      <img src="docs/assets/screenshots/create_roles.png" alt="Kafkaesque create-role form with account and alert permissions" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Slack Alerts</strong><br>
+      <img src="docs/assets/screenshots/slack_alert_page.png" alt="Kafkaesque Slack alert subscription settings" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Create Slack Alert</strong><br>
+      <img src="docs/assets/screenshots/slack_alert_create.png" alt="Kafkaesque form for creating a Slack lag alert" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Lag Alert Fired</strong><br>
+      <img src="docs/assets/screenshots/slack_alert_fired.png" alt="Slack notification showing a fired Kafkaesque lag alert" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Lag Alert Resolved</strong><br>
+      <img src="docs/assets/screenshots/slack_alert_resolved.png" alt="Slack notification showing a resolved Kafkaesque lag alert" width="100%">
     </td>
   </tr>
 </table>

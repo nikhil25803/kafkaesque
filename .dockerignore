@@ -1,11 +1,10 @@
 .git
 .github
-asset/ui
-asset/image/KafkaesqueBanner.png
 bin
 certificates
-design
+dev
 dist
+docs
 kafka-env
 test-config.yaml
 *.md

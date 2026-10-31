@@ -60,19 +60,19 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
       - name: Generate test certificates
-        run: bash kafka-env/auth/generate-certificates.sh kafka-env/auth/certificates
+        run: bash dev/kafka/auth/generate-certificates.sh dev/kafka/auth/certificates
       - name: Start isolated Kafka fixture
         env:
           AUTH_PROTOCOL: ${{ matrix.protocol }}
           SASL_MECHANISM: ${{ matrix.mechanism }}
           SSL_CLIENT_AUTH: ${{ matrix.client_auth }}
-        run: docker compose -f kafka-env/compose.auth.yaml up -d --wait broker
+        run: docker compose -f dev/kafka/compose.auth.yaml up -d --wait broker
       - name: Provision SCRAM credentials
         if: startsWith(matrix.mode, 'scram_')
         env:
           SCRAM_MECHANISM: ${{ matrix.mechanism }}
         run: >-
-          docker compose -f kafka-env/compose.auth.yaml exec -T broker
+          docker compose -f dev/kafka/compose.auth.yaml exec -T broker
           /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:19092 --alter
           --add-config "${SCRAM_MECHANISM}=[iterations=4096,password=secret]"
           --entity-type users --entity-name kafkaesque
@@ -82,8 +82,8 @@ jobs:
         env:
           AUTH_MODE: ${{ matrix.mode }}
         run: |
-          bash kafka-env/auth/write-config.sh "${AUTH_MODE}" secret certificates/ca.pem kafka-env/auth/success.yaml
-          output="$(./bin/kafkaesque --config kafka-env/auth/success.yaml --check)"
+          bash dev/kafka/auth/write-config.sh "${AUTH_MODE}" secret certificates/ca.pem dev/kafka/auth/success.yaml
+          output="$(./bin/kafkaesque --config dev/kafka/auth/success.yaml --check)"
           grep -q "Status: CONNECTED" <<<"${output}"
           grep -q "Protocol: ${{ matrix.protocol }}" <<<"${output}"
       - name: Check authentication failure exit code
@@ -118,24 +118,24 @@ jobs:
                 echo "TCP timeout server did not become ready within 5 seconds" >&2
                 exit 1
               fi
-              printf 'kafka:\n  bootstrap_servers: [127.0.0.1:19093]\n  connection_timeout: 1s\n' >kafka-env/auth/failure.yaml
+              printf 'kafka:\n  bootstrap_servers: [127.0.0.1:19093]\n  connection_timeout: 1s\n' >dev/kafka/auth/failure.yaml
               expected=3
               ;;
             tls)
-              bash kafka-env/auth/write-config.sh tls secret certificates/invalid-ca.pem kafka-env/auth/failure.yaml
+              bash dev/kafka/auth/write-config.sh tls secret certificates/invalid-ca.pem dev/kafka/auth/failure.yaml
               expected=2
               ;;
             mtls)
-              bash kafka-env/auth/write-config.sh tls secret certificates/ca.pem kafka-env/auth/failure.yaml
+              bash dev/kafka/auth/write-config.sh tls secret certificates/ca.pem dev/kafka/auth/failure.yaml
               expected=2
               ;;
             *)
-              bash kafka-env/auth/write-config.sh "${AUTH_MODE}" invalid certificates/ca.pem kafka-env/auth/failure.yaml
+              bash dev/kafka/auth/write-config.sh "${AUTH_MODE}" invalid certificates/ca.pem dev/kafka/auth/failure.yaml
               expected=2
               ;;
           esac
           set +e
-          output="$(./bin/kafkaesque --config kafka-env/auth/failure.yaml --check 2>&1)"
+          output="$(./bin/kafkaesque --config dev/kafka/auth/failure.yaml --check 2>&1)"
           actual=$?
           set -e
           printf 'Expected exit code: %s\nActual exit code: %s\n%s\n' "${expected}" "${actual}" "${output}"
@@ -149,7 +149,7 @@ jobs:
           fi
       - name: Show Kafka diagnostics
         if: failure()
-        run: docker compose -f kafka-env/compose.auth.yaml logs --no-color broker
+        run: docker compose -f dev/kafka/compose.auth.yaml logs --no-color broker
       - name: Stop Kafka fixture
         if: always()
-        run: docker compose -f kafka-env/compose.auth.yaml down --volumes --remove-orphans
+        run: docker compose -f dev/kafka/compose.auth.yaml down --volumes --remove-orphans
