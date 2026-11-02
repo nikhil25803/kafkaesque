@@ -2,6 +2,7 @@ package alerts
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
@@ -9,7 +10,7 @@ import (
 
 func TestValidateInput(t *testing.T) {
 	valid := Input{
-		ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage,
+		Name: "Production orders", ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage,
 		LagThreshold: 0, NotifyOnResolve: true,
 		WebhookURL: "https://hooks.slack.com/triggers/T/1/secret",
 	}
@@ -20,6 +21,8 @@ func TestValidateInput(t *testing.T) {
 		name   string
 		mutate func(*Input)
 	}{
+		{name: "name", mutate: func(input *Input) { input.Name = "" }},
+		{name: "name length", mutate: func(input *Input) { input.Name = strings.Repeat("界", 101) }},
 		{name: "group", mutate: func(input *Input) { input.ConsumerGroup = "" }},
 		{name: "topic", mutate: func(input *Input) { input.Topic = "" }},
 		{name: "metric", mutate: func(input *Input) { input.Metric = "total" }},
@@ -53,6 +56,11 @@ func TestValidateInput(t *testing.T) {
 	if _, err := validateInput(valid, false); err != nil {
 		t.Fatalf("blank webhook on edit: %v", err)
 	}
+	valid.Name = "  Production orders  "
+	trimmed, err := validateInput(valid, false)
+	if err != nil || trimmed.Name != "Production orders" {
+		t.Fatalf("trimmed name=%q error=%v", trimmed.Name, err)
+	}
 }
 
 func TestAlertMutationPermissionRequiresView(t *testing.T) {
@@ -84,13 +92,18 @@ func TestClassifySlackWebhookURL(t *testing.T) {
 }
 
 func TestAlertConditionResetRules(t *testing.T) {
-	current := Subscription{ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage, LagThreshold: 100}
+	current := Subscription{Name: "Production orders", ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage, LagThreshold: 100}
 	base := Input{
-		ConsumerGroup: current.ConsumerGroup, Topic: current.Topic, Metric: current.Metric,
+		Name: current.Name, ConsumerGroup: current.ConsumerGroup, Topic: current.Topic, Metric: current.Metric,
 		LagThreshold: current.LagThreshold, NotifyOnResolve: true,
 	}
 	if alertConditionChanged(current, base) {
 		t.Fatal("delivery-only edit reset the condition")
+	}
+	renamed := base
+	renamed.Name = "Renamed orders"
+	if alertConditionChanged(current, renamed) {
+		t.Fatal("name-only edit reset the condition")
 	}
 	for _, mutate := range []func(*Input){
 		func(input *Input) { input.ConsumerGroup = "payments-service" },

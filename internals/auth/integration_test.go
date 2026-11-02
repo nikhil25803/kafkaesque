@@ -299,6 +299,87 @@ func TestPostgreSQLUpgradesExistingAuthenticationSchema(t *testing.T) {
 	}
 }
 
+func TestPostgreSQLAddsNamesWithoutResettingAlerts(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetAuthenticationDatabase(t, databaseURL)
+	ctx := context.Background()
+	pool := openTestPool(t, databaseURL)
+	defer pool.Close()
+
+	if err := createMigrationTable(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := migrationEntries(migrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == "007_alert_subscription_names.sql" {
+			break
+		}
+		body, checksum, readErr := readMigration(migrations, entry.Name())
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		tx, beginErr := pool.Begin(ctx)
+		if beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		if applyErr := applyMigration(ctx, tx, entry.Name(), body, checksum); applyErr != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal(applyErr)
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			t.Fatal(commitErr)
+		}
+	}
+
+	var id string
+	err = pool.QueryRow(ctx, `
+		INSERT INTO alert_subscriptions (
+			consumer_group, topic, metric, lag_threshold, notify_on_resolve,
+			webhook_ciphertext, webhook_nonce, state, last_value
+		) VALUES ('orders-service', 'orders', 'partition', 10, true, $1, $2, 'firing', 25)
+		RETURNING id::text`, []byte{1}, []byte{2}).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = migrate(ctx, conn)
+	conn.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var name, state string
+	var lastValue float64
+	if err := pool.QueryRow(ctx, `SELECT name, state, last_value FROM alert_subscriptions WHERE id::text=$1`, id).Scan(&name, &state, &lastValue); err != nil {
+		t.Fatal(err)
+	}
+	if name != "orders-service / orders / Partition lag" || state != "firing" || lastValue != 25 {
+		t.Fatalf("name=%q state=%q lastValue=%v", name, state, lastValue)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO alert_subscriptions (
+			consumer_group, topic, metric, lag_threshold, webhook_ciphertext, webhook_nonce
+		) VALUES ('legacy-service', 'legacy', 'average', 10, $1, $2)`, []byte{1}, []byte{2}); err != nil {
+		t.Fatalf("older replica could not create an unnamed alert: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO alert_subscriptions (
+			name, consumer_group, topic, metric, lag_threshold, webhook_ciphertext, webhook_nonce
+		) VALUES
+			('Shared alert name', 'group-a', 'topic-a', 'average', 10, $1, $2),
+			('Shared alert name', 'group-b', 'topic-b', 'partition', 10, $1, $2)`, []byte{1}, []byte{2}); err != nil {
+		t.Fatalf("duplicate descriptive names were rejected: %v", err)
+	}
+}
+
 func TestPostgreSQLConcurrentStartupCreatesOneSuperAdmin(t *testing.T) {
 	databaseURL := testDatabaseURL(t)
 	resetAuthenticationDatabase(t, databaseURL)
@@ -471,8 +552,8 @@ func TestPostgreSQLMigrationChecksumMismatch(t *testing.T) {
 	if err := service.pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&migrationsApplied); err != nil {
 		t.Fatal(err)
 	}
-	if migrationsApplied != 6 {
-		t.Fatalf("migrations = %d, want 6", migrationsApplied)
+	if migrationsApplied != 7 {
+		t.Fatalf("migrations = %d, want 7", migrationsApplied)
 	}
 }
 

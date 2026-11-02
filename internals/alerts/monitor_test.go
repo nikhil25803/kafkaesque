@@ -60,7 +60,7 @@ func TestMonitorFiresOnceResolvesAndRearms(t *testing.T) {
 	started := time.Date(2026, time.October, 30, 10, 0, 0, 0, time.UTC)
 	store := &fakeAlertStore{sub: deliverySubscription{
 		Subscription: Subscription{
-			ID: "alert-1", ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage,
+			ID: "alert-1", Name: "Production orders", ConsumerGroup: "orders-service", Topic: "orders", Metric: MetricAverage,
 			LagThreshold: 100, NotifyOnResolve: true, State: StateHealthy,
 		},
 		WebhookURL: "https://hooks.slack.com/triggers/T/1/secret",
@@ -72,6 +72,9 @@ func TestMonitorFiresOnceResolvesAndRearms(t *testing.T) {
 	monitor.evaluateSubscription(context.Background(), store.sub, breached)
 	if len(sender.payloads) != 1 || !store.updates[0].Notified || store.updates[0].State != StateFiring {
 		t.Fatalf("first breach payloads=%d update=%+v", len(sender.payloads), store.updates[0])
+	}
+	if sender.payloads[0].Message != "🔴 Kafkaesque Update: Lag Alert Fired\nAlert: Production orders\nTopic: orders\nConsumer group: orders-service\nTotal partitions: 2\nLag partitions: 1\nMetric: Partition Lag\nWorst partition lag: 250 (#1)" {
+		t.Fatalf("payload message=%q", sender.payloads[0].Message)
 	}
 
 	monitor.now = func() time.Time { return started.Add(time.Minute) }
@@ -169,7 +172,7 @@ func TestAlertMetricsUseCompactPartitionLagLabel(t *testing.T) {
 		}}
 		sender := &fakeSlackSender{}
 		NewMonitor(store, nil, sender, nil).evaluateSubscription(context.Background(), store.sub, partitions)
-		if len(sender.payloads) != 1 || sender.payloads[0].Blocks[2].Fields[4].Text != "*Metric:* Partition Lag" {
+		if len(sender.payloads) != 1 || sender.payloads[0].Blocks[2].Fields[5].Text != "*Metric:* Partition Lag" {
 			t.Fatalf("metric=%s payloads=%+v", metric, sender.payloads)
 		}
 	}

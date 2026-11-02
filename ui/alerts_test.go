@@ -43,7 +43,7 @@ func TestSettingsAlertsListAndPermissions(t *testing.T) {
 	lastValue := 124.0
 	lastNotified := time.Date(2026, time.October, 30, 12, 0, 0, 0, time.UTC)
 	manager := &fakeAlertManager{alerts: []kafkaesque_alerts.Subscription{{
-		ID: "alert-1", ConsumerGroup: "orders-service", Topic: "orders",
+		ID: "alert-1", Name: "Production orders", ConsumerGroup: "orders-service", Topic: "orders",
 		Metric: kafkaesque_alerts.MetricPartition, LagThreshold: 100,
 		NotifyOnResolve: true, State: kafkaesque_alerts.StateFiring,
 		LastValue: &lastValue, LastNotifiedAt: &lastNotified,
@@ -55,7 +55,7 @@ func TestSettingsAlertsListAndPermissions(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	requireContains(t, response.Body.String(), ">Settings</span>", ">Alerts</a>", "+ Add Slack alert", "orders-service", "Partition-wise lag &gt; 100", "FIRING", "Delete this Slack alert?")
+	requireContains(t, response.Body.String(), ">Settings</span>", ">Alerts</a>", "+ Add Slack alert", "Production orders", "orders-service", "Partition-wise lag &gt; 100", "FIRING", "Actions for Production orders", "Delete this Slack alert?")
 
 	viewer := &fakeAuthManager{user: kafkaesque_auth.User{
 		ID: "viewer-1", Role: "custom", Permissions: []string{kafkaesque_auth.PermissionAlertView},
@@ -84,12 +84,13 @@ func TestCreateSlackAlertForm(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("form status=%d body=%s", response.Code, response.Body.String())
 	}
-	requireContains(t, response.Body.String(), "Consumer group", "orders-service", "Average lag", "Partition-wise lag", "Alert when resolved", "Slack Webhook URL", "Webhook URLs are encrypted", "/services/", "/triggers/", "Block Kit")
+	requireContains(t, response.Body.String(), "Name", "maxlength=\"100\"", "Consumer group", "orders-service", "Average lag", "Partition-wise lag", "Alert when resolved", "Slack Webhook URL", "Webhook URLs are encrypted", "/services/", "/triggers/", "Block Kit")
 	if strings.Contains(response.Body.String(), "cooldown") {
 		t.Fatalf("form still contains cooldown controls: %s", response.Body.String())
 	}
 
 	form := url.Values{
+		"name":           {"  Production orders  "},
 		"consumer_group": {"orders-service"}, "topic": {"orders"}, "metric": {"average"},
 		"lag_threshold":     {"100"},
 		"notify_on_resolve": {"true"}, "webhook_url": {"https://hooks.slack.com/triggers/T/1/secret"},
@@ -102,14 +103,14 @@ func TestCreateSlackAlertForm(t *testing.T) {
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/ui/settings/alerts?saved=created" {
 		t.Fatalf("save=%d location=%q body=%s", response.Code, response.Header().Get("Location"), response.Body.String())
 	}
-	if manager.createCalls != 1 || !manager.created.NotifyOnResolve {
+	if manager.createCalls != 1 || manager.created.Name != "Production orders" || !manager.created.NotifyOnResolve {
 		t.Fatalf("create calls=%d input=%+v", manager.createCalls, manager.created)
 	}
 }
 
 func TestEditSlackAlertNeverRendersWebhook(t *testing.T) {
 	manager := &fakeAlertManager{alerts: []kafkaesque_alerts.Subscription{{
-		ID: "alert-1", ConsumerGroup: "orders-service", Topic: "orders",
+		ID: "alert-1", Name: "Production orders", ConsumerGroup: "orders-service", Topic: "orders",
 		Metric: kafkaesque_alerts.MetricAverage, LagThreshold: 100,
 		NotifyOnResolve: true, WebhookConfigured: true,
 	}}}
@@ -124,7 +125,7 @@ func TestEditSlackAlertNeverRendersWebhook(t *testing.T) {
 	if strings.Contains(body, "/triggers/T/1/") {
 		t.Fatalf("edit form rendered a webhook URL: %s", body)
 	}
-	requireContains(t, body, "Leave blank to keep the current webhook")
+	requireContains(t, body, "value=\"Production orders\"", "Leave blank to keep the current webhook")
 }
 
 func TestSettingsRootAndLegacyRedirects(t *testing.T) {

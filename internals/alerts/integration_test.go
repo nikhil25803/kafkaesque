@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	kafkaesque_auth "github.com/nikhil25803/kafkaesque/internals/auth"
 )
 
 func TestPostgreSQLResolutionStateCleanup(t *testing.T) {
@@ -64,11 +65,26 @@ func TestPostgreSQLResolutionStateCleanup(t *testing.T) {
 	foundFiring := false
 	for _, delivery := range deliveries {
 		if delivery.ID == id {
-			foundFiring = delivery.State == StateFiring && delivery.NotifyOnResolve && !delivery.WebhookError
+			foundFiring = delivery.Name == "orders-service / orders / Partition lag" &&
+				delivery.State == StateFiring && delivery.NotifyOnResolve && !delivery.WebhookError
 		}
 	}
 	if !foundFiring {
 		t.Fatalf("persisted firing subscription %s was not reloaded", id)
+	}
+	actor := kafkaesque_auth.User{Permissions: []string{
+		kafkaesque_auth.PermissionAlertView,
+		kafkaesque_auth.PermissionAlertEdit,
+	}}
+	updated, err := service.Update(context.Background(), actor, id, Input{
+		Name: "Production orders", ConsumerGroup: "orders-service", Topic: "orders",
+		Metric: MetricPartition, LagThreshold: 10, NotifyOnResolve: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "Production orders" || updated.State != StateFiring || updated.LastNotifiedAt == nil || !updated.LastNotifiedAt.Equal(firedAt) {
+		t.Fatalf("name-only update changed monitoring state: %+v", updated)
 	}
 
 	resolvedAt := firedAt.Add(5 * time.Second)

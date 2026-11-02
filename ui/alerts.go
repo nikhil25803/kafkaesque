@@ -24,6 +24,7 @@ type alertsPage struct {
 
 type alertView struct {
 	ID              string
+	Name            string
 	ConsumerGroup   string
 	Topic           string
 	Metric          string
@@ -45,6 +46,7 @@ type alertFormPage struct {
 
 type alertFormView struct {
 	ID                string
+	Name              string
 	ConsumerGroup     string
 	Topic             string
 	Metric            string
@@ -120,7 +122,7 @@ func renderEditAlert(manager kafkaesque_alerts.Manager) http.HandlerFunc {
 			return
 		}
 		renderAlertForm(w, r, manager, http.StatusOK, alertFormView{
-			ID: subscription.ID, ConsumerGroup: subscription.ConsumerGroup, Topic: subscription.Topic,
+			ID: subscription.ID, Name: subscription.Name, ConsumerGroup: subscription.ConsumerGroup, Topic: subscription.Topic,
 			Metric: subscription.Metric, LagThreshold: strconv.FormatInt(subscription.LagThreshold, 10),
 			NotifyOnResolve:   subscription.NotifyOnResolve,
 			WebhookConfigured: subscription.WebhookConfigured, Editing: true,
@@ -187,7 +189,7 @@ func parseAlertForm(r *http.Request, editing bool) (alertFormView, kafkaesque_al
 		return alertFormView{Editing: editing}, kafkaesque_alerts.Input{}, errors.New("Invalid alert request.")
 	}
 	form := alertFormView{
-		ID: r.PathValue("id"), ConsumerGroup: strings.TrimSpace(r.FormValue("consumer_group")),
+		ID: r.PathValue("id"), Name: strings.TrimSpace(r.FormValue("name")), ConsumerGroup: strings.TrimSpace(r.FormValue("consumer_group")),
 		Topic: strings.TrimSpace(r.FormValue("topic")), Metric: r.FormValue("metric"),
 		LagThreshold:    strings.TrimSpace(r.FormValue("lag_threshold")),
 		NotifyOnResolve: r.FormValue("notify_on_resolve") == "true", WebhookURL: strings.TrimSpace(r.FormValue("webhook_url")),
@@ -198,7 +200,7 @@ func parseAlertForm(r *http.Request, editing bool) (alertFormView, kafkaesque_al
 		return form, kafkaesque_alerts.Input{}, errors.New("Lag threshold must be a non-negative whole number.")
 	}
 	return form, kafkaesque_alerts.Input{
-		ConsumerGroup: form.ConsumerGroup, Topic: form.Topic, Metric: form.Metric,
+		Name: form.Name, ConsumerGroup: form.ConsumerGroup, Topic: form.Topic, Metric: form.Metric,
 		LagThreshold: threshold, NotifyOnResolve: form.NotifyOnResolve,
 		WebhookURL: form.WebhookURL,
 	}, nil
@@ -250,7 +252,7 @@ func newAlertView(subscription kafkaesque_alerts.Subscription) alertView {
 		stateClass = "critical"
 	}
 	return alertView{
-		ID: subscription.ID, ConsumerGroup: subscription.ConsumerGroup, Topic: subscription.Topic,
+		ID: subscription.ID, Name: subscription.Name, ConsumerGroup: subscription.ConsumerGroup, Topic: subscription.Topic,
 		Metric: metric, Threshold: subscription.LagThreshold,
 		NotifyOnResolve: subscription.NotifyOnResolve, State: strings.ToUpper(subscription.State),
 		StateClass: stateClass, LastValue: lastValue, LastNotified: lastNotified,

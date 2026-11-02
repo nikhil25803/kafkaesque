@@ -126,7 +126,7 @@ func (m *Monitor) evaluateSubscription(
 	update := evaluationUpdate{ID: subscription.ID, State: state, Value: value, EvaluatedAt: now}
 	if send {
 		err := m.sender.Send(ctx, subscription.WebhookURL, BuildSlackPayload(Notification{
-			Resolved: resolved, ConsumerGroup: subscription.ConsumerGroup,
+			Resolved: resolved, Name: subscription.Name, ConsumerGroup: subscription.ConsumerGroup,
 			Topic: subscription.Topic, WorstPartition: worst,
 			WorstPartitionLag: worstLag, PartitionCount: len(partitions),
 			BreachedPartitions: breached,

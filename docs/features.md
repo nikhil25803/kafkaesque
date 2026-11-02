@@ -27,7 +27,7 @@ charts, or predict future lag.
 
 ## Slack alerts
 
-- Persist Slack subscriptions for average or maximum partition lag.
+- Persist named Slack subscriptions for average or maximum partition lag.
 - Evaluate unique configured consumer/topic targets every five seconds.
 - Send one firing notification per breach and an optional immediate recovery notice.
 - Send compact topic and partition-lag details in native cards or multiline messages.
@@ -47,9 +47,12 @@ Kafkaesque sends a flat payload whose `message` value contains real line breaks:
 
 ```json
 {
-  "message": "🔴 Kafkaesque Update: Lag Alert Fired\nTopic: orders\nConsumer group: order-processor\nTotal partitions: 6\nLag partitions: 2\nMetric: Partition Lag\nWorst partition lag: 10 (#5)"
+  "message": "🔴 Kafkaesque Update: Lag Alert Fired\nAlert: Production orders lag\nTopic: orders\nConsumer group: order-processor\nTotal partitions: 6\nLag partitions: 2\nMetric: Partition Lag\nWorst partition lag: 10 (#5)"
 }
 ```
+
+Alert names are required when creating or editing a subscription and are
+included in both Workflow Builder messages and Incoming Webhook cards.
 
 Workflow Builder webhooks may require a paid Slack plan. Custom payload
 templates remain unsupported.
