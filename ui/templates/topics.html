@@ -39,7 +39,8 @@
         </div>
         <form class="filter-form" action="/ui/topics" method="get"
               hx-get="/ui/topics" hx-target="#topics-results"
-              hx-swap="outerHTML" hx-push-url="true" hx-indicator="#topics-loading">
+              hx-trigger="submit, change from:select" hx-swap="outerHTML"
+              hx-push-url="true" hx-indicator="#topics-loading">
           <input type="hidden" name="page_size" value="{{.Results.Pagination.Selected}}">
           <label class="field search-field">
             <span>Topic name</span>
@@ -51,8 +52,14 @@
               {{range .Levels}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
             </select>
           </label>
+          <label class="field">
+            <span>Rate</span>
+            <select name="metric">
+              {{range .Metrics}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+            </select>
+          </label>
           <button class="primary-button" type="submit">Apply filters</button>
-          {{if .Results.HasFilters}}<a class="secondary-button" href="{{.Results.ClearURL}}">Clear filters</a>{{end}}
+          <a class="secondary-button" href="{{.Results.ClearURL}}">Clear filters</a>
         </form>
       </section>
 
@@ -64,7 +71,24 @@
 {{end}}
 
 {{define "topics-results"}}
-<section class="panel topics-panel" id="topics-results" aria-labelledby="topics-title" aria-live="polite">
+<div id="topics-results" aria-live="polite">
+<section aria-labelledby="topic-throughput-title">
+  <div class="section-heading">
+    <div><p class="eyebrow">Filtered throughput</p><h2 id="topic-throughput-title">Message activity</h2></div>
+  </div>
+  <div class="metric-grid topic-metric-grid">
+    {{range .Metrics}}
+    <article class="metric-card topic-metric-card">
+      <strong title="{{.Value}}">{{.Value}}</strong>
+      <span>{{.Label}}</span>
+      {{if .Detail}}<small>{{.Detail}}</small>{{end}}
+    </article>
+    {{end}}
+  </div>
+  <p class="rate-coverage">{{.Coverage}}</p>
+</section>
+
+<section class="panel topics-panel" aria-labelledby="topics-title">
   <div class="panel-heading">
     <div>
       <p class="eyebrow">Kafka inventory</p>
@@ -76,7 +100,7 @@
   {{if .Topics}}
   <div class="table-scroll" tabindex="0" aria-label="Topics table, horizontally scrollable">
     <table>
-      <thead><tr><th scope="col">Topic</th><th scope="col" class="number">Message rate</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Replication factor</th></tr></thead>
+      <thead><tr><th scope="col">Topic</th><th scope="col" class="number">Messages{{.MetricLabel}}</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Replication factor</th></tr></thead>
       <tbody>
         {{range .Topics}}
         <tr>
@@ -85,13 +109,7 @@
             <span class="topic-level">{{.Level}}</span>
           </th>
           <td class="number">
-            {{if .RateAvailable}}
-            <span class="message-rates">
-              <span>{{.MessagesPerSecond}}/sec</span>
-              <span>{{.MessagesPerMinute}}/min</span>
-              <span>{{.MessagesPerHour}}/hr</span>
-            </span>
-            {{else}}<span class="muted-value">Collecting…</span>{{end}}
+            {{if .RateAvailable}}{{.MessageRate}}{{else}}<span class="muted-value">Collecting…</span>{{end}}
           </td>
           <td class="number">{{.Partitions}}</td>
           <td class="number">{{.ReplicationFactor}}</td>
@@ -121,4 +139,5 @@
   </nav>
   {{end}}
 </section>
+</div>
 {{end}}
