@@ -9,11 +9,13 @@ import (
 	kafkaesque_health "github.com/nikhil25803/kafkaesque/internals/health"
 	kafkaesque "github.com/nikhil25803/kafkaesque/internals/kafka"
 	kafkaesque_topics "github.com/nikhil25803/kafkaesque/internals/topics"
+	kafka "github.com/segmentio/kafka-go"
 )
 
 type dashboardData struct {
 	Snapshot *kafkaesque.MetadataSnapshot
 	Groups   []kafkaesque_consumers.ConsumerGroupInformation
+	Topics   []kafkaesque_topics.TopicInformation
 	Health   *kafkaesque_health.Information
 }
 
@@ -81,7 +83,9 @@ func (s *liveDataSource) Dashboard(ctx context.Context) (*dashboardData, error) 
 		return nil, err
 	}
 
-	return &dashboardData{Snapshot: snapshot, Groups: groups, Health: health}, nil
+	return &dashboardData{
+		Snapshot: snapshot, Groups: groups, Topics: s.topicInformation(snapshot.Metadata), Health: health,
+	}, nil
 }
 
 func (s *liveDataSource) ConsumerGroups(ctx context.Context) ([]kafkaesque_consumers.ConsumerGroupInformation, error) {
@@ -132,14 +136,18 @@ func (s *liveDataSource) Topics(ctx context.Context) ([]kafkaesque_topics.TopicI
 	if err != nil {
 		return nil, err
 	}
+	return s.topicInformation(snapshot.Metadata), nil
+}
+
+func (s *liveDataSource) topicInformation(metadata *kafka.MetadataResponse) []kafkaesque_topics.TopicInformation {
 	var rates map[string]kafkaesque_topics.MessageRates
 	if s.topicRates != nil {
 		rates = s.topicRates.Snapshot()
 	}
 	return kafkaesque_topics.AddMessageRates(
-		kafkaesque_topics.GetTopicInformation(snapshot.Metadata),
+		kafkaesque_topics.GetTopicInformation(metadata),
 		rates,
-	), nil
+	)
 }
 
 func (s *liveDataSource) Brokers(ctx context.Context) ([]kafkaesque_brokers.BrokerInformation, error) {

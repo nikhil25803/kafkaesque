@@ -34,6 +34,11 @@ type dashboardPage struct {
 	Navigation     navigationView
 	Connection     connectionView
 	Metrics        []metricView
+	TopicMetrics   []topicMetricCard
+	TopicCoverage  string
+	TopicFlow      topicFlowView
+	DeadTopics     deadTopicsResults
+	DeadConsumers  deadConsumersResults
 	ConsumerGroups []consumerGroupView
 	Health         healthView
 	GroupCountText string
@@ -131,7 +136,12 @@ type healthView struct {
 	Lagging         int
 }
 
-func dashboardView(r *http.Request, data *dashboardData, source dataSource) dashboardPage {
+func dashboardView(
+	r *http.Request,
+	data *dashboardData,
+	source dataSource,
+	pages dashboardPageSelection,
+) dashboardPage {
 	metadata := data.Snapshot.Metadata
 	partitionCount := 0
 	for _, topic := range metadata.Topics {
@@ -140,6 +150,7 @@ func dashboardView(r *http.Request, data *dashboardData, source dataSource) dash
 	groups := consumerGroupViews(data.Groups, source.Thresholds())
 	total := len(groups)
 	shown := min(4, total)
+	externalTopics := filterTopics(topicViews(data.Topics, defaultTopicMetric), "", defaultTopicLevel)
 
 	return dashboardPage{
 		Navigation: navigationFor(r, "dashboard"),
@@ -155,6 +166,15 @@ func dashboardView(r *http.Request, data *dashboardData, source dataSource) dash
 			{Label: "Partitions", Value: int64(partitionCount)},
 			{Label: "Consumer Groups", Value: int64(total)},
 		},
+		TopicMetrics:  topicSummary(externalTopics, defaultTopicMetric),
+		TopicCoverage: topicCoverage(externalTopics),
+		TopicFlow:     buildTopicFlow(data.Topics, data.Groups),
+		DeadTopics: buildDeadTopics(
+			data.Topics, data.Groups, pages.DeadTopicPage, pages.DeadTopicPageSize,
+		),
+		DeadConsumers: buildDeadConsumers(
+			data.Groups, pages.DeadConsumerPage, pages.DeadConsumerPageSize,
+		),
 		ConsumerGroups: groups[:shown],
 		Health:         healthViewFrom(data.Health),
 		GroupCountText: strconv.Itoa(shown) + " of " + strconv.Itoa(total),
@@ -359,6 +379,8 @@ func newHandlerWithAuth(
 	mux.HandleFunc("GET /ui/consumer-groups", protect(renderConsumerGroups))
 	mux.HandleFunc("GET /ui/consumer-groups/{group}", protect(renderConsumerGroupDetail))
 	mux.HandleFunc("GET /ui/topics", protect(renderTopics))
+	mux.HandleFunc("GET "+deadTopicsPath, protect(renderDashboardDeadTopics))
+	mux.HandleFunc("GET "+deadConsumersPath, protect(renderDashboardDeadConsumers))
 	mux.HandleFunc("GET /ui/brokers", protect(renderBrokers))
 	mux.HandleFunc("GET /ui/cluster-health", protect(renderClusterHealth))
 
@@ -375,15 +397,66 @@ func sourceFrom(r *http.Request) dataSource {
 }
 
 func renderDashboard(w http.ResponseWriter, r *http.Request) {
+	pages, err := parseDashboardPageSelection(r.URL.Query())
+	if err != nil {
+		renderUIError(w, r, http.StatusBadRequest, "dashboard", "Invalid dashboard request", err.Error())
+		return
+	}
 	data, err := sourceFrom(r).Dashboard(r.Context())
 	if err != nil {
 		renderUpstreamError(w, r, "dashboard", err)
 		return
 	}
-	view := dashboardView(r, data, sourceFrom(r))
+	view := dashboardView(r, data, sourceFrom(r), pages)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := dashboardTemplate.ExecuteTemplate(w, "dashboard", view); err != nil {
 		http.Error(w, "Unable to render Dashboard", http.StatusInternalServerError)
+	}
+}
+
+func renderDashboardDeadTopics(w http.ResponseWriter, r *http.Request) {
+	page, pageSize, err := parseDashboardFragmentPage(r.URL.Query())
+	if err != nil {
+		renderUIError(w, r, http.StatusBadRequest, "dashboard", "Invalid dashboard request", err.Error())
+		return
+	}
+	if !strings.EqualFold(r.Header.Get("HX-Request"), "true") {
+		http.Redirect(w, r, dashboardFallbackURL("topic", page, pageSize), http.StatusSeeOther)
+		return
+	}
+	data, err := sourceFrom(r).Dashboard(r.Context())
+	if err != nil {
+		renderUpstreamError(w, r, "dashboard", err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := dashboardTemplate.ExecuteTemplate(
+		w, "dead-topics-panel", buildDeadTopics(data.Topics, data.Groups, page, pageSize),
+	); err != nil {
+		http.Error(w, "Unable to render dead topics", http.StatusInternalServerError)
+	}
+}
+
+func renderDashboardDeadConsumers(w http.ResponseWriter, r *http.Request) {
+	page, pageSize, err := parseDashboardFragmentPage(r.URL.Query())
+	if err != nil {
+		renderUIError(w, r, http.StatusBadRequest, "dashboard", "Invalid dashboard request", err.Error())
+		return
+	}
+	if !strings.EqualFold(r.Header.Get("HX-Request"), "true") {
+		http.Redirect(w, r, dashboardFallbackURL("consumer", page, pageSize), http.StatusSeeOther)
+		return
+	}
+	groups, err := sourceFrom(r).ConsumerGroups(r.Context())
+	if err != nil {
+		renderUpstreamError(w, r, "dashboard", err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := dashboardTemplate.ExecuteTemplate(
+		w, "dead-consumers-panel", buildDeadConsumers(groups, page, pageSize),
+	); err != nil {
+		http.Error(w, "Unable to render dead consumers", http.StatusInternalServerError)
 	}
 }
 

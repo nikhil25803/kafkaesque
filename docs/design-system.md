@@ -316,6 +316,14 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
   view models.
 - Consumer Groups, Topics, and Brokers use locally vendored HTMX for filtered
   and paginated fragment swaps while preserving ordinary GET forms and links.
+- Order Dashboard sections as connection and cluster overview, external topic
+  metrics, topic-to-consumer flow, dead-resource tables, then health and
+  consumer groups. Keep topic metrics fixed to messages per minute.
+- Render the relationship graph as an accessible server-generated SVG inside
+  a two-axis scroll container. Use equal-width links, deterministic ordering,
+  linked nodes, and native SVG titles; do not imply that link width is traffic.
+- Keep Dead topics and Dead consumers in separate responsive panels with
+  independent HTMX pagination and ordinary-link fallbacks.
 - Topic Detail remains deferred until it is explicitly approved.
 - PostgreSQL-backed account login, logout, user lifecycle management, custom
   roles, Settings, and Slack lag alerts are implemented. Password management,
