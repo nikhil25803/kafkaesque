@@ -13,11 +13,12 @@ import (
 
 func TestBuildSlackPayloadFiring(t *testing.T) {
 	payload := BuildSlackPayload(Notification{
-		ConsumerGroup: "orders<&>", Topic: "orders", PartitionCount: 6,
+		Name: "Production *orders*<ops>\ninjected", ConsumerGroup: "orders<&>", Topic: "orders", PartitionCount: 6,
 		WorstPartition: 3, WorstPartitionLag: 500, BreachedPartitions: 2,
 	})
 	wantMessage := strings.Join([]string{
 		"🔴 Kafkaesque Update: Lag Alert Fired",
+		"Alert: Production orders<ops> injected",
 		"Topic: orders",
 		"Consumer group: orders<&>",
 		"Total partitions: 6",
@@ -28,7 +29,7 @@ func TestBuildSlackPayloadFiring(t *testing.T) {
 	if payload.Message != wantMessage {
 		t.Fatalf("message mismatch\n got: %q\nwant: %q", payload.Message, wantMessage)
 	}
-	if payload.Text != "🔴 Kafkaesque Update: Lag Alert Fired" {
+	if payload.Text != "🔴 Kafkaesque Update: Lag Alert Fired — Production orders&lt;ops&gt; injected" {
 		t.Fatalf("fallback text=%q", payload.Text)
 	}
 	if len(payload.Blocks) != 3 {
@@ -37,13 +38,16 @@ func TestBuildSlackPayloadFiring(t *testing.T) {
 	if payload.Blocks[0].Text.Text != "*🔴 Kafkaesque Update: Lag Alert Fired*" {
 		t.Fatalf("status=%+v", payload.Blocks[0])
 	}
-	if len(payload.Blocks[2].Fields) != 6 {
+	if len(payload.Blocks[2].Fields) != 7 {
 		t.Fatalf("fields=%+v", payload.Blocks[2].Fields)
 	}
-	if got := payload.Blocks[2].Fields[1].Text; got != "*Consumer group:* `orders&lt;&amp;&gt;`" {
+	if got := payload.Blocks[2].Fields[0].Text; got != "*Alert:* `Production *orders*&lt;ops&gt; injected`" {
+		t.Fatalf("alert field=%q", got)
+	}
+	if got := payload.Blocks[2].Fields[2].Text; got != "*Consumer group:* `orders&lt;&amp;&gt;`" {
 		t.Fatalf("consumer field=%q", got)
 	}
-	if got := payload.Blocks[2].Fields[5].Text; got != "*Worst partition lag:* 500 (#3)" {
+	if got := payload.Blocks[2].Fields[6].Text; got != "*Worst partition lag:* 500 (#3)" {
 		t.Fatalf("worst partition field=%q", got)
 	}
 	encoded, err := json.Marshal(struct {
@@ -52,7 +56,7 @@ func TestBuildSlackPayloadFiring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(encoded), `\nTopic:`) || strings.Contains(string(encoded), `/n`) {
+	if !strings.Contains(string(encoded), `\nAlert:`) || !strings.Contains(string(encoded), `\nTopic:`) || strings.Contains(string(encoded), `/n`) {
 		t.Fatalf("encoded newlines=%s", encoded)
 	}
 	if strings.ContainsAny(payload.Message, "*`") {
@@ -62,17 +66,17 @@ func TestBuildSlackPayloadFiring(t *testing.T) {
 
 func TestBuildSlackPayloadResolved(t *testing.T) {
 	payload := BuildSlackPayload(Notification{
-		Resolved: true, ConsumerGroup: "orders\ninjected", Topic: "orders`raw",
+		Resolved: true, Name: "Orders recovery", ConsumerGroup: "orders\ninjected", Topic: "orders`raw",
 		PartitionCount: 2, BreachedPartitions: 0, WorstPartition: 1, WorstPartitionLag: 3,
 	})
 	want := "🟢 Kafkaesque Update: Lag Alert Resolved\n" +
-		"Topic: orders'raw\nConsumer group: orders injected\n" +
+		"Alert: Orders recovery\nTopic: orders'raw\nConsumer group: orders injected\n" +
 		"Total partitions: 2\nLag partitions: 0\nMetric: Partition Lag\n" +
 		"Worst partition lag: 3 (#1)"
 	if payload.Message != want {
 		t.Fatalf("message mismatch\n got: %q\nwant: %q", payload.Message, want)
 	}
-	if payload.Text != "🟢 Kafkaesque Update: Lag Alert Resolved" {
+	if payload.Text != "🟢 Kafkaesque Update: Lag Alert Resolved — Orders recovery" {
 		t.Fatalf("fallback text=%q", payload.Text)
 	}
 	if strings.ContainsAny(payload.Message, "*`") {

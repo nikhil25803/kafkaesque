@@ -48,6 +48,7 @@ type SlackText struct {
 
 type Notification struct {
 	Resolved           bool
+	Name               string
 	ConsumerGroup      string
 	Topic              string
 	PartitionCount     int
@@ -64,7 +65,7 @@ func BuildSlackPayload(notification Notification) SlackPayload {
 	fields := notificationFields(notification)
 	return SlackPayload{
 		Message: workflowMessage(status, notification),
-		Text:    status,
+		Text:    status + " — " + escapeSlack(plainValue(notification.Name)),
 		Blocks: []SlackBlock{
 			sectionBlock("*" + status + "*"),
 			dividerBlock(),
@@ -76,6 +77,7 @@ func BuildSlackPayload(notification Notification) SlackPayload {
 func workflowMessage(status string, notification Notification) string {
 	return strings.Join([]string{
 		status,
+		"Alert: " + plainValue(notification.Name),
 		"Topic: " + plainValue(notification.Topic),
 		"Consumer group: " + plainValue(notification.ConsumerGroup),
 		"Total partitions: " + strconv.Itoa(notification.PartitionCount),
@@ -87,6 +89,7 @@ func workflowMessage(status string, notification Notification) string {
 
 func notificationFields(notification Notification) []SlackText {
 	values := []string{
+		field("Alert", slackCode(notification.Name)),
 		field("Topic", slackCode(notification.Topic)),
 		field("Consumer group", slackCode(notification.ConsumerGroup)),
 		field("Total partitions", strconv.Itoa(notification.PartitionCount)),

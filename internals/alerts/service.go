@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,6 +38,7 @@ func (e *ValidationError) Error() string { return e.Field + " " + e.Message }
 
 type Subscription struct {
 	ID                string
+	Name              string
 	ConsumerGroup     string
 	Topic             string
 	Metric            string
@@ -52,6 +54,7 @@ type Subscription struct {
 }
 
 type Input struct {
+	Name            string
 	ConsumerGroup   string
 	Topic           string
 	Metric          string
@@ -86,7 +89,7 @@ func (s *Service) List(ctx context.Context, actor kafkaesque_auth.User) ([]Subsc
 	if !kafkaesque_auth.HasPermission(actor, kafkaesque_auth.PermissionAlertView) {
 		return nil, ErrForbidden
 	}
-	rows, err := s.pool.Query(ctx, subscriptionColumns+` ORDER BY consumer_group, topic, metric`)
+	rows, err := s.pool.Query(ctx, subscriptionColumns+` ORDER BY display_name, consumer_group, topic, metric`)
 	if err != nil {
 		return nil, fmt.Errorf("list alert subscriptions: %w", err)
 	}
@@ -127,12 +130,12 @@ func (s *Service) Create(ctx context.Context, actor kafkaesque_auth.User, input 
 	}
 	const query = `
 		INSERT INTO alert_subscriptions (
-			consumer_group, topic, metric, lag_threshold,
+			name, consumer_group, topic, metric, lag_threshold,
 			notify_on_resolve, webhook_ciphertext, webhook_nonce, created_by
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING id::text`
 	var id string
-	err = s.pool.QueryRow(ctx, query, input.ConsumerGroup, input.Topic, input.Metric, input.LagThreshold,
+	err = s.pool.QueryRow(ctx, query, input.Name, input.ConsumerGroup, input.Topic, input.Metric, input.LagThreshold,
 		input.NotifyOnResolve, ciphertext, nonce, actor.ID).Scan(&id)
 	if err != nil {
 		return Subscription{}, classifyStoreError(err)
@@ -166,15 +169,15 @@ func (s *Service) Update(ctx context.Context, actor kafkaesque_auth.User, id str
 	}
 	const query = `
 		UPDATE alert_subscriptions SET
-			consumer_group=$2, topic=$3, metric=$4, lag_threshold=$5,
-			notify_on_resolve=$6, webhook_ciphertext=$7, webhook_nonce=$8,
-			state=CASE WHEN $9 THEN 'healthy' ELSE state END,
-			last_value=CASE WHEN $9 THEN NULL ELSE last_value END,
-			last_evaluated_at=CASE WHEN $9 THEN NULL ELSE last_evaluated_at END,
-			last_notified_at=CASE WHEN $9 THEN NULL ELSE last_notified_at END,
+			name=$2, consumer_group=$3, topic=$4, metric=$5, lag_threshold=$6,
+			notify_on_resolve=$7, webhook_ciphertext=$8, webhook_nonce=$9,
+			state=CASE WHEN $10 THEN 'healthy' ELSE state END,
+			last_value=CASE WHEN $10 THEN NULL ELSE last_value END,
+			last_evaluated_at=CASE WHEN $10 THEN NULL ELSE last_evaluated_at END,
+			last_notified_at=CASE WHEN $10 THEN NULL ELSE last_notified_at END,
 			updated_at=now()
 		WHERE id::text=$1`
-	result, err := s.pool.Exec(ctx, query, id, input.ConsumerGroup, input.Topic, input.Metric, input.LagThreshold,
+	result, err := s.pool.Exec(ctx, query, id, input.Name, input.ConsumerGroup, input.Topic, input.Metric, input.LagThreshold,
 		input.NotifyOnResolve, ciphertext, nonce, conditionChanged)
 	if err != nil {
 		return Subscription{}, classifyStoreError(err)
@@ -221,10 +224,17 @@ func (s *Service) validateTarget(ctx context.Context, group, topic string) error
 }
 
 func validateInput(input Input, requireWebhook bool) (Input, error) {
+	input.Name = strings.TrimSpace(input.Name)
 	input.ConsumerGroup = strings.TrimSpace(input.ConsumerGroup)
 	input.Topic = strings.TrimSpace(input.Topic)
 	input.Metric = strings.ToLower(strings.TrimSpace(input.Metric))
 	input.WebhookURL = strings.TrimSpace(input.WebhookURL)
+	if input.Name == "" {
+		return Input{}, &ValidationError{Field: "name", Message: "is required"}
+	}
+	if utf8.RuneCountInString(input.Name) > 100 {
+		return Input{}, &ValidationError{Field: "name", Message: "must be 100 characters or fewer"}
+	}
 	if input.ConsumerGroup == "" {
 		return Input{}, &ValidationError{Field: "consumer_group", Message: "is required"}
 	}
@@ -284,7 +294,13 @@ func classifySlackWebhookURL(value string) (slackWebhookType, error) {
 }
 
 const subscriptionColumns = `SELECT
-	id::text, consumer_group, topic, metric, lag_threshold,
+	id::text,
+	COALESCE(name, left(
+		consumer_group || ' / ' || topic || ' / ' ||
+		CASE metric WHEN 'average' THEN 'Average lag' ELSE 'Partition lag' END,
+		100
+	)) AS display_name,
+	consumer_group, topic, metric, lag_threshold,
 	notify_on_resolve, state, last_value, last_evaluated_at,
 	last_notified_at, created_at, updated_at, webhook_ciphertext, webhook_nonce
 	FROM alert_subscriptions`
@@ -295,7 +311,7 @@ func scanSubscription(row rowScanner) (Subscription, []byte, []byte, error) {
 	var subscription Subscription
 	var ciphertext, nonce []byte
 	err := row.Scan(
-		&subscription.ID, &subscription.ConsumerGroup, &subscription.Topic, &subscription.Metric,
+		&subscription.ID, &subscription.Name, &subscription.ConsumerGroup, &subscription.Topic, &subscription.Metric,
 		&subscription.LagThreshold, &subscription.NotifyOnResolve,
 		&subscription.State, &subscription.LastValue, &subscription.LastEvaluatedAt,
 		&subscription.LastNotifiedAt, &subscription.CreatedAt,
