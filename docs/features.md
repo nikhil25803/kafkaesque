@@ -10,9 +10,16 @@ it is not a historical metrics platform or a Kafka administration console.
 | Connection check | Whether bootstrap, DNS, TCP, TLS, SASL, and Kafka metadata access succeed. |
 | Metadata | Cluster ID, controller, and broker/topic totals. |
 | Brokers | Advertised address, effective connect address, and rack. |
-| Topics | Internal/external level, hourly message throughput, partition count, and replication factor. |
+| Topics | Filtered throughput summaries, internal/external level, hourly message rates, partition count, and replication factor. |
 | Partitions | Leader, replicas, ISR, and healthy/degraded state. |
 | Cluster health | Offline and under-replicated partitions plus consumer-group health signals. |
+
+The Topics page defaults to external topics and messages per minute. Select
+`/sec`, `/min`, or `/hr` to change the displayed normalization without changing
+the hourly collection cadence. Total throughput, highest publisher, average
+active-topic throughput, and active-topic count use the complete filtered result
+set rather than only the current page. Topics awaiting a second valid snapshot
+are excluded and reported in the measurement-coverage note.
 
 ## Consumer observability
 

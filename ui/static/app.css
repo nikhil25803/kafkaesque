@@ -307,8 +307,11 @@ tbody tr:hover { background: var(--elevated); }
 .alerts-table { min-width: 1050px; }
 .topic-name { color: var(--text); }
 .topic-level { display: block; margin-top: 4px; color: var(--text-muted); font-size: 12px; font-weight: 500; }
-.message-rates { display: grid; gap: 2px; }
 .muted-value { color: var(--text-muted); }
+.topic-metric-grid { margin-bottom: 10px; }
+.topic-metric-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topic-metric-card small { color: var(--text-muted); font-size: 12px; }
+.rate-coverage { margin: 0 0 16px; color: var(--text-muted); font-size: 12px; }
 .level-label {
   display: inline-flex;
   min-height: 24px;

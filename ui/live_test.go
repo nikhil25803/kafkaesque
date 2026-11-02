@@ -30,6 +30,7 @@ type fakeDataSource struct {
 	groups         []kafkaesque_consumers.ConsumerGroupInformation
 	health         *kafkaesque_health.Information
 	topicRates     *kafkaesque_topics.MessageRates
+	topics         []kafkaesque_topics.TopicInformation
 }
 
 func (f *fakeDataSource) Dashboard(context.Context) (*dashboardData, error) {
@@ -92,6 +93,9 @@ func (f *fakeDataSource) ConsumerGroup(_ context.Context, group, topic string) (
 func (f *fakeDataSource) Topics(context.Context) ([]kafkaesque_topics.TopicInformation, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.topics != nil {
+		return append([]kafkaesque_topics.TopicInformation(nil), f.topics...), nil
 	}
 	topics := []kafkaesque_topics.TopicInformation{
 		{Name: "orders", Level: "External", PartitionCount: 2, ReplicationFactor: 2},
@@ -203,7 +207,7 @@ func TestLivePages(t *testing.T) {
 	}{
 		{"/ui", []string{"Dashboard", "CONNECTED", "42ms", "SASL_SSL", "SCRAM-SHA-256", "mTLS", "2 of 2", "orders-service", "DEGRADED"}},
 		{"/ui/consumer-groups", []string{"Consumer Groups", "1–2 of 2 groups", "analytics", "orders-service", "Warning"}},
-		{"/ui/topics", []string{"Topics", "1–2 of 2 topics", "orders", "__consumer_offsets", "Internal"}},
+		{"/ui/topics", []string{"Topics", "1–1 of 1 topics", "orders", "External", "Messages/min"}},
 		{"/ui/brokers", []string{"Brokers", "1–2 of 2 brokers", "broker-1:9092", "10.0.0.11:9092", "rack-a", "—"}},
 		{"/ui/cluster-health", []string{"Cluster Health", "Cluster requires attention", "Detected 1 under-replicated partition, 1 rebalancing consumer group, and 1 lagging consumer group. Review the diagnostics below.", "Under-replicated partitions", "Lagging groups"}},
 	}
@@ -224,15 +228,93 @@ func TestLivePages(t *testing.T) {
 	}
 }
 
-func TestTopicsPageShowsMessageRatesAndMergedLevel(t *testing.T) {
-	source := &fakeDataSource{topicRates: &kafkaesque_topics.MessageRates{
-		PerSecond: 1, PerMinute: 60, PerHour: 3600,
+func TestTopicsPageDefaultsAndSummaries(t *testing.T) {
+	secondA, minuteA, hourA := 1.0, 60.0, 3600.0
+	secondB, minuteB, hourB := 2.0, 120.0, 7200.0
+	zero := 0.0
+	source := &fakeDataSource{topics: []kafkaesque_topics.TopicInformation{
+		{Name: "alpha", Level: "External", PartitionCount: 2, ReplicationFactor: 2, MessagesPerSecond: &secondA, MessagesPerMinute: &minuteA, MessagesPerHour: &hourA},
+		{Name: "beta", Level: "External", PartitionCount: 3, ReplicationFactor: 2, MessagesPerSecond: &secondB, MessagesPerMinute: &minuteB, MessagesPerHour: &hourB},
+		{Name: "idle", Level: "External", PartitionCount: 1, ReplicationFactor: 1, MessagesPerSecond: &zero, MessagesPerMinute: &zero, MessagesPerHour: &zero},
+		{Name: "pending", Level: "External", PartitionCount: 1, ReplicationFactor: 1},
+		{Name: "__internal", Level: "Internal", PartitionCount: 1, ReplicationFactor: 1, MessagesPerSecond: &secondB, MessagesPerMinute: &minuteB, MessagesPerHour: &hourB},
 	}}
 	response := requestUI(t, newHandler(source), "/ui/topics", false)
 	body := response.Body.String()
-	requireContains(t, body, "Message rate", "topic-level", "1/sec", "60/min", "3600/hr", "Collecting…")
+	requireContains(t, body,
+		`<option value="external" selected>External</option>`,
+		`<option value="minute" selected>/min</option>`,
+		`hx-trigger="submit, change from:select"`,
+		"Total throughput", "180", "Highest publisher", "beta", "120 msg/min",
+		"Average active throughput", "90", "Active topics", "2", "of 3 measured",
+		"Rates available for 3 of 4 filtered topics", "Messages/min", "Collecting…", "topic-level",
+	)
+	if strings.Contains(body, "__internal") || strings.Contains(body, "60/sec") || strings.Contains(body, "3600/hr") {
+		t.Fatalf("default topics page contains an internal topic or stacked rates: %s", body)
+	}
 	if strings.Contains(body, `<th scope="col">Level</th>`) {
 		t.Fatal("topics table still contains a separate Level column")
+	}
+}
+
+func TestTopicsPageFiltersRateUnitAndReturnsFragment(t *testing.T) {
+	second, minute, hour := 1.234, 75.0, 4500.0
+	source := &fakeDataSource{topics: []kafkaesque_topics.TopicInformation{
+		{Name: "orders", Level: "External", MessagesPerSecond: &second, MessagesPerMinute: &minute, MessagesPerHour: &hour},
+		{Name: "__internal", Level: "Internal", MessagesPerSecond: &second, MessagesPerMinute: &minute, MessagesPerHour: &hour},
+	}}
+	handler := newHandler(source)
+	response := requestUI(t, handler, "/ui/topics?level=all&metric=second", true)
+	body := response.Body.String()
+	requireContains(t, body, `id="topics-results"`, "orders", "__internal", "Messages/sec", ">1.23<", "2.47", "Rates available for all 2 filtered topics")
+	if strings.Contains(body, "<!doctype html>") || strings.Contains(body, "Messages/min") {
+		t.Fatalf("topics fragment contains a full page or wrong metric: %s", body)
+	}
+
+	response = requestUI(t, handler, "/ui/topics?level=internal&metric=hour", false)
+	body = response.Body.String()
+	requireContains(t, body, `value="internal" selected`, `value="hour" selected`, "__internal", "Messages/hr", ">4500<")
+	if strings.Contains(body, ">orders<") {
+		t.Fatalf("internal filter contains external topic: %s", body)
+	}
+
+	response = requestUI(t, handler, "/ui/topics?level=all&metric=hour&q=orders", false)
+	body = response.Body.String()
+	requireContains(t, body, `value="orders"`, "4500 msg/hr", "1–1 of 1 topics")
+	if strings.Contains(body, "__internal") {
+		t.Fatalf("topic search did not affect summaries and table: %s", body)
+	}
+
+	for _, path := range []string{"/ui/topics?level=private", "/ui/topics?metric=day"} {
+		response = requestUI(t, handler, path, false)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s status=%d", path, response.Code)
+		}
+	}
+}
+
+func TestTopicSummariesHandleTiesZeroTrafficAndFullFilteredSet(t *testing.T) {
+	topics := []topicView{
+		{Name: "alpha", RateAvailable: true, Rate: 5},
+		{Name: "zeta", RateAvailable: true, Rate: 5},
+		{Name: "idle", RateAvailable: true, Rate: 0},
+		{Name: "pending"},
+	}
+	results := paginateTopics(topics, "", "all", "minute", 1, 2)
+	if len(results.Topics) != 2 || results.Metrics[0].Value != "10" || results.Metrics[1].Value != "alpha" ||
+		results.Metrics[2].Value != "5" || results.Metrics[3].Value != "2" {
+		t.Fatalf("summary=%+v page topics=%+v", results.Metrics, results.Topics)
+	}
+
+	zero := topicSummary([]topicView{{Name: "idle", RateAvailable: true}}, "hour")
+	if zero[0].Value != "0" || zero[1].Value != "No traffic" || zero[2].Value != "—" || zero[3].Value != "0" {
+		t.Fatalf("zero-traffic summary=%+v", zero)
+	}
+	collecting := topicSummary([]topicView{{Name: "pending"}}, "minute")
+	for _, card := range collecting {
+		if card.Value != "Collecting…" {
+			t.Fatalf("collecting summary=%+v", collecting)
+		}
 	}
 }
 
@@ -337,7 +419,7 @@ func TestKafkaListPageSizesPreserveFilters(t *testing.T) {
 		filter   string
 	}{
 		{path: "/ui/consumer-groups?q=orders&page_size=25", clearURL: "/ui/consumer-groups?page=1&amp;page_size=25", filter: `name="q" value="orders"`},
-		{path: "/ui/topics?q=orders&level=external&page_size=25", clearURL: "/ui/topics?page=1&amp;page_size=25", filter: `name="level" value="external"`},
+		{path: "/ui/topics?q=orders&level=external&page_size=25", clearURL: "/ui/topics?level=external&amp;metric=minute&amp;page=1&amp;page_size=25", filter: `name="metric" value="minute"`},
 		{path: "/ui/brokers?q=rack-a&page_size=25", clearURL: "/ui/brokers?page=1&amp;page_size=25", filter: `name="q" value="rack-a"`},
 	}
 	for _, test := range tests {
@@ -377,10 +459,10 @@ func TestPageSizeValidation(t *testing.T) {
 
 func TestPaginationURLsPreservePageSizeAndFilters(t *testing.T) {
 	tests := map[string]string{
-		consumerGroupsURL("orders", "Stable", 2, 50): "/ui/consumer-groups?page=2&page_size=50&q=orders&state=Stable",
-		topicsURL("orders", "external", 2, 50):       "/ui/topics?level=external&page=2&page_size=50&q=orders",
-		brokersURL("rack-a", 2, 50):                  "/ui/brokers?page=2&page_size=50&q=rack-a",
-		usersURL(2, 50):                              "/ui/settings/users?page=2&page_size=50",
+		consumerGroupsURL("orders", "Stable", 2, 50):   "/ui/consumer-groups?page=2&page_size=50&q=orders&state=Stable",
+		topicsURL("orders", "external", "hour", 2, 50): "/ui/topics?level=external&metric=hour&page=2&page_size=50&q=orders",
+		brokersURL("rack-a", 2, 50):                    "/ui/brokers?page=2&page_size=50&q=rack-a",
+		usersURL(2, 50):                                "/ui/settings/users?page=2&page_size=50",
 	}
 	for got, want := range tests {
 		if got != want {
