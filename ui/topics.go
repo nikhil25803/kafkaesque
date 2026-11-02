@@ -89,20 +89,7 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 		renderUpstreamError(w, r, "topics", err)
 		return
 	}
-	topics := make([]topicView, 0, len(information))
-	for _, topic := range information {
-		rate := topicRate(topic, metric)
-		view := topicView{
-			Name: topic.Name, Level: topic.Level, Partitions: topic.PartitionCount,
-			ReplicationFactor: topic.ReplicationFactor,
-		}
-		if rate != nil {
-			view.RateAvailable = true
-			view.Rate = *rate
-			view.MessageRate = formatMessageRate(*rate)
-		}
-		topics = append(topics, view)
-	}
+	topics := topicViews(information, metric)
 	filtered := filterTopics(topics, query, level)
 	results := paginateTopics(filtered, query, level, metric, page, pageSize)
 
@@ -120,6 +107,24 @@ func renderTopics(w http.ResponseWriter, r *http.Request) {
 	if err := dashboardTemplate.ExecuteTemplate(w, "topics", view); err != nil {
 		http.Error(w, "Unable to render topics", http.StatusInternalServerError)
 	}
+}
+
+func topicViews(information []kafkaesque_topics.TopicInformation, metric string) []topicView {
+	topics := make([]topicView, 0, len(information))
+	for _, topic := range information {
+		rate := topicRate(topic, metric)
+		view := topicView{
+			Name: topic.Name, Level: topic.Level, Partitions: topic.PartitionCount,
+			ReplicationFactor: topic.ReplicationFactor,
+		}
+		if rate != nil {
+			view.RateAvailable = true
+			view.Rate = *rate
+			view.MessageRate = formatMessageRate(*rate)
+		}
+		topics = append(topics, view)
+	}
+	return topics
 }
 
 func topicLevel(value string) (string, error) {

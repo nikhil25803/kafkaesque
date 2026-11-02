@@ -45,9 +45,16 @@ func (f *fakeDataSource) Dashboard(context.Context) (*dashboardData, error) {
 			{Name: "__consumer_offsets", Internal: true, Partitions: []kafka.Partition{{ID: 0}}},
 		},
 	}
+	topics := kafkaesque_topics.GetTopicInformation(metadata)
+	if f.topics != nil {
+		topics = append([]kafkaesque_topics.TopicInformation(nil), f.topics...)
+	} else if f.topicRates != nil {
+		topics = kafkaesque_topics.AddMessageRates(topics, map[string]kafkaesque_topics.MessageRates{"orders": *f.topicRates})
+	}
 	return &dashboardData{
 		Snapshot: &kafkaesque.MetadataSnapshot{Metadata: metadata, Latency: 42 * time.Millisecond},
 		Groups:   f.groupInformation(),
+		Topics:   topics,
 		Health:   f.healthInformation(),
 	}, nil
 }
@@ -665,11 +672,15 @@ func TestLiveDashboardReusesItsSnapshots(t *testing.T) {
 	transport := &dashboardTransport{}
 	conn := &kafkaesque.KafkaesqueConn{Client: &kafka.Client{Addr: kafka.TCP("broker:9092"), Transport: transport}}
 	source := newLiveDataSource(conn, &kafkaesque_config.Config{})
-	if _, err := source.Dashboard(context.Background()); err != nil {
+	data, err := source.Dashboard(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if transport.metadataRequests != 1 || transport.groupRequests != 1 {
 		t.Fatalf("requests = metadata %d, groups %d; want one each", transport.metadataRequests, transport.groupRequests)
+	}
+	if data.Topics == nil {
+		t.Fatal("dashboard did not derive topics from its metadata snapshot")
 	}
 }
 

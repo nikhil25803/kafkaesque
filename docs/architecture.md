@@ -77,6 +77,14 @@ log-end offsets from partition leaders. Group inspection is sequential, which
 keeps request behavior predictable but can be slow for clusters with many
 groups.
 
+The initial Dashboard request reuses one metadata collection and one
+consumer-group collection for cluster totals, external-topic summaries,
+topic-to-consumer relationships, and dead-resource panels. Topic rates come
+from the shared in-memory hourly snapshots. Relationship links come from each
+group's committed topic offsets and therefore describe topology, not consumer
+processing throughput. HTMX pagination requests refresh only the data required
+by the selected dead-resource table.
+
 ## PostgreSQL
 
 PostgreSQL stores application identity, session state, and alert subscriptions,
@@ -107,6 +115,8 @@ HTMX fragments use the same typed view models.
 - Snapshots are live; there is no cache, retry layer, or stale fallback.
 - Hourly message rates are in-memory; alert definitions and delivery state are
   persistent, but lag history is not retained.
+- Dashboard dead topics are external topics with a measured zero rate; dead
+  consumers are groups in Kafka's normalized `Dead` state, excluding `Empty`.
 - Lag alerts fire once per breach, resolve at the same threshold, and re-arm
   after resolution; failed Slack deliveries retry on the next monitor cycle.
 - API/UI authentication depends on PostgreSQL; CLI inspection does not.

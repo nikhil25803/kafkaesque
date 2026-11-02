@@ -21,6 +21,18 @@ active-topic throughput, and active-topic count use the complete filtered result
 set rather than only the current page. Topics awaiting a second valid snapshot
 are excluded and reported in the measurement-coverage note.
 
+The Dashboard repeats those four summaries for external topics at a fixed
+messages-per-minute view. Its topic-to-consumer flow maps committed-offset
+relationships rather than traffic volume: every link has equal weight, topic
+nodes show the latest rate, and consumer nodes show state and total lag. The
+complete graph is scrollable and is not truncated.
+
+Dashboard dead-resource tables use current snapshots. A dead topic is an
+external topic with a complete hourly interval and exactly zero messages per
+minute; topics still collecting are excluded and counted separately. A dead
+consumer is a group whose normalized Kafka state is explicitly `Dead`;
+`Empty` groups are not included. Both tables paginate independently.
+
 ## Consumer observability
 
 - List consumer groups, normalized state, member count, topic count, and lag.

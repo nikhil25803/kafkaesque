@@ -7,6 +7,7 @@
   <meta name="color-scheme" content="dark">
   <title>Dashboard · Kafkaesque</title>
   <link rel="stylesheet" href="/ui/assets/app.css">
+  <script src="/ui/assets/htmx-4.0.0.min.js" defer></script>
   <script src="/ui/assets/app.js" defer></script>
 </head>
 <body>
@@ -60,6 +61,43 @@
           {{end}}
         </div>
       </section>
+
+      <section aria-labelledby="topic-overview-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">External topics · messages/min</p><h2 id="topic-overview-title">Topics overview</h2></div>
+          <a class="text-link" href="/ui/topics">View topics</a>
+        </div>
+        <div class="metric-grid topic-metric-grid">
+          {{range .TopicMetrics}}<article class="metric-card topic-metric-card">
+            <strong title="{{.Value}}">{{.Value}}</strong><span>{{.Label}}</span>{{if .Detail}}<small>{{.Detail}}</small>{{end}}
+          </article>{{end}}
+        </div>
+        <p class="rate-coverage">{{.TopicCoverage}}</p>
+      </section>
+
+      <section class="panel topic-flow-panel" aria-labelledby="topic-flow-title">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Committed topic relationships</p><h2 id="topic-flow-title">Topic → Consumer Flow</h2></div>
+          {{if .TopicFlow.Links}}<span class="panel-count">{{.TopicFlow.Relationships}} relationships</span>{{end}}
+        </div>
+        {{if .TopicFlow.Links}}
+        <div class="sankey-scroll" tabindex="0" aria-label="Topic to consumer flow graph, horizontally and vertically scrollable">
+          <svg class="topic-flow" width="{{.TopicFlow.Width}}" height="{{.TopicFlow.Height}}" viewBox="{{.TopicFlow.ViewBox}}" role="img" aria-labelledby="topic-flow-svg-title topic-flow-svg-description">
+            <title id="topic-flow-svg-title">External topic to consumer group relationships</title>
+            <desc id="topic-flow-svg-description">Equal-width links show committed-offset relationships. Topic rates are messages per minute.</desc>
+            <g class="flow-links">{{range .TopicFlow.Links}}<path class="flow-link" d="{{.Path}}" tabindex="0" aria-label="{{.Label}}"><title>{{.Label}}</title></path>{{end}}</g>
+            <g class="flow-topic-nodes">{{range .TopicFlow.Topics}}<a href="{{.URL}}" aria-label="Topic {{.Name}}. {{.Detail}}"><g class="flow-node topic-node"><title>{{.Name}}. {{.Detail}}</title><rect x="{{.X}}" y="{{.Y}}" width="{{.Width}}" height="{{.Height}}" rx="6"></rect><text class="flow-node-label" x="{{.X}}" dx="12" y="{{.LabelY}}">{{.DisplayName}}</text><text class="flow-node-detail" x="{{.X}}" dx="12" y="{{.DetailY}}">{{.Detail}}</text></g></a>{{end}}</g>
+            <g class="flow-consumer-nodes">{{range .TopicFlow.Consumers}}<a href="{{.URL}}" aria-label="Consumer group {{.Name}}. {{.Detail}}"><g class="flow-node consumer-node"><title>{{.Name}}. {{.Detail}}</title><rect x="{{.X}}" y="{{.Y}}" width="{{.Width}}" height="{{.Height}}" rx="6"></rect><text class="flow-node-label" x="{{.X}}" dx="12" y="{{.LabelY}}">{{.DisplayName}}</text><text class="flow-node-detail" x="{{.X}}" dx="12" y="{{.DetailY}}">{{.Detail}}</text></g></a>{{end}}</g>
+          </svg>
+        </div>
+        <p class="resource-note">Link width represents one topic-to-consumer relationship, not message volume.</p>
+        {{else}}<div class="empty-state compact"><h3>No topic flow found</h3><p>No external topic currently has committed consumer-group offsets.</p></div>{{end}}
+      </section>
+
+      <div class="dead-resource-grid">
+        {{template "dead-topics-panel" .DeadTopics}}
+        {{template "dead-consumers-panel" .DeadConsumers}}
+      </div>
 
       <div class="dashboard-grid">
         <section class="panel health-panel" aria-labelledby="health-title">

@@ -1,0 +1,65 @@
+{{define "dead-topics-panel"}}
+<section class="panel dead-resource-panel" id="dead-topics-panel" aria-labelledby="dead-topics-title">
+  <div class="panel-heading">
+    <div><p class="eyebrow">No measured traffic</p><h2 id="dead-topics-title">Dead topics</h2></div>
+    <span class="panel-count">{{.Pagination.Range}}</span>
+  </div>
+  <div class="dead-resource-content">
+    {{if gt .Collecting 0}}<p class="resource-note">{{.Collecting}} external {{if eq .Collecting 1}}topic is{{else}}topics are{{end}} still collecting and excluded.</p>{{end}}
+    {{if .Topics}}
+    <div class="table-scroll dead-resource-table-scroll" tabindex="0" aria-label="Dead topics table, horizontally and vertically scrollable">
+      <table class="dead-resource-table">
+        <thead><tr><th scope="col">Topic</th><th scope="col" class="number">Partitions</th><th scope="col" class="number">Replication</th><th scope="col" class="number">Consumers</th><th scope="col">Status</th></tr></thead>
+        <tbody>{{range .Topics}}<tr>
+          <th scope="row"><a class="group-link mono" href="{{.URL}}">{{.Name}}</a></th>
+          <td class="number">{{.Partitions}}</td><td class="number">{{.ReplicationFactor}}</td><td class="number">{{.ConsumerGroups}}</td>
+          <td><span class="status-label neutral"><span class="status-dot neutral" aria-hidden="true"></span>No messages/min</span></td>
+        </tr>{{end}}</tbody>
+      </table>
+    </div>
+    {{else}}<div class="empty-state compact"><h3>No dead topics found</h3><p>No measured external topic currently has zero traffic.</p></div>{{end}}
+  </div>
+  {{template "dashboard-pagination" .Pagination}}
+</section>
+{{end}}
+
+{{define "dead-consumers-panel"}}
+<section class="panel dead-resource-panel" id="dead-consumers-panel" aria-labelledby="dead-consumers-title">
+  <div class="panel-heading">
+    <div><p class="eyebrow">Kafka group state</p><h2 id="dead-consumers-title">Dead consumers</h2></div>
+    <span class="panel-count">{{.Pagination.Range}}</span>
+  </div>
+  <div class="dead-resource-content">
+    {{if .Consumers}}
+    <div class="table-scroll dead-resource-table-scroll" tabindex="0" aria-label="Dead consumers table, horizontally and vertically scrollable">
+      <table class="dead-resource-table">
+        <thead><tr><th scope="col">Consumer group</th><th scope="col" class="number">Topics</th><th scope="col" class="number">Members</th><th scope="col">State</th></tr></thead>
+        <tbody>{{range .Consumers}}<tr>
+          <th scope="row"><a class="group-link mono" href="{{.URL}}">{{.Name}}</a></th>
+          <td class="number">{{.Topics}}</td><td class="number">{{.Members}}</td>
+          <td><span class="status-label critical"><span class="status-dot critical" aria-hidden="true"></span>{{.State}}</span></td>
+        </tr>{{end}}</tbody>
+      </table>
+    </div>
+    {{else}}<div class="empty-state compact"><h3>No dead consumers found</h3><p>Kafka currently reports no consumer group in the Dead state.</p></div>{{end}}
+  </div>
+  {{template "dashboard-pagination" .Pagination}}
+</section>
+{{end}}
+
+{{define "dashboard-pagination"}}
+<nav class="pagination dashboard-pagination" aria-label="Results pages">
+  <div class="pagination-links">
+    {{if .PreviousURL}}<a href="{{.PreviousURL}}" hx-get="{{.PreviousURL}}" hx-target="{{.PageSize.Target}}" hx-swap="outerHTML" hx-push-url="false">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
+    <div class="page-links">
+      {{range .Pages}}{{if .Ellipsis}}<span aria-hidden="true">…</span>{{else if .Active}}<span class="active" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="{{$.PageSize.Target}}" hx-swap="outerHTML" hx-push-url="false">{{.Number}}</a>{{end}}{{end}}
+    </div>
+    {{if .NextURL}}<a href="{{.NextURL}}" hx-get="{{.NextURL}}" hx-target="{{.PageSize.Target}}" hx-swap="outerHTML" hx-push-url="false">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+  </div>
+  <form class="page-size-form" action="{{.PageSize.Action}}" method="get" hx-get="{{.PageSize.Action}}" hx-target="{{.PageSize.Target}}" hx-swap="outerHTML" hx-push-url="false">
+    <input type="hidden" name="page" value="1">
+    <label><span>Rows per page</span><select name="page_size">{{range .PageSize.Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select></label>
+    <button class="secondary-button" type="submit">Apply</button>
+  </form>
+</nav>
+{{end}}
