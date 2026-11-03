@@ -76,21 +76,24 @@ type topicFlowView struct {
 }
 
 type topicFlowNode struct {
-	Name        string
-	DisplayName string
-	Detail      string
-	URL         string
-	X           int
-	Y           int
-	Width       int
-	Height      int
-	LabelY      int
-	DetailY     int
+	Key       string
+	Name      string
+	Detail    string
+	URL       string
+	X         int
+	Y         int
+	Width     int
+	Height    int
+	TextX     int
+	TextY     int
+	TextWidth int
 }
 
 type topicFlowLink struct {
-	Path  string
-	Label string
+	Path        string
+	Label       string
+	TopicKey    string
+	ConsumerKey string
 }
 
 type topicConsumerRelationship struct {
@@ -140,7 +143,7 @@ func buildTopicFlow(topics []kafkaesque_topics.TopicInformation, groups []kafkae
 	consumerNames := sortedKeys(consumerDegrees)
 
 	const canvasWidth, nodeWidth, leftX, rightX = 1200, 230, 24, 946
-	topicNodes, topicPositions, topicHeight := layoutFlowNodes(topicNames, topicDegrees, leftX, nodeWidth, func(name string) (string, string) {
+	topicNodes, topicPositions, topicHeight := layoutFlowNodes("topic", topicNames, topicDegrees, leftX, nodeWidth, func(name string) (string, string) {
 		topic := external[name]
 		detail := "Collecting messages/min"
 		if topic.MessagesPerMinute != nil {
@@ -148,7 +151,7 @@ func buildTopicFlow(topics []kafkaesque_topics.TopicInformation, groups []kafkae
 		}
 		return detail, topicsURL(name, "external", "minute", 1, 10)
 	})
-	consumerNodes, consumerPositions, consumerHeight := layoutFlowNodes(consumerNames, consumerDegrees, rightX, nodeWidth, func(name string) (string, string) {
+	consumerNodes, consumerPositions, consumerHeight := layoutFlowNodes("consumer", consumerNames, consumerDegrees, rightX, nodeWidth, func(name string) (string, string) {
 		group := consumerInfo[name]
 		detail := kafkaesque_consumers.GroupStateCategory(group.State) + " · lag " + strconv.FormatInt(group.TotalLag, 10)
 		return detail, "/ui/consumer-groups/" + url.PathEscape(name)
@@ -170,8 +173,10 @@ func buildTopicFlow(topics []kafkaesque_topics.TopicInformation, groups []kafkae
 			rate = formatMessageRate(*topic.MessagesPerMinute) + " msg/min"
 		}
 		links = append(links, topicFlowLink{
-			Path:  fmt.Sprintf("M %d %d C %d %d, %d %d, %d %d", startX, startY, controlX, startY, controlX, endY, endX, endY),
-			Label: fmt.Sprintf("%s to %s. Topic rate: %s. Consumer lag: %d.", relationship.Topic, relationship.ConsumerGroup, rate, relationship.Lag),
+			Path:        fmt.Sprintf("M %d %d C %d %d, %d %d, %d %d", startX, startY, controlX, startY, controlX, endY, endX, endY),
+			Label:       fmt.Sprintf("%s to %s. Topic rate: %s. Consumer lag: %d.", relationship.Topic, relationship.ConsumerGroup, rate, relationship.Lag),
+			TopicKey:    topicNode.Key,
+			ConsumerKey: consumerNode.Key,
 		})
 	}
 	height := max(360, max(topicHeight, consumerHeight))
@@ -182,6 +187,7 @@ func buildTopicFlow(topics []kafkaesque_topics.TopicInformation, groups []kafkae
 }
 
 func layoutFlowNodes(
+	prefix string,
 	names []string,
 	degrees map[string]int,
 	x, width int,
@@ -195,8 +201,8 @@ func layoutFlowNodes(
 		height := max(48, 24+degrees[name]*6)
 		nodeDetail, nodeURL := detail(name)
 		node := topicFlowNode{
-			Name: name, DisplayName: truncateRunes(name, 30), Detail: nodeDetail, URL: nodeURL,
-			X: x, Y: y, Width: width, Height: height, LabelY: y + 20, DetailY: y + 37,
+			Key: prefix + "-" + strconv.Itoa(len(nodes)), Name: name, Detail: nodeDetail, URL: nodeURL,
+			X: x, Y: y, Width: width, Height: height, TextX: x + 12, TextY: y + 7, TextWidth: width - 24,
 		}
 		nodes = append(nodes, node)
 		positions[name] = node
@@ -216,14 +222,6 @@ func sortedKeys(values map[string]int) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func truncateRunes(value string, limit int) string {
-	runes := []rune(value)
-	if len(runes) <= limit {
-		return value
-	}
-	return string(runes[:limit-1]) + "…"
 }
 
 func buildDeadTopics(

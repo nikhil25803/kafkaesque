@@ -317,16 +317,23 @@ tbody tr:hover { background: var(--elevated); }
 .topic-flow-panel { margin-bottom: 24px; }
 .sankey-scroll { max-height: 720px; overflow: auto; background: var(--canvas); }
 .topic-flow { display: block; min-width: 1200px; }
-.flow-link { fill: none; stroke: var(--border-strong); stroke-width: 3; opacity: .62; }
+.flow-link { fill: none; stroke: var(--border-strong); stroke-width: 3; opacity: .62; transition: opacity .15s ease, stroke .15s ease, stroke-width .15s ease; }
 .flow-link:hover, .flow-link:focus-visible { stroke: var(--text); opacity: 1; outline: none; }
+.flow-node-link { transition: opacity .15s ease; }
 .flow-node rect { fill: var(--surface); stroke: var(--border-strong); }
 .flow-node.topic-node rect { fill: color-mix(in srgb, var(--healthy) 8%, var(--surface)); }
 .flow-node.consumer-node rect { fill: var(--elevated); }
-.flow-node-label, .flow-node-detail { pointer-events: none; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-.flow-node-label { fill: var(--text); font-size: 13px; font-weight: 700; }
-.flow-node-detail { fill: var(--text-muted); font-size: 11px; }
+.flow-node-copy { display: grid; gap: 2px; overflow: hidden; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; pointer-events: none; }
+.flow-node-label, .flow-node-detail { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-node-label { font-size: 13px; font-weight: 700; }
+.flow-node-detail { color: var(--text-muted); font-size: 11px; }
 .flow-node:hover rect, .topic-flow a:focus-visible .flow-node rect { stroke: var(--text); }
 .topic-flow a:focus-visible { outline: none; }
+.topic-flow.is-flow-active .flow-link, .topic-flow.is-flow-active .flow-node-link { opacity: .14; }
+.topic-flow.is-flow-active .flow-link.is-related, .topic-flow.is-flow-active .flow-node-link.is-related { opacity: 1; }
+.topic-flow.is-flow-active .flow-link.is-related { stroke: var(--healthy); stroke-width: 4; }
+.topic-flow.is-flow-active .flow-node-link.is-related .flow-node rect { stroke: var(--healthy); }
+.topic-flow.is-flow-active .flow-node-link.is-active .flow-node rect { stroke-width: 2; }
 .resource-note { margin: 0; padding: 10px 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
 .dead-resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; align-items: start; }
 .dead-resource-panel { display: flex; height: 700px; min-width: 0; flex-direction: column; }

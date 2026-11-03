@@ -96,6 +96,55 @@
     toastTimer = window.setTimeout(() => toast.remove(), 8000);
   };
 
+  const initializeTopicFlows = () => {
+    document.querySelectorAll('.topic-flow:not([data-flow-ready])').forEach((graph) => {
+      graph.dataset.flowReady = 'true';
+      const nodes = [...graph.querySelectorAll('.flow-node-link[data-flow-key]')];
+      const links = [...graph.querySelectorAll('.flow-link[data-flow-topic-key][data-flow-consumer-key]')];
+      let pointerKey = '';
+      let focusKey = '';
+
+      const render = () => {
+        const activeKey = focusKey || pointerKey;
+        const relatedKeys = new Set(activeKey ? [activeKey] : []);
+
+        links.forEach((link) => {
+          const related = activeKey !== '' &&
+            (link.dataset.flowTopicKey === activeKey || link.dataset.flowConsumerKey === activeKey);
+          link.classList.toggle('is-related', related);
+          if (related) {
+            relatedKeys.add(link.dataset.flowTopicKey);
+            relatedKeys.add(link.dataset.flowConsumerKey);
+          }
+        });
+        nodes.forEach((node) => {
+          node.classList.toggle('is-related', relatedKeys.has(node.dataset.flowKey));
+          node.classList.toggle('is-active', node.dataset.flowKey === activeKey);
+        });
+        graph.classList.toggle('is-flow-active', activeKey !== '');
+      };
+
+      nodes.forEach((node) => {
+        node.addEventListener('pointerenter', () => {
+          pointerKey = node.dataset.flowKey;
+          render();
+        });
+        node.addEventListener('pointerleave', () => {
+          pointerKey = '';
+          render();
+        });
+        node.addEventListener('focusin', () => {
+          focusKey = node.dataset.flowKey;
+          render();
+        });
+        node.addEventListener('focusout', () => {
+          focusKey = '';
+          render();
+        });
+      });
+    });
+  };
+
   const clearRefreshTimer = () => {
     window.clearTimeout(refreshTimer);
     refreshTimer = undefined;
@@ -177,6 +226,7 @@
   });
   document.addEventListener('htmx:afterSwap', () => {
     initializeRefreshControl();
+    initializeTopicFlows();
     syncFilterPageSize();
   });
 
@@ -371,6 +421,7 @@
   }
 
   initializeRefreshControl();
+  initializeTopicFlows();
   initializeUserForm();
   initializeActionMenus();
   syncFilterPageSize();

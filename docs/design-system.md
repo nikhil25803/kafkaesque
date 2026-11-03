@@ -322,6 +322,9 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 - Render the relationship graph as an accessible server-generated SVG inside
   a two-axis scroll container. Use equal-width links, deterministic ordering,
   linked nodes, and native SVG titles; do not imply that link width is traffic.
+- Constrain topic and consumer labels with ellipsis while retaining their full
+  names in native tooltips. Hovering or focusing either side highlights its
+  connected nodes and paths and dims unrelated relationships.
 - Keep Dead topics and Dead consumers in separate responsive panels with
   independent HTMX pagination and ordinary-link fallbacks.
 - Topic Detail remains deferred until it is explicitly approved.
