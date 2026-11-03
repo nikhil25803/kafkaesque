@@ -24,6 +24,7 @@ type healthDiagnosticView struct {
 	Value       int
 	Status      string
 	StatusClass string
+	URL         string
 }
 
 func renderClusterHealth(w http.ResponseWriter, r *http.Request) {
@@ -67,9 +68,9 @@ func clusterHealthView(health *kafkaesque_health.Information, requests ...*http.
 			diagnostic("Under-replicated partitions", health.UnderReplicatedCount, false),
 		},
 		ConsumerDiagnostics: []healthDiagnosticView{
-			diagnostic("Rebalancing groups", health.RebalancingGroupCount, false),
-			diagnostic("Dead groups", health.DeadGroupCount, true),
-			diagnostic("Lagging groups", health.LaggingGroupCount, false),
+			consumerDiagnostic("Rebalancing groups", health.RebalancingGroupCount, false, "/ui/consumer-groups?state=Rebalancing"),
+			consumerDiagnostic("Dead groups", health.DeadGroupCount, true, "/ui/consumer-groups?state=Dead"),
+			consumerDiagnostic("Lagging groups", health.LaggingGroupCount, false, "/ui/consumer-groups?lag=lagging"),
 		},
 	}
 }
@@ -124,4 +125,12 @@ func diagnostic(label string, value int, critical bool) healthDiagnosticView {
 	}
 
 	return healthDiagnosticView{Label: label, Value: value, Status: status, StatusClass: class}
+}
+
+func consumerDiagnostic(label string, value int, critical bool, target string) healthDiagnosticView {
+	view := diagnostic(label, value, critical)
+	if value > 0 {
+		view.URL = target
+	}
+	return view
 }

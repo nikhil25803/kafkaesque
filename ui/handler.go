@@ -77,12 +77,14 @@ type consumerGroupView struct {
 	TotalLag    int64
 	Health      string
 	HealthClass string
+	Lagging     bool
 }
 
 type consumerGroupsPage struct {
 	Navigation navigationView
 	Query      string
 	States     []stateOption
+	LagOptions []stateOption
 	Results    consumerGroupsResults
 }
 
@@ -187,7 +189,8 @@ func consumerGroupViews(
 ) []consumerGroupView {
 	views := make([]consumerGroupView, 0, len(groups))
 	for _, group := range groups {
-		health, healthClass := lagStatusView(kafkaesque_consumers.ConsumerLagStatus(group.TotalLag, thresholds))
+		lagStatus := kafkaesque_consumers.ConsumerLagStatus(group.TotalLag, thresholds)
+		health, healthClass := lagStatusView(lagStatus)
 		state := kafkaesque_consumers.GroupStateCategory(group.State)
 		views = append(views, consumerGroupView{
 			Name:        group.GroupName,
@@ -199,6 +202,7 @@ func consumerGroupViews(
 			TotalLag:    group.TotalLag,
 			Health:      health,
 			HealthClass: healthClass,
+			Lagging:     state != kafkaesque_consumers.GroupStateDead && lagStatus != kafkaesque_consumers.LagStatusHealthy,
 		})
 	}
 
@@ -484,13 +488,25 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	lag := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("lag")))
+	if lag != "" && lag != "lagging" {
+		renderUIError(
+			w,
+			r,
+			http.StatusBadRequest,
+			"consumer-groups",
+			"Invalid consumer group request",
+			"lag must be lagging",
+		)
+		return
+	}
 	information, err := sourceFrom(r).ConsumerGroups(r.Context())
 	if err != nil {
 		renderUpstreamError(w, r, "consumer-groups", err)
 		return
 	}
-	groups := filterConsumerGroups(consumerGroupViews(information, sourceFrom(r).Thresholds()), query, state)
-	results := paginateConsumerGroups(groups, query, state, page, pageSize)
+	groups := filterConsumerGroups(consumerGroupViews(information, sourceFrom(r).Thresholds()), query, state, lag)
+	results := paginateConsumerGroups(groups, query, state, lag, page, pageSize)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
@@ -503,6 +519,7 @@ func renderConsumerGroups(w http.ResponseWriter, r *http.Request) {
 		Navigation: navigationFor(r, "consumer-groups"),
 		Query:      query,
 		States:     consumerStateOptions(state),
+		LagOptions: consumerLagOptions(lag),
 		Results:    results,
 	}
 	if err := dashboardTemplate.ExecuteTemplate(w, "consumer-groups", view); err != nil {
@@ -541,11 +558,12 @@ func newPageSizeControl(action, target string, selected int, filters ...queryFie
 	return pageSizeControl{Action: action, Target: target, Selected: selected, Options: options, Filters: filters}
 }
 
-func filterConsumerGroups(groups []consumerGroupView, query, state string) []consumerGroupView {
+func filterConsumerGroups(groups []consumerGroupView, query, state, lag string) []consumerGroupView {
 	filtered := make([]consumerGroupView, 0, len(groups))
 	for _, group := range groups {
 		if strings.Contains(strings.ToLower(group.Name), strings.ToLower(query)) &&
-			(state == "" || strings.EqualFold(group.State, state)) {
+			(state == "" || strings.EqualFold(group.State, state)) &&
+			(lag == "" || group.Lagging) {
 			filtered = append(filtered, group)
 		}
 	}
@@ -553,7 +571,7 @@ func filterConsumerGroups(groups []consumerGroupView, query, state string) []con
 	return filtered
 }
 
-func paginateConsumerGroups(groups []consumerGroupView, query, state string, page, pageSize int) consumerGroupsResults {
+func paginateConsumerGroups(groups []consumerGroupView, query, state, lag string, page, pageSize int) consumerGroupsResults {
 	total := len(groups)
 	totalPages := (total + pageSize - 1) / pageSize
 	start := (page - 1) * pageSize
@@ -565,7 +583,7 @@ func paginateConsumerGroups(groups []consumerGroupView, query, state string, pag
 	for number := 1; number <= totalPages; number++ {
 		pageLinks = append(pageLinks, pageLink{
 			Number: number,
-			URL:    consumerGroupsURL(query, state, number, pageSize),
+			URL:    consumerGroupsURL(query, state, lag, number, pageSize),
 			Active: number == page,
 		})
 	}
@@ -579,26 +597,27 @@ func paginateConsumerGroups(groups []consumerGroupView, query, state string, pag
 		Groups:     groups[start:end],
 		Range:      rangeText,
 		Pages:      pageLinks,
-		HasFilters: query != "" || state != "",
-		ClearURL:   consumerGroupsURL("", "", 1, pageSize),
+		HasFilters: query != "" || state != "" || lag != "",
+		ClearURL:   consumerGroupsURL("", "", "", 1, pageSize),
 		Pagination: newPageSizeControl(
 			"/ui/consumer-groups",
 			"#consumer-groups-results",
 			pageSize,
 			queryField{Name: "q", Value: query},
 			queryField{Name: "state", Value: state},
+			queryField{Name: "lag", Value: lag},
 		),
 	}
 	if page > 1 && page <= totalPages {
-		results.PreviousURL = consumerGroupsURL(query, state, page-1, pageSize)
+		results.PreviousURL = consumerGroupsURL(query, state, lag, page-1, pageSize)
 	}
 	if page < totalPages {
-		results.NextURL = consumerGroupsURL(query, state, page+1, pageSize)
+		results.NextURL = consumerGroupsURL(query, state, lag, page+1, pageSize)
 	}
 	return results
 }
 
-func consumerGroupsURL(query, state string, page, pageSize int) string {
+func consumerGroupsURL(query, state, lag string, page, pageSize int) string {
 	values := url.Values{}
 	if query != "" {
 		values.Set("q", query)
@@ -606,9 +625,20 @@ func consumerGroupsURL(query, state string, page, pageSize int) string {
 	if state != "" {
 		values.Set("state", state)
 	}
+	if lag != "" {
+		values.Set("lag", lag)
+	}
 	values.Set("page", strconv.Itoa(page))
 	values.Set("page_size", strconv.Itoa(pageSize))
 	return "/ui/consumer-groups?" + values.Encode()
+}
+
+func consumerLagOptions(selected string) []stateOption {
+	options := []stateOption{{Value: ""}, {Value: "lagging"}}
+	for i := range options {
+		options[i].Selected = strings.EqualFold(options[i].Value, selected)
+	}
+	return options
 }
 
 func consumerStateOptions(selected string) []stateOption {

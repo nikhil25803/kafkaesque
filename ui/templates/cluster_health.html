@@ -60,7 +60,7 @@
           <div class="panel-heading"><div><p class="eyebrow">Workloads</p><h2 id="consumer-health-title">Consumer health</h2></div></div>
           <dl class="diagnostic-list">
             {{range .ConsumerDiagnostics}}
-            <div><dt>{{.Label}}</dt><dd><strong>{{.Value}}</strong><span class="status-label {{.StatusClass}}"><span class="status-dot {{.StatusClass}}" aria-hidden="true"></span>{{.Status}}</span></dd></div>
+            <div><dt>{{if .URL}}<a class="diagnostic-link" href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</dt><dd><strong>{{.Value}}</strong><span class="status-label {{.StatusClass}}"><span class="status-dot {{.StatusClass}}" aria-hidden="true"></span>{{.Status}}</span></dd></div>
             {{end}}
           </dl>
         </section>
