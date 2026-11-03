@@ -110,8 +110,11 @@ Topic level accepts `internal` or `external`. Partition status accepts
 `healthy` or `degraded`.
 
 `messages_per_second`, `messages_per_minute`, and `messages_per_hour` are
-derived from hourly log-end-offset snapshots. They are `null` during the first
-hour after startup and whenever a topic's partition set or offsets reset.
+derived from log-end-offset snapshots collected every five seconds. The fields
+become available independently: second normally after five seconds, minute
+after a completed minute, and hour after a completed hour. A field is `null`
+while its bucket is warming up and all fields reset when a topic's partition
+set or offsets reset.
 
 ## Brokers
 

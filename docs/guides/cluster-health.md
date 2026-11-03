@@ -33,6 +33,10 @@ Cluster status is `DEGRADED` when any of these counts is nonzero:
 Otherwise the status is `HEALTHY`. Degraded health is still a successful
 inspection and returns CLI exit code `0` and HTTP status `200`.
 
+In the web UI, nonzero Rebalancing, Dead, and Lagging group diagnostics link
+to the Consumer Groups page with the corresponding state or lag filter
+selected.
+
 An offline partition can also be under-replicated, so the counts can overlap.
 Internal topics and their partitions are included in cluster totals.
 

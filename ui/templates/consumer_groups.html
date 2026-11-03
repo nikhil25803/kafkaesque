@@ -53,6 +53,14 @@
               {{end}}
             </select>
           </label>
+          <label class="field">
+            <span>Lag</span>
+            <select name="lag">
+              {{range .LagOptions}}
+              <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{if .Value}}Lagging{{else}}All lag states{{end}}</option>
+              {{end}}
+            </select>
+          </label>
           <button class="primary-button" type="submit">Apply filters</button>
           {{if .Results.HasFilters}}<a class="secondary-button" href="{{.Results.ClearURL}}">Clear filters</a>{{end}}
         </form>

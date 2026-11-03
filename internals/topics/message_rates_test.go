@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -80,7 +81,7 @@ func newTestMessageRateCollector(transport *messageRateTransport) *MessageRateCo
 	return NewMessageRateCollector(conn, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 }
 
-func TestMessageRateCollectorCalculatesCompleteHourlyRates(t *testing.T) {
+func TestMessageRateCollectorPublishesStagedCompletedRates(t *testing.T) {
 	transport := &messageRateTransport{
 		metadata: messageRateMetadata(2, true),
 		offsets: map[topicPartition]int64{
@@ -96,18 +97,36 @@ func TestMessageRateCollectorCalculatesCompleteHourlyRates(t *testing.T) {
 		t.Fatal("first snapshot must only establish a baseline")
 	}
 
-	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 1_900
-	transport.offsets[topicPartition{topic: "orders", partition: 1}] = 3_800
-	collector.collect(context.Background(), started.Add(90*time.Minute))
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 102
+	transport.offsets[topicPartition{topic: "orders", partition: 1}] = 203
+	collector.collect(context.Background(), started.Add(5*time.Second))
 	rates := collector.Snapshot()
-	if got := rates["orders"]; got.PerSecond != 1 || got.PerMinute != 60 || got.PerHour != 3_600 {
+	if got := rates["orders"]; rateValue(got.PerSecond) != 1 || got.PerMinute != nil || got.PerHour != nil {
+		t.Fatalf("five-second rates = %+v", got)
+	}
+	if got := rates["__internal"]; rateValue(got.PerSecond) != 0 || got.PerMinute != nil || got.PerHour != nil {
+		t.Fatalf("five-second zero-traffic rates = %+v", got)
+	}
+
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 125
+	transport.offsets[topicPartition{topic: "orders", partition: 1}] = 235
+	collector.collect(context.Background(), started.Add(time.Minute))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerSecond) != 1 || rateValue(got.PerMinute) != 60 || got.PerHour != nil {
+		t.Fatalf("minute rates = %+v", got)
+	}
+
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 1_900
+	transport.offsets[topicPartition{topic: "orders", partition: 1}] = 2_000
+	collector.collect(context.Background(), started.Add(time.Hour))
+	rates = collector.Snapshot()
+	if got := rates["orders"]; rateValue(got.PerSecond) != 1 || rateValue(got.PerMinute) != 60 || rateValue(got.PerHour) != 3_600 {
 		t.Fatalf("orders rates = %+v", got)
 	}
-	if got := rates["__internal"]; got != (MessageRates{}) {
+	if got := rates["__internal"]; rateValue(got.PerSecond) != 0 || rateValue(got.PerMinute) != 0 || rateValue(got.PerHour) != 0 {
 		t.Fatalf("zero-traffic rates = %+v", got)
 	}
-	if transport.listOffsetsRequests != 4 {
-		t.Fatalf("ListOffsets requests = %d, want 4 (one per broker per collection)", transport.listOffsetsRequests)
+	if transport.listOffsetsRequests != 8 {
+		t.Fatalf("ListOffsets requests = %d, want 8 (one per broker per collection)", transport.listOffsetsRequests)
 	}
 }
 
@@ -134,11 +153,58 @@ func TestMessageRateCollectorInvalidatesChangedTopicsAndRemovesDeletedTopics(t *
 	if _, ok := collector.Snapshot()["__internal"]; ok {
 		t.Fatal("deleted topic was retained")
 	}
+	if _, ok := collector.accumulators["__internal"]; ok {
+		t.Fatal("deleted topic accumulator was retained")
+	}
+
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 205
+	transport.offsets[topicPartition{topic: "orders", partition: 1}] = 505
+	collector.collect(context.Background(), started.Add(2*time.Hour+5*time.Second))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerSecond) != 2 || got.PerMinute != nil || got.PerHour != nil {
+		t.Fatalf("rate after partition rebaseline = %+v", got)
+	}
 
 	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 10
 	collector.collect(context.Background(), started.Add(3*time.Hour))
 	if _, ok := collector.Snapshot()["orders"]; ok {
 		t.Fatal("topic with a reset offset must collect a fresh complete interval")
+	}
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 15
+	transport.offsets[topicPartition{topic: "orders", partition: 1}] = 510
+	collector.collect(context.Background(), started.Add(3*time.Hour+5*time.Second))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerSecond) != 2 || got.PerMinute != nil || got.PerHour != nil {
+		t.Fatalf("rate after offset rebaseline = %+v", got)
+	}
+}
+
+func TestMessageRateCollectorRetainsCompletedBucketsWhileBuildingNext(t *testing.T) {
+	transport := &messageRateTransport{
+		metadata: messageRateMetadata(1, false),
+		offsets:  map[topicPartition]int64{{topic: "orders", partition: 0}: 0},
+	}
+	collector := newTestMessageRateCollector(transport)
+	started := time.Now()
+	collector.collect(context.Background(), started)
+
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 60
+	collector.collect(context.Background(), started.Add(time.Minute))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerMinute) != 60 {
+		t.Fatalf("first completed minute = %+v", got)
+	}
+
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 70
+	collector.collect(context.Background(), started.Add(time.Minute+5*time.Second))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerSecond) != 2 || rateValue(got.PerMinute) != 60 {
+		t.Fatalf("in-progress minute rates = %+v", got)
+	}
+
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 180
+	collector.collect(context.Background(), started.Add(2*time.Minute))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerMinute) != 120 || got.PerHour != nil {
+		t.Fatalf("second completed minute = %+v", got)
+	}
+	if len(collector.accumulators) != 1 || len(collector.previous.offsets) != 1 {
+		t.Fatalf("collector retained unexpected state: accumulators=%d offsets=%d", len(collector.accumulators), len(collector.previous.offsets))
 	}
 }
 
@@ -150,18 +216,25 @@ func TestMessageRateCollectorRetainsLastSuccessAfterFailure(t *testing.T) {
 	collector := newTestMessageRateCollector(transport)
 	started := time.Now()
 	collector.collect(context.Background(), started)
-	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 200
-	collector.collect(context.Background(), started.Add(time.Hour))
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 130
+	collector.collect(context.Background(), started.Add(30*time.Second))
 	want := collector.Snapshot()["orders"]
 
 	transport.offsetError = errors.New("broker unavailable")
-	collector.collect(context.Background(), started.Add(2*time.Hour))
-	if got := collector.Snapshot()["orders"]; got != want {
+	collector.collect(context.Background(), started.Add(45*time.Second))
+	if got := collector.Snapshot()["orders"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("rate after failure = %+v, want %+v", got, want)
 	}
 	attempt, success := collector.collectionTimes()
-	if attempt != started.Add(2*time.Hour) || success != started.Add(time.Hour) {
+	if attempt != started.Add(45*time.Second) || success != started.Add(30*time.Second) {
 		t.Fatalf("attempt=%s success=%s", attempt, success)
+	}
+
+	transport.offsetError = nil
+	transport.offsets[topicPartition{topic: "orders", partition: 0}] = 160
+	collector.collect(context.Background(), started.Add(time.Minute))
+	if got := collector.Snapshot()["orders"]; rateValue(got.PerSecond) != 1 || rateValue(got.PerMinute) != 60 {
+		t.Fatalf("rates after recovery = %+v", got)
 	}
 }
 
@@ -194,16 +267,30 @@ func TestMessageRateCollectorRunStopsWithContext(t *testing.T) {
 }
 
 func TestMessageRateCollectorSupportsConcurrentSnapshots(t *testing.T) {
-	collector := &MessageRateCollector{rates: map[string]MessageRates{"orders": {PerHour: 1}}}
+	collector := &MessageRateCollector{rates: map[string]MessageRates{"orders": {PerHour: ratePointer(1)}}}
 	var wait sync.WaitGroup
 	for range 20 {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			if collector.Snapshot()["orders"].PerHour != 1 {
+			if rateValue(collector.Snapshot()["orders"].PerHour) != 1 {
 				t.Error("unexpected concurrent snapshot")
 			}
 		}()
 	}
 	wait.Wait()
+	snapshot := collector.Snapshot()
+	*snapshot["orders"].PerHour = 99
+	if rateValue(collector.Snapshot()["orders"].PerHour) != 1 {
+		t.Fatal("snapshot mutation changed collector state")
+	}
+}
+
+func ratePointer(value float64) *float64 { return &value }
+
+func rateValue(value *float64) float64 {
+	if value == nil {
+		return -1
+	}
+	return *value
 }

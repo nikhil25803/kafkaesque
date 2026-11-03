@@ -80,7 +80,7 @@ groups.
 The initial Dashboard request reuses one metadata collection and one
 consumer-group collection for cluster totals, external-topic summaries,
 topic-to-consumer relationships, and dead-resource panels. Topic rates come
-from the shared in-memory hourly snapshots. Relationship links come from each
+from the shared in-memory staged collector. Relationship links come from each
 group's committed topic offsets and therefore describe topology, not consumer
 processing throughput. HTMX pagination requests refresh only the data required
 by the selected dead-resource table.
@@ -113,8 +113,9 @@ HTMX fragments use the same typed view models.
 
 - Kafka is inspected but never mutated.
 - Snapshots are live; there is no cache, retry layer, or stale fallback.
-- Hourly message rates are in-memory; alert definitions and delivery state are
-  persistent, but lag history is not retained.
+- Message rates are in-memory. The collector polls every five seconds and keeps
+  one partition snapshot plus bounded per-topic minute/hour accumulators; it
+  does not retain tick history. Rates warm up again after every restart.
 - Dashboard dead topics are external topics with a measured zero rate; dead
   consumers are groups in Kafka's normalized `Dead` state, excluding `Empty`.
 - Lag alerts fire once per breach, resolve at the same threshold, and re-arm

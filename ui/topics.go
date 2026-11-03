@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	defaultTopicLevel  = "external"
-	defaultTopicMetric = "minute"
+	defaultTopicLevel    = "external"
+	defaultTopicMetric   = "second"
+	dashboardTopicMetric = "minute"
 )
 
 type topicView struct {
@@ -314,8 +315,8 @@ func topicLevelOptions(selected string) []filterOption {
 
 func topicMetricOptions(selected string) []filterOption {
 	return selectedOptions([]filterOption{
-		{Value: "minute", Label: "/min"},
 		{Value: "second", Label: "/sec"},
+		{Value: "minute", Label: "/min"},
 		{Value: "hour", Label: "/hr"},
 	}, selected)
 }

@@ -88,6 +88,55 @@ func TestTopicFlowIsDeterministicUnboundedAndHandlesEmpty(t *testing.T) {
 	}
 }
 
+func TestTopicFlowLongNamesAndRelationshipHighlighting(t *testing.T) {
+	rate := 12.5
+	alphaTopic := "alpha-orders-with-a-name-that-is-far-wider-than-the-node-注文"
+	betaTopic := "beta-payments"
+	alphaConsumer := "alpha-consumer-with-a-name-that-is-far-wider-than-the-node-処理"
+	betaConsumer := "beta-consumer"
+	topics := []kafkaesque_topics.TopicInformation{
+		{Name: alphaTopic, Level: "External", MessagesPerMinute: &rate},
+		{Name: betaTopic, Level: "External", MessagesPerMinute: &rate},
+	}
+	groups := []kafkaesque_consumers.ConsumerGroupInformation{
+		{GroupName: alphaConsumer, State: "Stable", Topics: []kafkaesque_consumers.ConsumerGroupTopicLag{{Topic: alphaTopic}, {Topic: betaTopic}}},
+		{GroupName: betaConsumer, State: "Stable", Topics: []kafkaesque_consumers.ConsumerGroupTopicLag{{Topic: alphaTopic}}},
+	}
+	flow := buildTopicFlow(topics, groups)
+	if len(flow.Topics) != 2 || flow.Topics[0].Key != "topic-0" || flow.Topics[1].Key != "topic-1" ||
+		len(flow.Consumers) != 2 || flow.Consumers[0].Key != "consumer-0" || flow.Consumers[1].Key != "consumer-1" {
+		t.Fatalf("flow nodes=%+v consumers=%+v", flow.Topics, flow.Consumers)
+	}
+	wantLinks := [][2]string{{"topic-0", "consumer-0"}, {"topic-0", "consumer-1"}, {"topic-1", "consumer-0"}}
+	for index, want := range wantLinks {
+		if flow.Links[index].TopicKey != want[0] || flow.Links[index].ConsumerKey != want[1] {
+			t.Fatalf("link %d=%+v, want %v", index, flow.Links[index], want)
+		}
+	}
+
+	response := requestUI(t, newHandler(&fakeDataSource{topics: topics, groups: groups}), "/ui", false)
+	body := response.Body.String()
+	requireContains(t, body,
+		"<foreignObject", `data-flow-key="topic-0"`, `data-flow-key="consumer-0"`,
+		`data-flow-topic-key="topic-0" data-flow-consumer-key="consumer-0"`,
+		`title="`+alphaTopic+`"`, `title="`+alphaConsumer+`"`,
+	)
+
+	stylesheet, err := assets.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := assets.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireContains(t, string(stylesheet), "text-overflow: ellipsis", ".topic-flow.is-flow-active", ".flow-link.is-related")
+	requireContains(t, string(script),
+		"const initializeTopicFlows", "data-flow-ready", "pointerenter", "focusin",
+		"link.dataset.flowTopicKey === activeKey", "node.classList.toggle('is-related'",
+	)
+}
+
 func TestDashboardDeadResourcePaginationAndFallbacks(t *testing.T) {
 	zeroRate := 0.0
 	topics := make([]kafkaesque_topics.TopicInformation, 0, 27)

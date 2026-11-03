@@ -173,15 +173,22 @@ func TestTopicMessageRates(t *testing.T) {
 		}
 	}
 
-	rates := staticMessageRates{"orders": {PerSecond: 1, PerMinute: 60, PerHour: 3600}}
+	second, minute := 1.0, 60.0
+	rates := staticMessageRates{"orders": {PerSecond: &second, PerMinute: &minute}}
 	handler := testHandlerWithRates(&apiTransport{}, rates)
 	for _, path := range []string{"/api/v1/topics", "/api/v1/topics/orders"} {
 		response := request(t, handler, path)
 		body := response.Body.String()
 		if response.Code != http.StatusOK || !strings.Contains(body, `"messages_per_second":1`) ||
-			!strings.Contains(body, `"messages_per_minute":60`) || !strings.Contains(body, `"messages_per_hour":3600`) {
+			!strings.Contains(body, `"messages_per_minute":60`) || !strings.Contains(body, `"messages_per_hour":null`) {
 			t.Fatalf("%s response = %d %s", path, response.Code, body)
 		}
+	}
+	hour := 3_600.0
+	rates["orders"] = kafkaesque_topics.MessageRates{PerSecond: &second, PerMinute: &minute, PerHour: &hour}
+	response := request(t, handler, "/api/v1/topics/orders")
+	if !strings.Contains(response.Body.String(), `"messages_per_hour":3600`) {
+		t.Fatalf("completed hour response = %s", response.Body.String())
 	}
 }
 

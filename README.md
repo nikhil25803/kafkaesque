@@ -39,7 +39,7 @@ more setup than a team needs just to understand its Kafka cluster.
 
 Kafkaesque is a dedicated, read-only Kafka monitoring tool. Its web UI gives
 developers and operators one place to inspect cluster health, brokers, topics,
-hourly message rates, consumer groups, and partition lag. You can also create
+live message rates, consumer groups, and partition lag. You can also create
 Slack alerts with configurable lag thresholds and receive a follow-up when the
 lag is resolved.
 
@@ -307,7 +307,7 @@ output formats, watch behavior, exit codes, and examples.
 | Goal                                       | Start in the UI                      | Detailed guide                                                 |
 | ------------------------------------------ | ------------------------------------ | -------------------------------------------------------------- |
 | Verify connection and cluster health       | **Dashboard** and **Cluster Health** | [Cluster health](docs/guides/cluster-health.md)                |
-| Inspect topics and hourly message rates    | **Topics**                           | [Features and limitations](docs/features.md)                   |
+| Inspect topics and live message rates      | **Topics**                           | [Features and limitations](docs/features.md)                   |
 | Investigate a lagging consumer             | **Consumer Groups**                  | [Consumer lag](docs/guides/consumer-lag.md)                    |
 | Create firing and resolution notifications | **Settings → Alerts**                | [Slack alerts](docs/features.md#slack-alerts)                  |
 | Manage accounts and permissions            | **Settings → Users / Roles**         | [Authentication and authorization](docs/api/authentication.md) |

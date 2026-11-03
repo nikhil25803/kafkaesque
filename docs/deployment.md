@@ -264,9 +264,12 @@ operations use advisory locks, while sessions and permissions are stored in
 PostgreSQL. Login throttling is in-process and therefore per replica; enforce
 an additional rate limit at the ingress for public deployments.
 
-Kafka and health collection is performed on request. Slack subscriptions are
-evaluated every five seconds, with one lag read per unique configured
-consumer/topic target in each cycle. This background cadence is independent of
+Kafkaesque collects topic log-end offsets once per broker every five seconds.
+Each replica performs its own collection and stores only the latest partition
+snapshot and bounded per-topic accumulators in memory; rates do not survive a
+restart. Slack subscriptions are also evaluated every five seconds, with one
+lag read per unique configured consumer/topic target in each cycle. This
+background cadence is independent of
 the consumer page's refresh preference. Both Slack [Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
 and [Workflow webhook triggers](https://slack.com/help/articles/360041352714-Build-a-workflow--Create-a-workflow-that-starts-outside-of-Slack)
 are supported.

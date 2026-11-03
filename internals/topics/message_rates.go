@@ -16,7 +16,7 @@ import (
 	"github.com/segmentio/kafka-go/protocol/listoffsets"
 )
 
-const messageRateInterval = time.Hour
+const messageRateInterval = 5 * time.Second
 
 type topicPartition struct {
 	topic     string
@@ -30,27 +30,38 @@ type offsetSnapshot struct {
 
 // MessageRates contains one topic's normalized production rates.
 type MessageRates struct {
-	PerSecond float64
-	PerMinute float64
-	PerHour   float64
+	PerSecond *float64
+	PerMinute *float64
+	PerHour   *float64
 }
 
-// MessageRateProvider exposes the latest complete topic rates.
+type rateAccumulator struct {
+	delta   int64
+	elapsed time.Duration
+}
+
+type topicRateAccumulators struct {
+	minute rateAccumulator
+	hour   rateAccumulator
+}
+
+// MessageRateProvider exposes the latest available topic rates.
 type MessageRateProvider interface {
 	Snapshot() map[string]MessageRates
 }
 
-// MessageRateCollector maintains hourly topic production rates in memory.
+// MessageRateCollector maintains staged topic production rates in memory.
 type MessageRateCollector struct {
 	conn   *kafkaesque.KafkaesqueConn
 	logger *slog.Logger
 
-	mu          sync.RWMutex
-	previous    offsetSnapshot
-	previousAt  time.Time
-	rates       map[string]MessageRates
-	lastAttempt time.Time
-	lastSuccess time.Time
+	mu           sync.RWMutex
+	previous     offsetSnapshot
+	previousAt   time.Time
+	rates        map[string]MessageRates
+	accumulators map[string]topicRateAccumulators
+	lastAttempt  time.Time
+	lastSuccess  time.Time
 }
 
 // NewMessageRateCollector returns an empty collector backed by conn.
@@ -58,10 +69,13 @@ func NewMessageRateCollector(conn *kafkaesque.KafkaesqueConn, logger *slog.Logge
 	if logger == nil {
 		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
-	return &MessageRateCollector{conn: conn, logger: logger, rates: make(map[string]MessageRates)}
+	return &MessageRateCollector{
+		conn: conn, logger: logger,
+		rates: make(map[string]MessageRates), accumulators: make(map[string]topicRateAccumulators),
+	}
 }
 
-// Start collects a baseline immediately and refreshes it hourly until ctx is cancelled.
+// Start collects a baseline immediately and refreshes it every five seconds until ctx is cancelled.
 func (c *MessageRateCollector) Start(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(messageRateInterval)
@@ -97,18 +111,18 @@ func (c *MessageRateCollector) collect(ctx context.Context, now time.Time) {
 	defer c.mu.Unlock()
 
 	if !c.previousAt.IsZero() && now.After(c.previousAt) {
-		c.rates = calculateMessageRates(c.previous, current, now.Sub(c.previousAt))
+		c.updateMessageRates(current, now.Sub(c.previousAt))
 	}
 	c.previous = current
 	c.previousAt = now
 	c.lastSuccess = now
 }
 
-func calculateMessageRates(previous, current offsetSnapshot, elapsed time.Duration) map[string]MessageRates {
+func (c *MessageRateCollector) updateMessageRates(current offsetSnapshot, elapsed time.Duration) {
 	deltas := make(map[string]int64)
 	comparable := make(map[string]int)
 	for key, offset := range current.offsets {
-		previousOffset, ok := previous.offsets[key]
+		previousOffset, ok := c.previous.offsets[key]
 		if !ok || offset < previousOffset {
 			continue
 		}
@@ -116,20 +130,47 @@ func calculateMessageRates(previous, current offsetSnapshot, elapsed time.Durati
 		comparable[key.topic]++
 	}
 
-	rates := make(map[string]MessageRates)
-	for topic, count := range current.partitionCounts {
-		previousCount, existed := previous.partitionCounts[topic]
-		if !existed || previousCount != count || comparable[topic] != count {
-			continue
-		}
-		perHour := float64(deltas[topic]) / elapsed.Hours()
-		rates[topic] = MessageRates{
-			PerSecond: perHour / 3600,
-			PerMinute: perHour / 60,
-			PerHour:   perHour,
+	for topic := range c.rates {
+		if _, exists := current.partitionCounts[topic]; !exists {
+			delete(c.rates, topic)
 		}
 	}
-	return rates
+	for topic := range c.accumulators {
+		if _, exists := current.partitionCounts[topic]; !exists {
+			delete(c.accumulators, topic)
+		}
+	}
+
+	for topic, count := range current.partitionCounts {
+		previousCount, existed := c.previous.partitionCounts[topic]
+		if !existed || previousCount != count || comparable[topic] != count {
+			delete(c.rates, topic)
+			delete(c.accumulators, topic)
+			continue
+		}
+
+		rate := c.rates[topic]
+		perSecond := float64(deltas[topic]) / elapsed.Seconds()
+		rate.PerSecond = &perSecond
+
+		accumulators := c.accumulators[topic]
+		accumulators.minute.delta += deltas[topic]
+		accumulators.minute.elapsed += elapsed
+		if accumulators.minute.elapsed >= time.Minute {
+			perMinute := float64(accumulators.minute.delta) / accumulators.minute.elapsed.Minutes()
+			rate.PerMinute = &perMinute
+			accumulators.minute = rateAccumulator{}
+		}
+		accumulators.hour.delta += deltas[topic]
+		accumulators.hour.elapsed += elapsed
+		if accumulators.hour.elapsed >= time.Hour {
+			perHour := float64(accumulators.hour.delta) / accumulators.hour.elapsed.Hours()
+			rate.PerHour = &perHour
+			accumulators.hour = rateAccumulator{}
+		}
+		c.rates[topic] = rate
+		c.accumulators[topic] = accumulators
+	}
 }
 
 func (c *MessageRateCollector) collectionTimes() (time.Time, time.Time) {
@@ -147,9 +188,25 @@ func (c *MessageRateCollector) Snapshot() map[string]MessageRates {
 	defer c.mu.RUnlock()
 	rates := make(map[string]MessageRates, len(c.rates))
 	for topic, rate := range c.rates {
-		rates[topic] = rate
+		rates[topic] = cloneMessageRates(rate)
 	}
 	return rates
+}
+
+func cloneMessageRates(rate MessageRates) MessageRates {
+	return MessageRates{
+		PerSecond: cloneRate(rate.PerSecond),
+		PerMinute: cloneRate(rate.PerMinute),
+		PerHour:   cloneRate(rate.PerHour),
+	}
+}
+
+func cloneRate(rate *float64) *float64 {
+	if rate == nil {
+		return nil
+	}
+	value := *rate
+	return &value
 }
 
 func (c *MessageRateCollector) fetchOffsets(ctx context.Context) (offsetSnapshot, error) {
