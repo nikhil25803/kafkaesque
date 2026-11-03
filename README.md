@@ -19,6 +19,16 @@
   <img src="https://img.shields.io/badge/HTMX_4.0-3366CC?logo=htmx&amp;logoColor=white" alt="HTMX 4.0">
 </p>
 
+<p align="center">
+  <a href="https://peerlist.io/nikhilraj/project/kafkaesque" target="_blank" rel="noreferrer">
+  				<img
+  					src="https://peerlist.io/api/v1/projects/embed/PRJHBARLME9LM6G9GIB7JLRRAAOEER?showUpvote=false&theme=dark"
+  					alt="Kafkaesque"
+  					style="width: auto; height: 72px;"
+  				/>
+  </a>
+</p>
+
 ![Kafkaesque product banner](docs/assets/branding/KafkaesqueBanner.png)
 
 ## Why Kafkaesque?
