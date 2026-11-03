@@ -319,6 +319,9 @@ the sidebar keeps the text wordmark until a transparent mark is designed.
 - Order Dashboard sections as connection and cluster overview, external topic
   metrics, topic-to-consumer flow, dead-resource tables, then health and
   consumer groups. Keep topic metrics fixed to messages per minute.
+- Default the Topics page to messages per second. Treat second, minute, and
+  hour rates as independently available and show `Collecting…` for a selected
+  bucket that has not completed.
 - Render the relationship graph as an accessible server-generated SVG inside
   a two-axis scroll container. Use equal-width links, deterministic ordering,
   linked nodes, and native SVG titles; do not imply that link width is traffic.

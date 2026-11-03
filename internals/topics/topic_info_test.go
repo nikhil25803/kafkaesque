@@ -48,9 +48,10 @@ func TestGetTopicInformationEmpty(t *testing.T) {
 func TestAddMessageRates(t *testing.T) {
 	topics := AddMessageRates(
 		[]TopicInformation{{Name: "orders"}, {Name: "payments"}},
-		map[string]MessageRates{"orders": {PerSecond: 1, PerMinute: 60, PerHour: 3600}},
+		map[string]MessageRates{"orders": {PerSecond: ratePointer(1), PerMinute: ratePointer(60)}},
 	)
-	if topics[0].MessagesPerSecond == nil || *topics[0].MessagesPerHour != 3600 {
+	if topics[0].MessagesPerSecond == nil || *topics[0].MessagesPerSecond != 1 ||
+		topics[0].MessagesPerMinute == nil || *topics[0].MessagesPerMinute != 60 || topics[0].MessagesPerHour != nil {
 		t.Fatalf("rates = %+v", topics[0])
 	}
 	if topics[1].MessagesPerSecond != nil {

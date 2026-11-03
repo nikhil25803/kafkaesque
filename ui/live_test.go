@@ -214,7 +214,7 @@ func TestLivePages(t *testing.T) {
 	}{
 		{"/ui", []string{"Dashboard", "CONNECTED", "42ms", "SASL_SSL", "SCRAM-SHA-256", "mTLS", "2 of 2", "orders-service", "DEGRADED"}},
 		{"/ui/consumer-groups", []string{"Consumer Groups", "1–2 of 2 groups", "analytics", "orders-service", "Warning"}},
-		{"/ui/topics", []string{"Topics", "1–1 of 1 topics", "orders", "External", "Messages/min"}},
+		{"/ui/topics", []string{"Topics", "1–1 of 1 topics", "orders", "External", "Messages/sec"}},
 		{"/ui/brokers", []string{"Brokers", "1–2 of 2 brokers", "broker-1:9092", "10.0.0.11:9092", "rack-a", "—"}},
 		{"/ui/cluster-health", []string{"Cluster Health", "Cluster requires attention", "Detected 1 under-replicated partition, 1 rebalancing consumer group, and 1 lagging consumer group. Review the diagnostics below.", "Under-replicated partitions", "Lagging groups"}},
 	}
@@ -250,13 +250,13 @@ func TestTopicsPageDefaultsAndSummaries(t *testing.T) {
 	body := response.Body.String()
 	requireContains(t, body,
 		`<option value="external" selected>External</option>`,
-		`<option value="minute" selected>/min</option>`,
+		`<option value="second" selected>/sec</option>`,
 		`hx-trigger="submit, change from:select"`,
-		"Total throughput", "180", "Highest publisher", "beta", "120 msg/min",
-		"Average active throughput", "90", "Active topics", "2", "of 3 measured",
-		"Rates available for 3 of 4 filtered topics", "Messages/min", "Collecting…", "topic-level",
+		"Total throughput", "3", "Highest publisher", "beta", "2 msg/sec",
+		"Average active throughput", "1.5", "Active topics", "2", "of 3 measured",
+		"Rates available for 3 of 4 filtered topics", "Messages/sec", "Collecting…", "topic-level",
 	)
-	if strings.Contains(body, "__internal") || strings.Contains(body, "60/sec") || strings.Contains(body, "3600/hr") {
+	if strings.Contains(body, "__internal") || strings.Contains(body, "60 msg/min") || strings.Contains(body, "3600 msg/hr") {
 		t.Fatalf("default topics page contains an internal topic or stacked rates: %s", body)
 	}
 	if strings.Contains(body, `<th scope="col">Level</th>`) {
@@ -298,6 +298,23 @@ func TestTopicsPageFiltersRateUnitAndReturnsFragment(t *testing.T) {
 			t.Fatalf("%s status=%d", path, response.Code)
 		}
 	}
+}
+
+func TestTopicRatesAppearIndependentlyDuringWarmup(t *testing.T) {
+	second := 2.0
+	source := &fakeDataSource{topics: []kafkaesque_topics.TopicInformation{{
+		Name: "orders", Level: "External", MessagesPerSecond: &second,
+	}}}
+	handler := newHandler(source)
+
+	response := requestUI(t, handler, "/ui/topics", false)
+	requireContains(t, response.Body.String(), "Messages/sec", ">2<", "Rates available for all 1 filtered topics")
+
+	response = requestUI(t, handler, "/ui/topics?metric=minute", false)
+	requireContains(t, response.Body.String(), "Messages/min", "Collecting…", "Message rates are still collecting for 1 filtered topics")
+
+	response = requestUI(t, handler, "/ui", false)
+	requireContains(t, response.Body.String(), "External topics · messages/min", "Collecting…", "1 external topic is still collecting and excluded")
 }
 
 func TestTopicSummariesHandleTiesZeroTrafficAndFullFilteredSet(t *testing.T) {
@@ -434,7 +451,7 @@ func TestKafkaListPageSizesPreserveFilters(t *testing.T) {
 		filter   string
 	}{
 		{path: "/ui/consumer-groups?q=orders&page_size=25", clearURL: "/ui/consumer-groups?page=1&amp;page_size=25", filter: `name="q" value="orders"`},
-		{path: "/ui/topics?q=orders&level=external&page_size=25", clearURL: "/ui/topics?level=external&amp;metric=minute&amp;page=1&amp;page_size=25", filter: `name="metric" value="minute"`},
+		{path: "/ui/topics?q=orders&level=external&page_size=25", clearURL: "/ui/topics?level=external&amp;metric=second&amp;page=1&amp;page_size=25", filter: `name="metric" value="second"`},
 		{path: "/ui/brokers?q=rack-a&page_size=25", clearURL: "/ui/brokers?page=1&amp;page_size=25", filter: `name="q" value="rack-a"`},
 	}
 	for _, test := range tests {

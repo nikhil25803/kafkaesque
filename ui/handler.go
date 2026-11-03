@@ -152,7 +152,7 @@ func dashboardView(
 	groups := consumerGroupViews(data.Groups, source.Thresholds())
 	total := len(groups)
 	shown := min(4, total)
-	externalTopics := filterTopics(topicViews(data.Topics, defaultTopicMetric), "", defaultTopicLevel)
+	externalTopics := filterTopics(topicViews(data.Topics, dashboardTopicMetric), "", defaultTopicLevel)
 
 	return dashboardPage{
 		Navigation: navigationFor(r, "dashboard"),
@@ -168,7 +168,7 @@ func dashboardView(
 			{Label: "Partitions", Value: int64(partitionCount)},
 			{Label: "Consumer Groups", Value: int64(total)},
 		},
-		TopicMetrics:  topicSummary(externalTopics, defaultTopicMetric),
+		TopicMetrics:  topicSummary(externalTopics, dashboardTopicMetric),
 		TopicCoverage: topicCoverage(externalTopics),
 		TopicFlow:     buildTopicFlow(data.Topics, data.Groups),
 		DeadTopics: buildDeadTopics(

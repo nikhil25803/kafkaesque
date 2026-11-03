@@ -10,16 +10,18 @@ it is not a historical metrics platform or a Kafka administration console.
 | Connection check | Whether bootstrap, DNS, TCP, TLS, SASL, and Kafka metadata access succeed. |
 | Metadata | Cluster ID, controller, and broker/topic totals. |
 | Brokers | Advertised address, effective connect address, and rack. |
-| Topics | Filtered throughput summaries, internal/external level, hourly message rates, partition count, and replication factor. |
+| Topics | Filtered throughput summaries, internal/external level, staged message rates, partition count, and replication factor. |
 | Partitions | Leader, replicas, ISR, and healthy/degraded state. |
 | Cluster health | Offline and under-replicated partitions plus consumer-group health signals. |
 
-The Topics page defaults to external topics and messages per minute. Select
-`/sec`, `/min`, or `/hr` to change the displayed normalization without changing
-the hourly collection cadence. Total throughput, highest publisher, average
+The Topics page defaults to external topics and messages per second. Kafkaesque
+collects log-end offsets every five seconds: `/sec` normally appears after five
+seconds, `/min` after a completed minute, and `/hr` after a completed hour.
+Minute and hour values retain the last completed bucket while the next bucket
+is collected. Total throughput, highest publisher, average
 active-topic throughput, and active-topic count use the complete filtered result
-set rather than only the current page. Topics awaiting a second valid snapshot
-are excluded and reported in the measurement-coverage note.
+set rather than only the current page. Topics whose selected bucket is still
+warming up are excluded and reported in the measurement-coverage note.
 
 The Dashboard repeats those four summaries for external topics at a fixed
 messages-per-minute view. Its topic-to-consumer flow maps committed-offset
@@ -28,7 +30,7 @@ nodes show the latest rate, and consumer nodes show state and total lag. The
 complete graph is scrollable and is not truncated.
 
 Dashboard dead-resource tables use current snapshots. A dead topic is an
-external topic with a complete hourly interval and exactly zero messages per
+external topic with a completed minute bucket and exactly zero messages per
 minute; topics still collecting are excluded and counted separately. A dead
 consumer is a group whose normalized Kafka state is explicitly `Dead`;
 `Empty` groups are not included. Both tables paginate independently.

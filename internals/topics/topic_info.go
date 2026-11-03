@@ -46,10 +46,9 @@ func AddMessageRates(topics []TopicInformation, rates map[string]MessageRates) [
 		if !ok {
 			continue
 		}
-		perSecond, perMinute, perHour := rate.PerSecond, rate.PerMinute, rate.PerHour
-		topics[i].MessagesPerSecond = &perSecond
-		topics[i].MessagesPerMinute = &perMinute
-		topics[i].MessagesPerHour = &perHour
+		topics[i].MessagesPerSecond = cloneRate(rate.PerSecond)
+		topics[i].MessagesPerMinute = cloneRate(rate.PerMinute)
+		topics[i].MessagesPerHour = cloneRate(rate.PerHour)
 	}
 	return topics
 }
