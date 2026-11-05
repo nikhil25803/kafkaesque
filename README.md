@@ -27,6 +27,10 @@
   					style="width: auto; height: 72px;"
   				/>
   </a>
+  
+  <a href="https://tinyhunt.dev/projects/kafkaesque?utm_source=badge" target="_blank" rel="noopener noreferrer">
+    <img src="https://r2.direasy-multi-tenant.focusapps.app/uploads/616d0b1a-3979-4b8c-94d1-b4f1fedd3ead/1783232960041/17rsshdhmati/featured-on-dark.svg" alt="Featured on TinyHunt" style="height:72px;width:auto"/>
+  </a>
 </p>
 
 ![Kafkaesque product banner](docs/assets/branding/KafkaesqueBanner.png)
